@@ -29,7 +29,7 @@ Panel {
   }
   readonly property bool hideWhenRead: setting("unreadOnlyBadge", false) === true
 
-  readonly property var visibleMessages: mail.messages.slice(0, panelMessageCount)
+  readonly property var visibleMessages: mail.recent.slice(0, panelMessageCount)
   readonly property bool hasUnread: mail.unread > 0
   readonly property color barIconColor: hasUnread ? barForeground : Qt.darker(barForeground, 1.45)
 
@@ -108,7 +108,6 @@ Panel {
     messageIndex = 0
     focusSection = "messages"
     mail.refreshStatus()
-    mail.loadMessages()
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
 
@@ -354,6 +353,7 @@ Panel {
   }
 
   function mailboxLabel() {
+    if (mail.accounts.length > 1) return "ALL INBOXES"
     var account = mail.currentAccount
     var label = account ? (account.email || "Inbox") : "Inbox"
     return label.toUpperCase()

@@ -619,17 +619,28 @@ def cmd_test(args):
 
 
 def cmd_demo(args):
-    """Seed the cache with sample mail so the UI can be driven without a server."""
+    """Seed the cache with sample mail so the UI can be driven without a server.
+
+    Two accounts, because that is the shape most people are in — a personal
+    address and a work one — and the folder tree only makes sense with both.
+    """
     conn = store.connect()
     account_id = "demo"
+    work_id = "demo-work"
     if args.clear:
-        store.purge_account(conn, account_id)
-        config.remove(account_id)
+        for target in (account_id, work_id):
+            store.purge_account(conn, target)
+            config.remove(target)
         emit({"ok": True, "cleared": True}, lambda d: "Demo data cleared.")
         return
 
     config.upsert({
-        "id": account_id, "email": "you@example.com", "name": "Demo",
+        "id": account_id, "email": "you@gmail.com", "name": "Personal",
+        "provider": "demo", "auth": "none", "demo": True,
+        "imap": {"host": ""}, "smtp": {"host": ""},
+    })
+    config.upsert({
+        "id": work_id, "email": "you@company.com", "name": "Work",
         "provider": "demo", "auth": "none", "demo": True,
         "imap": {"host": ""}, "smtp": {"host": ""},
     })
@@ -672,9 +683,45 @@ def cmd_demo(args):
         {"name": "Deleted Items", "special": "trash", "total": 9, "unseen": 0},
         {"name": "Junk Email", "special": "junk", "total": 4, "unseen": 1},
     ])
+    work_samples = [
+        ("Priya Raman", "priya@company.com", "Q3 roadmap review",
+         "Sending the deck ahead of Thursday so you can comment in advance.", 2, 1),
+        ("IT Service Desk", "it@company.com", "Scheduled maintenance this weekend",
+         "Mailboxes stay online; the VPN gateway restarts at 02:00 Saturday.", 5, 0),
+        ("Tom Verhoeven", "tom@company.com", "Re: contract renewal",
+         "Legal signed off. I'll forward the countersigned copy tomorrow.", 20, 0),
+    ]
+    work_rows = []
+    for index, (name, address, subject, preview, hours, attachments) in enumerate(work_samples):
+        work_rows.append({
+            "account": work_id, "folder": "INBOX", "uid": 2000 + index,
+            "message_id": f"<demo-work-{index}@omarchy>", "subject": subject,
+            "from_name": name, "from_addr": address,
+            "to_addrs": ["you@company.com"], "cc_addrs": [],
+            "date": now - hours * 3600, "size": 7000 + index * 1200,
+            "seen": index > 0, "flagged": False, "answered": index == 2,
+            "draft": False, "attachments": attachments, "preview": preview,
+        })
+    store.upsert_messages(conn, work_rows)
+    for row in work_rows:
+        store.save_body(conn, work_id, "INBOX", row["uid"],
+                        row["preview"] + "\n\n-- \nSent from Olook", "",
+                        [], {"From": f"{row['from_name']} <{row['from_addr']}>",
+                             "Subject": row["subject"], "To": "you@company.com"})
+    store.save_folders(conn, work_id, [
+        {"name": "INBOX", "special": "inbox", "total": len(work_rows), "unseen": 1},
+        {"name": "Archive", "special": "archive", "total": 412, "unseen": 0},
+        {"name": "Sent Items", "special": "sent", "total": 233, "unseen": 0},
+        {"name": "Drafts", "special": "drafts", "total": 1, "unseen": 0},
+        {"name": "Deleted Items", "special": "trash", "total": 27, "unseen": 0},
+        {"name": "Junk Email", "special": "junk", "total": 6, "unseen": 0},
+        {"name": "Projects", "special": "", "total": 88, "unseen": 0},
+    ])
+
     store.set_state(conn, "last_sync", now)
-    emit({"ok": True, "seeded": len(rows)},
-         lambda d: f"Seeded {d['seeded']} demo messages under account 'demo'.")
+    total = len(rows) + len(work_rows)
+    emit({"ok": True, "seeded": total},
+         lambda d: f"Seeded {d['seeded']} demo messages across two accounts.")
 
 
 # ---------------------------------------------------------------------- setup

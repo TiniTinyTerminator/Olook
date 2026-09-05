@@ -22,12 +22,18 @@ Item {
   property var accounts: []
   property string accountId: ""
   property var folders: []
+  // Folders for every account, keyed by account id. The folder pane shows
+  // them all at once as one tree, so it cannot ask only about the current one.
+  property var accountFolders: ({})
   property string folder: "INBOX"
   property var messages: []
   property var selected: null
   property var body: null
   property int unread: 0
   property int lastSync: 0
+  // Newest inbox mail across every account, newest first. The bar panel shows
+  // this rather than one account's folder, the way a notification list would.
+  property var recent: []
   property bool configured: false
   property bool ready: false
 
@@ -130,7 +136,7 @@ Item {
   // ------------------------------------------------------------------ status
 
   function refreshStatus(thenLoad) {
-    run(["status", "--limit", "12"], function (ok, payload) {
+    run(["status", "--limit", "20"], function (ok, payload) {
       if (!ok || !payload) return
       var previousUnread = root.unread
       var hadAccounts = root.accounts.length > 0
@@ -138,6 +144,7 @@ Item {
       root.accounts = payload.accounts || []
       root.configured = payload.configured === true
       root.unread = payload.unread || 0
+      root.recent = payload.messages || []
       root.lastSync = payload.lastSync || 0
       root.ready = true
 
@@ -153,13 +160,17 @@ Item {
 
   // ----------------------------------------------------------------- folders
 
+  // Loads the folder list for every configured account. Only the current
+  // account's fetch is allowed to hit the server; the rest come from cache,
+  // so opening the pane never costs one IMAP round trip per account.
   function loadFolders(refresh) {
-    if (!root.accountId) return
-    var args = accountArgs(["folders"])
-    if (refresh) args.push("--refresh")
-    run(args, function (ok, payload) {
-      if (!ok || !payload) return
-      root.folders = payload.folders || []
+    if (root.accounts.length === 0) return
+    var collected = ({})
+    var pending = root.accounts.length
+
+    function finish() {
+      root.accountFolders = collected
+      root.folders = collected[root.accountId] || []
       if (root.folders.length > 0) {
         var found = false
         for (var i = 0; i < root.folders.length; i++)
@@ -167,7 +178,37 @@ Item {
         if (!found) root.folder = root.folders[0].name
       }
       root.loadMessages()
-    }, "folders")
+    }
+
+    for (var index = 0; index < root.accounts.length; index++) {
+      (function (id) {
+        var args = ["folders", "--account", id]
+        if (refresh && id === root.accountId) args.push("--refresh")
+        run(args, function (ok, payload) {
+          collected[id] = (ok && payload) ? (payload.folders || []) : []
+          pending -= 1
+          if (pending === 0) finish()
+        }, "folders")
+      })(root.accounts[index].id)
+    }
+  }
+
+  function foldersFor(accountId) {
+    var found = root.accountFolders[accountId]
+    return found === undefined ? [] : found
+  }
+
+  // One click in the tree picks an account and a folder together.
+  function openFolder(accountId, folderName) {
+    if (!accountId || !folderName) return
+    if (accountId === root.accountId && folderName === root.folder) return
+    root.accountId = accountId
+    root.folders = root.foldersFor(accountId)
+    root.folder = folderName
+    root.selected = null
+    root.body = null
+    root.messages = []
+    loadMessages()
   }
 
   function setAccount(id) {
@@ -177,6 +218,7 @@ Item {
     root.body = null
     root.folder = "INBOX"
     root.messages = []
+    root.folders = root.foldersFor(id)
     loadFolders()
   }
 

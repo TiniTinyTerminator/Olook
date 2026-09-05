@@ -439,14 +439,10 @@ Item {
               service: mail
               active: root.pane === "folders"
               onComposeRequested: root.startCompose(null)
-              onFolderChosen: function (name) {
+              onFolderChosen: function (accountId, name) {
                 root.selectedRow = -1
-                mail.setFolder(name)
+                mail.openFolder(accountId, name)
                 root.pane = "list"
-              }
-              onAccountChosen: function (id) {
-                root.selectedRow = -1
-                mail.setAccount(id)
               }
             }
 

@@ -11,15 +11,15 @@ list grouped by date, and a reading pane.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ✉ Olook  Mail          [ Search mail ]                        ⟳    ✕     │
 ├────┬──────────────┬──────────────────────────┬───────────────────────────┤
-│ ✉2 │  + New mail  │  All  Unread  Flagged    │  Notes on the Analytical… │
-│ 📅 │  ● you@work  │  ── Today ───────────────│  AL  Ada Lovelace         │
-│ 👤 │              │ ▏Ada Lovelace      19:15 │  ↩ Reply  ↩↩ All  ↪ Fwd   │
-│    │  Inbox    2  │  Notes on the Analyt…    │  ─────────────────────    │
-│    │  Drafts      │  The engine can arra…    │  The engine can arrange   │
-│    │  Sent Items  │ ▏Omarchy           18:15 │  and combine numerical…   │
-│    │  Archive     │  Omarchy 4.0 is out      │                           │
-│    │  Junk     1  │  ── Yesterday ───────────│                           │
-│    │  Deleted     │  GitHub       Yesterday  │                           │
+│ ✉3 │  + New mail  │  All  Unread  Flagged    │  Notes on the Analytical… │
+│ 📅 │ ⌄ Personal   │  ── Today ───────────────│  AL  Ada Lovelace         │
+│ 👤 │   Inbox   2  │ ▏Ada Lovelace      19:15 │  ↩ Reply  ↩↩ All  ↪ Fwd   │
+│    │   Drafts     │  Notes on the Analyt…    │  ─────────────────────    │
+│    │   Sent Items │  The engine can arra…    │  The engine can arrange   │
+│    │   Archive    │ ▏Omarchy           18:15 │  and combine numerical…   │
+│    │   Junk    1  │  Omarchy 4.0 is out      │                           │
+│    │ › Work    1  │  ── Yesterday ───────────│                           │
+│    │              │  GitHub       Yesterday  │                           │
 ├────┴──────────────┴──────────────────────────┴───────────────────────────┤
 │ 5 messages,  2 unread                                    Updated 19:15   │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -30,7 +30,9 @@ list grouped by date, and a reading pane.
 - Gmail / Google Workspace, Outlook.com, and Microsoft 365 business accounts
   over OAuth2 (XOAUTH2), plus any other IMAP/SMTP server with a password
 - Server autodiscovery from just an email address
-- Bar widget with an unread badge and a peek at recent mail
+- Several accounts at once: each is a collapsible section in the folder pane
+  with its own folders nested under it
+- Bar widget with an unread badge and the newest mail across every account
 - Read, reply, reply-all, forward, archive, delete, flag, mark read/unread
 - Compose and send, with a copy filed in Sent
 - Attachments: saved to disk and opened with your default app
@@ -188,8 +190,9 @@ olook status                       # what the bar widget sees
 olook watch                        # IMAP IDLE, prints events as mail lands
 ```
 
-`olook demo` seeds a fake account so you can try the interface before adding a
-real one; `olook demo --clear` removes it.
+`olook demo` seeds two fake accounts so you can try the interface — including
+the multi-account folder tree — before adding a real one; `olook demo --clear`
+removes them.
 
 ## Where things live
 

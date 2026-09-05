@@ -1,10 +1,12 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Folder pane: the New mail button, an account switcher when there is more
-// than one account, and the folder tree with unread counts.
+// Folder pane: the New mail button, then one collapsible section per account
+// with that account's folders nested under it — the way Outlook stacks several
+// mailboxes in a single tree rather than showing one account at a time.
 Item {
   id: root
 
@@ -12,12 +14,27 @@ Item {
   property var service: null
   property bool active: false
 
-  signal composeRequested()
-  signal folderChosen(string name)
-  signal accountChosen(string id)
+  // Account id -> expanded. An account the user has not touched follows the
+  // current account, so a fresh window opens with the mailbox you are reading.
+  property var expandedAccounts: ({})
 
-  readonly property var folders: Model.sortFolders(service ? service.folders : [])
+  signal composeRequested()
+  signal folderChosen(string accountId, string folderName)
+
   readonly property var accounts: service ? service.accounts : []
+
+  function isExpanded(accountId) {
+    var state = expandedAccounts[accountId]
+    if (state === undefined) return service && service.accountId === accountId
+    return state === true
+  }
+
+  function toggleAccount(accountId) {
+    var next = ({})
+    for (var key in expandedAccounts) next[key] = expandedAccounts[key]
+    next[accountId] = !isExpanded(accountId)
+    expandedAccounts = next
+  }
 
   Rectangle {
     anchors.fill: parent
@@ -75,69 +92,36 @@ Item {
       }
     }
 
-    // ------------------------------------------------------------- account
-    Column {
-      width: parent.width
-      spacing: Style.space(2)
-      visible: root.accounts.length > 0
-
-      Repeater {
-        model: root.accounts
-        AccountRow {
-          required property var modelData
-          width: parent.width
-          account: modelData
-        }
-      }
-    }
-
-    Rectangle {
-      width: parent.width
-      height: 1
-      color: ui.border
-      visible: root.accounts.length > 0
-    }
-
-    // ------------------------------------------------------------- folders
-    Text {
-      textFormat: Text.PlainText
-      text: "FOLDERS"
-      color: ui.faint
-      font.family: ui.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-    }
-
+    // --------------------------------------------------------- account tree
     Flickable {
       width: parent.width
       height: Math.max(0, parent.height - y)
       contentWidth: width
-      contentHeight: folderColumn.implicitHeight
+      contentHeight: treeColumn.implicitHeight
       clip: true
       boundsBehavior: Flickable.StopAtBounds
       interactive: contentHeight > height
+      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
       Column {
-        id: folderColumn
+        id: treeColumn
         width: parent.width
-        spacing: Style.space(1)
+        spacing: Style.space(4)
 
         Repeater {
-          model: root.folders
-          FolderRow {
+          model: root.accounts
+          AccountSection {
             required property var modelData
-            width: folderColumn.width
-            folder: modelData
+            width: treeColumn.width
+            account: modelData
           }
         }
 
         Text {
           textFormat: Text.PlainText
-          visible: root.folders.length === 0
+          visible: root.accounts.length === 0
           width: parent.width
-          text: root.service && root.service.configured
-            ? "No folders yet — sync to load them."
-            : "Add an account to get started."
+          text: "No account yet — add one to see your folders here."
           color: ui.faint
           font.family: ui.fontFamily
           font.pixelSize: Style.font.caption
@@ -147,96 +131,163 @@ Item {
     }
   }
 
-  component AccountRow: Rectangle {
-    id: accountRow
+  // One account: a header that expands, with its folders underneath.
+  component AccountSection: Column {
+    id: section
     property var account: null
-    readonly property bool current: root.service && root.service.accountId === (account ? account.id : "")
+    readonly property string accountId: account ? String(account.id) : ""
+    readonly property bool expanded: root.isExpanded(accountId)
+    readonly property var folders: Model.sortFolders(
+      root.service ? root.service.foldersFor(accountId) : [])
+    readonly property bool current: root.service && root.service.accountId === accountId
 
-    height: Style.space(38)
-    radius: ui.radius
-    color: accountRow.current ? ui.selected
-      : (accountHover.containsMouse ? ui.hover : "transparent")
+    spacing: Style.space(1)
 
-    Row {
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(8)
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(8)
+    Rectangle {
+      id: accountHeader
+      width: section.width
+      height: Style.space(38)
+      radius: ui.radius
+      color: accountHover.containsMouse ? ui.hover : "transparent"
 
-      Rectangle {
+      Row {
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(4)
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter
-        width: Style.space(22)
-        height: width
-        radius: width / 2
-        color: Qt.hsla(Model.avatarHue(accountRow.account ? accountRow.account.email : "") / 360,
-                       0.45, 0.45, 1.0)
+        spacing: Style.space(6)
 
         Text {
-          anchors.centerIn: parent
-          text: Model.initials(accountRow.account ? accountRow.account.name : "",
-                               accountRow.account ? accountRow.account.email : "")
-          color: "white"
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(14)
+          horizontalAlignment: Text.AlignHCenter
+          text: section.expanded ? "󰅀" : "󰅂"
+          color: ui.dim
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        Rectangle {
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(22)
+          height: width
+          radius: width / 2
+          color: Qt.hsla(Model.avatarHue(section.account ? section.account.email : "") / 360,
+                         0.45, 0.45, 1.0)
+
+          Text {
+            anchors.centerIn: parent
+            text: Model.initials(section.account ? section.account.name : "",
+                                 section.account ? section.account.email : "")
+            color: "white"
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+          }
+        }
+
+        Column {
+          anchors.verticalCenter: parent.verticalCenter
+          width: parent.width - Style.space(50)
+            - (accountBadge.visible ? accountBadge.implicitWidth + Style.space(6) : 0)
+          spacing: 0
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: section.account
+              ? String(section.account.name || section.account.email) : ""
+            color: ui.foreground
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: section.current
+            elide: Text.ElideRight
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: {
+              if (!section.account) return ""
+              if (section.account.authorized === false) return "Needs sign-in"
+              return String(section.account.email)
+            }
+            color: section.account && section.account.authorized === false
+              ? ui.urgent : ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+        }
+
+        Text {
+          id: accountBadge
+          anchors.verticalCenter: parent.verticalCenter
+          visible: !section.expanded && section.account && section.account.unread > 0
+          text: section.account ? Model.badgeText(section.account.unread) : ""
+          color: ui.accent
           font.family: ui.fontFamily
           font.pixelSize: Style.font.caption
           font.bold: true
         }
       }
 
-      Column {
-        anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - Style.space(30)
-        spacing: 0
-
-        Text {
-          textFormat: Text.PlainText
-          width: parent.width
-          text: accountRow.account ? String(accountRow.account.name || accountRow.account.email) : ""
-          color: ui.foreground
-          font.family: ui.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          elide: Text.ElideRight
-        }
-
-        Text {
-          textFormat: Text.PlainText
-          width: parent.width
-          text: {
-            if (!accountRow.account) return ""
-            if (!accountRow.account.authorized) return "Needs sign-in"
-            return String(accountRow.account.email)
-          }
-          color: accountRow.account && !accountRow.account.authorized ? ui.urgent : ui.faint
-          font.family: ui.fontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
-        }
+      MouseArea {
+        id: accountHover
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.toggleAccount(section.accountId)
       }
     }
 
-    MouseArea {
-      id: accountHover
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: root.accountChosen(accountRow.account ? accountRow.account.id : "")
+    // Folder rows, indented under their account.
+    Column {
+      width: section.width
+      spacing: Style.space(1)
+      visible: section.expanded
+      height: visible ? implicitHeight : 0
+
+      Repeater {
+        model: section.folders
+        FolderRow {
+          required property var modelData
+          width: section.width
+          folder: modelData
+          accountId: section.accountId
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: section.folders.length === 0
+        width: parent.width
+        leftPadding: Style.space(30)
+        text: "No folders cached yet."
+        color: ui.faint
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.caption
+      }
     }
   }
 
   component FolderRow: Rectangle {
     id: folderRow
     property var folder: null
-    readonly property bool current: root.service && root.service.folder === (folder ? folder.name : "")
+    property string accountId: ""
+    readonly property bool current: root.service
+      && root.service.accountId === accountId
+      && root.service.folder === (folder ? folder.name : "")
 
-    height: Style.space(28)
+    height: Style.space(26)
     radius: ui.radius
     color: folderRow.current ? ui.selected
       : (folderHover.containsMouse ? ui.hover : "transparent")
 
     Row {
       anchors.left: parent.left
-      anchors.leftMargin: Style.space(8)
+      anchors.leftMargin: Style.space(24)
       anchors.right: parent.right
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
@@ -253,19 +304,20 @@ Item {
       Text {
         textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - Style.space(30) - (unreadLabel.visible ? unreadLabel.implicitWidth : 0)
+        width: parent.width - Style.space(30)
+          - (unreadLabel.visible ? unreadLabel.implicitWidth : 0)
         text: Model.folderLabel(folderRow.folder)
         color: ui.foreground
         font.family: ui.fontFamily
         font.pixelSize: Style.font.bodySmall
-        font.bold: folderRow.folder ? folderRow.folder.unseen > 0 : false
+        font.bold: !!(folderRow.folder && folderRow.folder.unseen > 0)
         elide: Text.ElideRight
       }
 
       Text {
         id: unreadLabel
         anchors.verticalCenter: parent.verticalCenter
-        visible: folderRow.folder ? folderRow.folder.unseen > 0 : false
+        visible: !!(folderRow.folder && folderRow.folder.unseen > 0)
         text: folderRow.folder ? Model.badgeText(folderRow.folder.unseen) : ""
         color: ui.accent
         font.family: ui.fontFamily
@@ -279,7 +331,8 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: root.folderChosen(folderRow.folder ? folderRow.folder.name : "")
+      onClicked: root.folderChosen(folderRow.accountId,
+                                   folderRow.folder ? folderRow.folder.name : "")
     }
   }
 }
