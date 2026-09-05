@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "ttt.olook",
+  "name": "Olook",
+  "version": "1.0.0",
+  "author": "TiniTinyTerminator",
+  "license": "MIT",
+  "description": "Olook: an Outlook-style mail client for Omarchy \u2014 unread count in the bar, a recent-mail panel, and a full reader with Gmail, Outlook.com and Microsoft 365 sign-in.",
+  "kinds": [
+    "bar-widget",
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "Panel.qml",
+    "overlay": "MailWindow.qml"
+  },
+  "barWidget": {
+    "displayName": "Olook",
+    "description": "Unread count, a peek at recent mail, and one click into Olook.",
+    "category": "Communication",
+    "aliases": [
+      "olook",
+      "mail",
+      "email",
+      "inbox"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "syncIntervalSec": 180,
+      "notify": true,
+      "panelMessageCount": 8,
+      "unreadOnlyBadge": false
+    },
+    "schema": [
+      {
+        "key": "syncIntervalSec",
+        "type": "integer",
+        "label": "Check for mail every (seconds)",
+        "min": 30,
+        "max": 3600,
+        "step": 30,
+        "defaultValue": 180
+      },
+      {
+        "key": "notify",
+        "type": "boolean",
+        "label": "Desktop notification on new mail",
+        "defaultValue": true
+      },
+      {
+        "key": "panelMessageCount",
+        "type": "integer",
+        "label": "Messages in the bar panel",
+        "min": 3,
+        "max": 20,
+        "step": 1,
+        "defaultValue": 8
+      },
+      {
+        "key": "unreadOnlyBadge",
+        "type": "boolean",
+        "label": "Hide the icon when nothing is unread",
+        "defaultValue": false
+      }
+    ]
+  }
+}
