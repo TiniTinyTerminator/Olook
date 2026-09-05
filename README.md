@@ -50,18 +50,18 @@ list grouped by date, and a reading pane.
 ```bash
 git clone <this repo> ~/Projects/mailclient
 cd ~/Projects/mailclient
-./install.sh          # links the checkout into ~/.config/omarchy/plugins
+./install.sh          # copies into ~/.config/omarchy/plugins and enables it
 ```
 
-`./install.sh --copy` copies instead of linking, if you would rather the
-checkout not be load-bearing. `./install.sh --uninstall` removes the plugin and
-the `olook` command but leaves your accounts and cached mail alone.
-
 The installer adds the bar widget and links the engine to `~/.local/bin/olook`.
+`./install.sh --uninstall` removes both and leaves your accounts and cached mail
+alone.
 
-> When the plugin directory is a **symlink**, the shell's hot reload does not
-> always notice edits. After changing plugin files run `omarchy restart shell`
-> (or install with `--copy`).
+**If you edit the plugin**, re-run `./install.sh` — it copies the changed files
+and asks the shell to rescan, and the running shell picks them up immediately.
+There is a `--link` mode that symlinks the checkout instead, but the shell's
+watcher does not see edits through the symlink, so that mode needs an
+`omarchy restart shell` after every change.
 
 ## Add an account
 

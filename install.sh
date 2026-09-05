@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 # Install Olook into the running Omarchy shell.
 #
-#   ./install.sh          link this checkout into ~/.config/omarchy/plugins (dev)
-#   ./install.sh --copy   copy it instead, so the checkout can move or go away
+#   ./install.sh          copy this checkout into ~/.config/omarchy/plugins
+#   ./install.sh --link   symlink it instead (see the note below)
 #   ./install.sh --uninstall
+#
+# Copy is the default because the shell's file watcher only reloads plugin code
+# it can see change on disk: a symlinked plugin directory means edits land on
+# the checkout's inode, the watcher never fires, and the shell keeps serving
+# the QML it compiled at startup until you restart it. Re-run this script after
+# editing and the change is live without restarting anything.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ID="ttt.olook"
 PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
 BIN_DIR="$HOME/.local/bin"
-MODE="link"
+MODE="copy"
 
 for arg in "$@"; do
   case "$arg" in
