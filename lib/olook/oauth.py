@@ -224,9 +224,14 @@ class _CodeHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):  # noqa: N802 - http.server API
         query = urllib.parse.urlparse(self.path).query
-        params = urllib.parse.parse_qs(query)
-        _CodeHandler.result = {k: v[0] for k, v in params.items()}
-        ok = "code" in _CodeHandler.result
+        params = {k: v[0] for k, v in urllib.parse.parse_qs(query).items()}
+        ok = "code" in params
+        # Browsers also ask this port for /favicon.ico the moment the page
+        # renders. Only a request that actually carries the grant may be
+        # recorded, or that stray one overwrites the code with nothing and
+        # the flow reports a timeout it never had.
+        if ok or "error" in params:
+            _CodeHandler.result = params
         body = _RESULT_PAGE_OK if ok else _RESULT_PAGE_FAIL
         encoded = body.encode("utf-8")
         self.send_response(200)
@@ -285,8 +290,7 @@ def loopback_flow(account, emit, wait=300):
 
     _CodeHandler.result = {}
     server = http.server.HTTPServer(("127.0.0.1", port), _CodeHandler)
-    server.timeout = 1
-    thread = threading.Thread(target=_serve_until, args=(server, wait), daemon=True)
+    thread = threading.Thread(target=_serve_until, args=(server,), daemon=True)
     thread.start()
 
     emit({"event": "open_url", "url": url, "redirect_uri": redirect_uri})
@@ -295,6 +299,7 @@ def loopback_flow(account, emit, wait=300):
     while time.time() < deadline and not _CodeHandler.result:
         time.sleep(0.25)
     server.shutdown()
+    thread.join(timeout=5)
     server.server_close()
 
     result = _CodeHandler.result
@@ -326,10 +331,16 @@ def loopback_flow(account, emit, wait=300):
     return payload
 
 
-def _serve_until(server, wait):
-    deadline = time.time() + wait
-    while time.time() < deadline and not _CodeHandler.result:
-        server.handle_request()
+def _serve_until(server):
+    """Run the listener until the main thread stops it.
+
+    It has to be `serve_forever`: that is the loop `shutdown()` knows how to
+    stop. Pairing `shutdown()` with a `handle_request()` loop deadlocks the
+    moment the redirect lands — which took the Google sign-in down without
+    ever reporting an error, because Microsoft uses the device flow and never
+    reaches this code.
+    """
+    server.serve_forever(poll_interval=0.2)
 
 
 def authorize(account, emit, flow=None):
