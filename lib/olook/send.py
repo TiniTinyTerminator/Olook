@@ -13,7 +13,7 @@ import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
-from . import keyring, mailbox, oauth
+from . import htmltext, keyring, mailbox, markdown, oauth
 
 
 class SendError(Exception):
@@ -47,14 +47,32 @@ def build(account, draft):
     signature = account.get("signature") or ""
     if signature and signature not in body:
         body = f"{body}\n\n-- \n{signature}"
-    msg.set_content(body)
 
-    if draft.get("html"):
-        msg.add_alternative(str(draft["html"]), subtype="html")
+    # How the body was written decides what goes on the wire: plain text on
+    # its own, or text plus an HTML alternative for clients that render it.
+    fmt = str(draft.get("format") or "plain").lower()
+    if fmt == "markdown":
+        msg.set_content(body)
+        msg.add_alternative(markdown.document(markdown.to_html(body)), subtype="html")
+    elif fmt == "html":
+        msg.set_content(htmltext.to_text(body) or body)
+        msg.add_alternative(_html_document(body), subtype="html")
+    else:
+        msg.set_content(body)
+        if draft.get("html"):
+            msg.add_alternative(str(draft["html"]), subtype="html")
 
     for path in draft.get("attachments") or []:
         _attach(msg, path)
     return msg
+
+
+def _html_document(body):
+    """Wrap hand-written HTML only when it isn't already a whole document."""
+    lowered = str(body).lower()
+    if "<html" in lowered or "<!doctype" in lowered:
+        return str(body)
+    return markdown.document(str(body))
 
 
 def _attach(msg, path):
@@ -146,6 +164,47 @@ def _append_to_sent(account, msg):
     except Exception:
         # A message that went out is sent, whether or not the copy landed.
         return ""
+
+
+def save_draft(account, draft, replace_uid=0):
+    """Put a draft in the account's Drafts folder, replacing an earlier copy.
+
+    IMAP cannot update a message in place, so re-saving is an append followed
+    by a delete of the copy it supersedes — in that order, because ending up
+    with two copies is recoverable and ending up with none is not.
+    """
+    msg = build(account, draft)
+    with mailbox.Session(account) as session:
+        folder = session.resolve_role("drafts")
+        if not folder:
+            raise SendError("This account has no Drafts folder to save into.")
+        session.append(folder, msg.as_bytes(), flags="(\\Draft \\Seen)")
+        session.select(folder, readonly=False)
+        # The APPEND response only carries the new uid on servers with
+        # UIDPLUS, so find it the way any server can answer.
+        uids = session.search_uids(f'HEADER Message-ID "{msg["Message-ID"]}"')
+        uid = uids[-1] if uids else 0
+        if replace_uid and int(replace_uid) != uid:
+            _remove_draft(session, int(replace_uid))
+        return {"uid": uid, "folder": folder, "messageId": msg["Message-ID"]}
+
+
+def discard_draft(account, uid):
+    """Delete one stored draft — used once its message has actually gone out."""
+    with mailbox.Session(account) as session:
+        folder = session.resolve_role("drafts")
+        if not folder:
+            return {"folder": ""}
+        session.select(folder, readonly=False)
+        _remove_draft(session, int(uid))
+        return {"folder": folder}
+
+
+def _remove_draft(session, uid):
+    if uid <= 0:
+        return
+    session.store_flags([uid], ["\\Deleted"], add=True)
+    session.expunge([uid])
 
 
 def reply_draft(account, original, body_text, reply_all=False):

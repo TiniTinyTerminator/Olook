@@ -7,12 +7,17 @@ import "Model.js" as Model
 // Folder pane: the New mail button, then one collapsible section per account
 // with that account's folders nested under it — the way Outlook stacks several
 // mailboxes in a single tree rather than showing one account at a time.
+//
+// `collapsed` narrows it to a strip of icons for a small window. Nothing goes
+// away in that mode — every account and every folder is still a row you can
+// click — the names just move into tooltips.
 Item {
   id: root
 
   property var ui: null
   property var service: null
   property bool active: false
+  property bool collapsed: false
 
   // Account id -> expanded. An account the user has not touched follows the
   // current account, so a fresh window opens with the mailbox you are reading.
@@ -50,7 +55,7 @@ Item {
 
   Column {
     anchors.fill: parent
-    anchors.margins: Style.space(12)
+    anchors.margins: root.collapsed ? Style.space(6) : Style.space(12)
     spacing: Style.space(10)
 
     // ------------------------------------------------------------ new mail
@@ -74,6 +79,7 @@ Item {
         }
         Text {
           textFormat: Text.PlainText
+          visible: !root.collapsed
           anchors.verticalCenter: parent.verticalCenter
           text: "New mail"
           color: ui.background
@@ -89,6 +95,12 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.composeRequested()
+      }
+
+      PanelToolTip {
+        visible: root.collapsed && composeHover.containsMouse
+        text: "New mail  (c)"
+        fontFamily: ui.fontFamily
       }
     }
 
@@ -119,7 +131,7 @@ Item {
 
         Text {
           textFormat: Text.PlainText
-          visible: root.accounts.length === 0
+          visible: root.accounts.length === 0 && !root.collapsed
           width: parent.width
           text: "No account yet — add one to see your folders here."
           color: ui.faint
@@ -150,15 +162,18 @@ Item {
       radius: ui.radius
       color: accountHover.containsMouse ? ui.hover : "transparent"
 
+      // Positioned by x rather than anchored: collapsed it centres on the
+      // avatar, expanded it fills the row, and declaring left, right and
+      // horizontalCenter together is not allowed even when only one is live.
       Row {
-        anchors.left: parent.left
-        anchors.leftMargin: Style.space(4)
-        anchors.right: parent.right
-        anchors.rightMargin: Style.space(8)
+        x: root.collapsed
+          ? Math.round((parent.width - implicitWidth) / 2) : Style.space(4)
+        width: root.collapsed ? implicitWidth : parent.width - Style.space(12)
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(6)
 
         Text {
+          visible: !root.collapsed
           anchors.verticalCenter: parent.verticalCenter
           width: Style.space(14)
           horizontalAlignment: Text.AlignHCenter
@@ -185,9 +200,26 @@ Item {
             font.pixelSize: Style.font.caption
             font.bold: true
           }
+
+          // Collapsed there is no room for a count, so unread becomes a dot
+          // on the avatar — enough to tell you the mailbox wants attention.
+          Rectangle {
+            visible: root.collapsed && !!(section.account && section.account.unread > 0)
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.rightMargin: -Style.space(1)
+            anchors.topMargin: -Style.space(1)
+            width: Style.space(8)
+            height: width
+            radius: width / 2
+            color: ui.accent
+            border.width: 1
+            border.color: Qt.darker(ui.background, 1.08)
+          }
         }
 
         Column {
+          visible: !root.collapsed
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - Style.space(50)
             - (accountBadge.visible ? accountBadge.implicitWidth + Style.space(6) : 0)
@@ -224,7 +256,8 @@ Item {
         Text {
           id: accountBadge
           anchors.verticalCenter: parent.verticalCenter
-          visible: !section.expanded && section.account && section.account.unread > 0
+          visible: !root.collapsed && !section.expanded
+            && !!(section.account && section.account.unread > 0)
           text: section.account ? Model.badgeText(section.account.unread) : ""
           color: ui.accent
           font.family: ui.fontFamily
@@ -239,6 +272,18 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.toggleAccount(section.accountId)
+      }
+
+      PanelToolTip {
+        visible: root.collapsed && accountHover.containsMouse
+        text: {
+          if (!section.account) return ""
+          var name = String(section.account.name || section.account.email)
+          if (section.account.authorized === false) return name + " — needs sign-in"
+          if (section.account.unread > 0) return name + " — " + section.account.unread + " unread"
+          return name
+        }
+        fontFamily: ui.fontFamily
       }
     }
 
@@ -261,7 +306,7 @@ Item {
 
       Text {
         textFormat: Text.PlainText
-        visible: section.folders.length === 0
+        visible: section.folders.length === 0 && !root.collapsed
         width: parent.width
         leftPadding: Style.space(30)
         text: "No folders cached yet."
@@ -286,25 +331,43 @@ Item {
       : (folderHover.containsMouse ? ui.hover : "transparent")
 
     Row {
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(24)
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(8)
+      x: root.collapsed
+        ? Math.round((parent.width - implicitWidth) / 2) : Style.space(24)
+      width: root.collapsed ? implicitWidth : parent.width - Style.space(32)
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(8)
 
-      Text {
+      Item {
         anchors.verticalCenter: parent.verticalCenter
-        text: Model.folderGlyph(folderRow.folder)
-        color: folderRow.current ? ui.accent : ui.dim
-        font.family: ui.fontFamily
-        font.pixelSize: Style.font.iconSmall
+        width: folderGlyph.implicitWidth
+        height: folderGlyph.implicitHeight
+
+        Text {
+          id: folderGlyph
+          text: Model.folderGlyph(folderRow.folder)
+          color: folderRow.current ? ui.accent : ui.dim
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.iconSmall
+        }
+
+        Rectangle {
+          visible: root.collapsed && !!(folderRow.folder && folderRow.folder.unseen > 0)
+          anchors.right: parent.right
+          anchors.top: parent.top
+          anchors.rightMargin: -Style.space(3)
+          anchors.topMargin: -Style.space(2)
+          width: Style.space(6)
+          height: width
+          radius: width / 2
+          color: ui.accent
+        }
       }
 
       Text {
         textFormat: Text.PlainText
+        visible: !root.collapsed
         anchors.verticalCenter: parent.verticalCenter
-        width: parent.width - Style.space(30)
+        width: root.collapsed ? 0 : parent.width - Style.space(30)
           - (unreadLabel.visible ? unreadLabel.implicitWidth : 0)
         text: Model.folderLabel(folderRow.folder)
         color: ui.foreground
@@ -317,7 +380,7 @@ Item {
       Text {
         id: unreadLabel
         anchors.verticalCenter: parent.verticalCenter
-        visible: !!(folderRow.folder && folderRow.folder.unseen > 0)
+        visible: !root.collapsed && !!(folderRow.folder && folderRow.folder.unseen > 0)
         text: folderRow.folder ? Model.badgeText(folderRow.folder.unseen) : ""
         color: ui.accent
         font.family: ui.fontFamily
@@ -333,6 +396,16 @@ Item {
       cursorShape: Qt.PointingHandCursor
       onClicked: root.folderChosen(folderRow.accountId,
                                    folderRow.folder ? folderRow.folder.name : "")
+    }
+
+    PanelToolTip {
+      visible: root.collapsed && folderHover.containsMouse
+      text: {
+        var label = Model.folderLabel(folderRow.folder)
+        var unseen = folderRow.folder ? folderRow.folder.unseen : 0
+        return unseen > 0 ? label + " — " + unseen + " unread" : label
+      }
+      fontFamily: ui.fontFamily
     }
   }
 }

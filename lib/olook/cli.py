@@ -15,8 +15,8 @@ import subprocess
 import sys
 import time
 
-from . import (config, htmltext, keyring, mailbox, message, oauth, providers,
-               send, store)
+from . import (config, htmlrich, htmltext, keyring, mailbox, message, oauth,
+               providers, send, store)
 
 JSON_OUT = False
 
@@ -80,6 +80,7 @@ def cmd_accounts(args):
             "provider": account["provider"],
             "auth": account["auth"],
             "enabled": account["enabled"],
+            "signature": account["signature"],
             "imapHost": account["imap"]["host"],
             "smtpHost": account["smtp"]["host"],
             "unread": folders.get("INBOX", 0),
@@ -149,6 +150,47 @@ def cmd_add(args):
     emit({"ok": True, "account": saved, "note": found.get("note", "")},
          lambda d: f"Added {d['account']['email']} as '{d['account']['id']}'"
                    + (f"\n{d['note']}" if d.get("note") else ""))
+
+
+def cmd_set(args):
+    """Edit one account in place — what the settings panel writes through."""
+    account = config.account(args.account)
+    changed = []
+
+    def put(key, value):
+        account[key] = value
+        changed.append(key)
+
+    if args.name is not None:
+        put("name", args.name)
+    if args.username:
+        put("username", args.username)
+    if args.signature_stdin:
+        put("signature", sys.stdin.read().rstrip("\n"))
+    elif args.signature is not None:
+        put("signature", args.signature)
+    if args.enabled is not None:
+        put("enabled", args.enabled)
+    if args.imap_host:
+        account["imap"]["host"] = args.imap_host
+        changed.append("imap.host")
+    if args.imap_port:
+        account["imap"]["port"] = args.imap_port
+        account["imap"]["ssl"] = args.imap_port == 993
+        account["imap"]["starttls"] = args.imap_port != 993
+        changed.append("imap.port")
+    if args.smtp_host:
+        account["smtp"]["host"] = args.smtp_host
+        changed.append("smtp.host")
+    if args.smtp_port:
+        account["smtp"]["port"] = args.smtp_port
+        account["smtp"]["ssl"] = args.smtp_port == 465
+        account["smtp"]["starttls"] = args.smtp_port != 465
+        changed.append("smtp.port")
+
+    saved = config.upsert(account)
+    emit({"ok": True, "account": saved, "changed": changed},
+         lambda d: f"Updated {d['account']['id']}: " + (", ".join(d["changed"]) or "nothing"))
 
 
 def cmd_remove(args):
@@ -337,7 +379,7 @@ def cmd_body(args):
         if args.mark_read:
             store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
         summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-        emit({"ok": True, "message": summary, "body": cached},
+        emit({"ok": True, "message": summary, "body": _with_rich(cached)},
              lambda d: d["body"]["text"])
         return
 
@@ -346,6 +388,7 @@ def cmd_body(args):
             session.select(folder, readonly=True)
             raw = session.fetch_message(args.uid)
             extracted = message.extract(raw)
+            _save_inline_images(raw, extracted, account["id"], folder, args.uid)
             store.save_body(conn, account["id"], folder, args.uid, extracted["text"],
                             extracted["html"], extracted["parts"], extracted["headers"])
             if args.mark_read:
@@ -356,10 +399,49 @@ def cmd_body(args):
         _mark_seen(account, conn, folder, [args.uid], True)
 
     summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-    emit({"ok": True, "message": summary, "body": cached},
+    emit({"ok": True, "message": summary, "body": _with_rich(cached)},
          lambda d: f"{d['message'].get('subject','')}\n"
                    f"From: {d['message'].get('fromName','')} <{d['message'].get('fromAddr','')}>\n"
                    f"{'-' * 60}\n{d['body']['text'][:4000]}")
+
+
+def _save_inline_images(raw, extracted, account_id, folder, uid):
+    """Write the images an HTML message references by cid: next to the cache.
+
+    They are what makes a newsletter look like itself; everything remote stays
+    unfetched, so this is the only picture the reading pane ever shows.
+    """
+    if not extracted.get("html"):
+        return
+    target = config.ATTACHMENT_DIR / "inline" / f"{account_id}-{_safe(folder)}-{uid}"
+    for part in extracted.get("parts") or []:
+        if not part.get("cid") or not str(part.get("mime", "")).startswith("image/"):
+            continue
+        if int(part.get("size") or 0) > 8_000_000:
+            continue
+        try:
+            part["path"] = message.save_part(raw, part["index"], dest_dir=target,
+                                             filename=part.get("filename"))
+        except (OSError, ValueError):
+            continue
+
+
+def _safe(name):
+    return "".join(c if c.isalnum() or c in "-_." else "-" for c in str(name))[:40]
+
+
+def _with_rich(body):
+    """Add the sanitized rich-text rendering the reading pane displays."""
+    if not body:
+        return body
+    images = {}
+    for part in body.get("parts") or []:
+        if part.get("cid") and part.get("path"):
+            images[part["cid"]] = part["path"]
+    rendered = htmlrich.to_rich(body.get("html", ""), images)
+    body["rich"] = rendered["html"]
+    body["blockedImages"] = rendered["blockedImages"]
+    return body
 
 
 def cmd_attachment(args):
@@ -485,6 +567,26 @@ def cmd_send(args):
             draft = json.load(handle)
     result = send.send(account, draft, save_to_sent=not args.no_save)
     emit({"ok": True, **result}, lambda d: f"Sent to {', '.join(d['recipients'])}")
+
+
+def cmd_draft_save(args):
+    """Store a JSON draft in the Drafts folder so it survives being closed."""
+    account = config.account(args.account)
+    if account.get("demo"):
+        raise CliError("Demo accounts have no server to store drafts on.")
+    draft = json.loads(sys.stdin.read() or "{}")
+    result = send.save_draft(account, draft, replace_uid=args.replace)
+    emit({"ok": True, **result},
+         lambda d: f"Draft saved to {d['folder']} as uid {d['uid']}")
+
+
+def cmd_draft_discard(args):
+    """Drop a stored draft — what sending one, or discarding it, ends with."""
+    account = config.account(args.account)
+    if account.get("demo"):
+        raise CliError("Demo accounts have no server to store drafts on.")
+    result = send.discard_draft(account, args.uid)
+    emit({"ok": True, **result}, lambda d: "Draft discarded.")
 
 
 def cmd_draft(args):
@@ -618,6 +720,26 @@ def cmd_test(args):
     emit(result, lambda d: f"IMAP: {d['imap']}\nSMTP: {d['smtp']}")
 
 
+DEMO_HTML = """<html><body style="font-family:sans-serif">
+<h2>Omarchy 4.0 is out</h2>
+<p>Quickshell now hosts the <b>bar</b>, notifications, and every panel in one
+process. Highlights of this release:</p>
+<ul>
+  <li>One shell process instead of five</li>
+  <li>A plugin registry with <i>hot reload</i></li>
+  <li>Lua dispatchers for Hyprland</li>
+</ul>
+<blockquote>Upgrading is a single <code>omarchy update</code>.</blockquote>
+<table border="1" cellpadding="6">
+  <tr><th>Component</th><th>Status</th></tr>
+  <tr><td>Bar</td><td>Rewritten</td></tr>
+  <tr><td>Notifications</td><td>Rewritten</td></tr>
+</table>
+<p><a href="https://omarchy.org/release-notes">Read the release notes</a></p>
+<img src="https://tracking.example.com/open.gif?id=42" width="1" height="1" alt="">
+</body></html>"""
+
+
 def cmd_demo(args):
     """Seed the cache with sample mail so the UI can be driven without a server.
 
@@ -671,8 +793,13 @@ def cmd_demo(args):
         })
     store.upsert_messages(conn, rows)
     for row in rows:
+        # One HTML message, so the reading pane's formatted view and its
+        # remote-image blocking have something to show.
+        html_body = DEMO_HTML if row["uid"] == 1001 else ""
         store.save_body(conn, account_id, "INBOX", row["uid"],
-                        row["preview"] + "\n\n-- \nSent from Olook", "",
+                        htmltext.to_text(html_body) if html_body
+                        else row["preview"] + "\n\n-- \nSent from Olook",
+                        html_body,
                         [], {"From": f"{row['from_name']} <{row['from_addr']}>",
                              "Subject": row["subject"], "To": "you@example.com"})
     store.save_folders(conn, account_id, [
@@ -772,6 +899,20 @@ def build_parser():
     p.add_argument("account")
     p.set_defaults(func=cmd_remove)
 
+    p = sub.add_parser("set", help="change settings on an existing account")
+    p.add_argument("account")
+    p.add_argument("--name"), p.add_argument("--username")
+    p.add_argument("--signature")
+    p.add_argument("--signature-stdin", action="store_true",
+                   help="read the signature from stdin")
+    p.add_argument("--enable", dest="enabled", action="store_true", default=None,
+                   help="include this account when syncing")
+    p.add_argument("--disable", dest="enabled", action="store_false",
+                   help="leave this account out of syncs")
+    p.add_argument("--imap-host"), p.add_argument("--imap-port", type=int)
+    p.add_argument("--smtp-host"), p.add_argument("--smtp-port", type=int)
+    p.set_defaults(func=cmd_set)
+
     p = sub.add_parser("test", help="check IMAP and SMTP credentials")
     p.add_argument("account", nargs="?")
     p.set_defaults(func=cmd_test)
@@ -840,6 +981,17 @@ def build_parser():
     p.add_argument("--draft", default="-", help="draft JSON file, or - for stdin")
     p.add_argument("--no-save", action="store_true", help="skip the Sent copy")
     p.set_defaults(func=cmd_send)
+
+    p = sub.add_parser("draft-save", help="store a JSON draft in Drafts")
+    p.add_argument("--account")
+    p.add_argument("--replace", type=int, default=0,
+                   help="uid of the earlier copy this one supersedes")
+    p.set_defaults(func=cmd_draft_save)
+
+    p = sub.add_parser("draft-discard", help="remove a stored draft")
+    p.add_argument("--account")
+    p.add_argument("--uid", type=int, required=True)
+    p.set_defaults(func=cmd_draft_discard)
 
     p = sub.add_parser("draft", help="build a reply or forward draft")
     p.add_argument("--account"), p.add_argument("--folder", default="INBOX")

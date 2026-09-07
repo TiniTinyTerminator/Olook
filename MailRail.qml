@@ -13,6 +13,14 @@ Item {
   property int unread: 0
 
   signal viewRequested(string view)
+  signal settingsRequested()
+
+  // Settings is a destination like the others in the rail, but the window
+  // treats it separately, so route it here rather than through the view list.
+  function activate(target) {
+    if (target === "settings") root.settingsRequested()
+    else root.viewRequested(target)
+  }
 
   Rectangle {
     anchors.fill: parent
@@ -36,6 +44,16 @@ Item {
     RailButton { glyph: "󰇮"; label: "Mail"; target: "mail"; badge: root.unread }
     RailButton { glyph: "󰃭"; label: "Calendar"; target: "calendar" }
     RailButton { glyph: "󰀓"; label: "People"; target: "people" }
+  }
+
+  // Pinned to the bottom, where every desktop app keeps its settings.
+  Column {
+    anchors.bottom: parent.bottom
+    anchors.bottomMargin: Style.space(14)
+    anchors.horizontalCenter: parent.horizontalCenter
+    anchors.horizontalCenterOffset: Style.space(2)
+
+    RailButton { glyph: "󰒓"; label: "Settings"; target: "settings" }
   }
 
   component RailButton: Item {
@@ -104,7 +122,7 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: root.viewRequested(railButton.target)
+      onClicked: root.activate(railButton.target)
     }
 
     PanelToolTip {

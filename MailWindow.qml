@@ -18,13 +18,29 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   property bool opened: false
-  property string view: "mail"          // mail | calendar | people
+  property string view: "mail"          // mail | calendar | people | settings
   property string pane: "list"          // folders | list | reader
   property bool composing: false
   property var draft: null
   property string searchText: ""
   property bool searchFocused: false
   property int selectedRow: -1
+  property bool showShortcuts: false
+
+  // ------------------------------------------------------------------ layout
+  //
+  // Set from the View menu. "auto" lets the window width decide, which is the
+  // default; choosing anything else pins it.
+  property string folderPanePref: "auto"      // auto | expanded | icons
+  property string readingPanePref: "right"    // right | bottom
+
+  // Three tiers, each one giving up chrome rather than capability. First the
+  // folder pane trades its names for icons and tooltips; then the list and the
+  // reading pane stop sharing the width and take turns, with a back button.
+  readonly property bool foldersCollapsed: root.folderPanePref === "icons"
+    || (root.folderPanePref === "auto" && window.width < Style.space(1120))
+  readonly property bool stacked: window.width < Style.space(780)
+  readonly property bool readerBelow: root.readingPanePref === "bottom" && !root.stacked
 
   readonly property var rows: Model.withGroupHeaders(mail.messages, new Date())
   // The reading pane gives way to the sign-in card when there is no account,
@@ -51,7 +67,12 @@ Item {
 
     if (payload.folder && payload.folder !== mail.folder) mail.setFolder(payload.folder)
     if (payload.uid) pendingUid = Number(payload.uid)
-    if (payload.compose === true) Qt.callLater(function () { root.startCompose(null) })
+    // `compose` may be a draft rather than just true, so a bind or a
+    // mailto: handler can open the client with the message half written.
+    if (payload.compose)
+      Qt.callLater(function () {
+        root.startCompose(typeof payload.compose === "object" ? payload.compose : null)
+      })
 
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
   }
@@ -60,6 +81,10 @@ Item {
     root.opened = false
     root.composing = false
     root.searchFocused = false
+    // Transient chrome should not survive a close and be waiting, still open,
+    // the next time the window is summoned.
+    root.showShortcuts = false
+    menuBar.close()
   }
 
   function toggle() { root.opened ? root.close() : root.open("{}") }
@@ -100,6 +125,17 @@ Item {
     mail.openMessage(rows[index])
   }
 
+  // Clicking a row is a request to read it. Side by side that is already true
+  // of selecting it; stacked, it has to move the pane.
+  function openRow(index) {
+    root.selectRow(index)
+    if (mail.inDrafts && root.current) {
+      root.openStoredDraft(root.current)
+      return
+    }
+    if (root.stacked) root.pane = "reader"
+  }
+
   function selectByUid(uid) {
     for (var i = 0; i < rows.length; i++) {
       if (!rows[i].isHeader && rows[i].uid === uid) {
@@ -111,8 +147,16 @@ Item {
   }
 
   function setView(next) {
+    menuBar.close()
     root.view = next
     if (next === "mail") root.pane = "list"
+    if (next === "settings") root.composing = false
+  }
+
+  function openSettings(addAccount) {
+    root.opened = true
+    root.setView("settings")
+    if (addAccount) Qt.callLater(function () { settingsPane.startAdd() })
   }
 
   // --------------------------------------------------------------- compose
@@ -130,7 +174,59 @@ Item {
     mail.buildDraft(root.current, kind, function (draft) { root.startCompose(draft) })
   }
 
+  // Popped-out compose windows, one per message being written. They are
+  // parented to the plugin root rather than the main window, so closing Olook
+  // — or sending it to another workspace — leaves a half-written mail alone.
+  property var composeWindows: []
+
+  Component {
+    id: composeWindowFactory
+    MailComposeWindow {}
+  }
+
+  function popOutCompose(prefill, account) {
+    var win = composeWindowFactory.createObject(root, {
+      ui: ui,
+      service: mail,
+      draft: prefill || { to: [], cc: [], subject: "", body: "",
+                          inReplyTo: "", references: "" },
+      account: account || mail.currentAccount,
+      visible: true
+    })
+    if (!win) {
+      mail.actionFailed("Could not open a compose window.")
+      return null
+    }
+    root.composeWindows.push(win)
+    win.dismissed.connect(function () {
+      var kept = []
+      for (var i = 0; i < root.composeWindows.length; i++)
+        if (root.composeWindows[i] !== win) kept.push(root.composeWindows[i])
+      root.composeWindows = kept
+      Qt.callLater(function () { win.destroy() })
+    })
+    return win
+  }
+
+  // Moves the message being written inline into a window of its own, keeping
+  // every field and the account it was started from.
+  function popOutCurrentCompose() {
+    if (!root.composing) return
+    var payload = composeForm.payload()
+    payload.draftUid = composeForm.draftUid
+    var account = mail.currentAccount
+    // The new window inherits the stored draft, so this form must not write
+    // one of its own on the way out.
+    composeForm.handOff()
+    root.composing = false
+    root.draft = null
+    root.popOutCompose(payload, account)
+  }
+
   function cancelCompose() {
+    // Closing is not discarding any more: whatever was typed goes to the
+    // Drafts folder on the way out.
+    if (root.composing) composeForm.flush()
     root.composing = false
     root.draft = null
     Qt.callLater(function () { keyCatcher.forceActiveFocus() })
@@ -138,20 +234,154 @@ Item {
 
   function sendDraft(draft) {
     mail.send(draft, function (ok) {
-      if (ok) root.cancelCompose()
+      if (!ok) return
+      // The message went out, so the draft has done its job.
+      composeForm.discardStored()
+      root.cancelCompose()
     })
+  }
+
+  // A row in Drafts is a message you were writing; open it where you were
+  // writing it. Selection alone still previews, so walking the list with j/k
+  // does not throw you into the composer on every keypress.
+  function openStoredDraft(entry) {
+    mail.openDraft(entry, function (draft) {
+      if (draft) root.startCompose(draft)
+    })
+  }
+
+  // ----------------------------------------------------------------- menus
+
+  readonly property bool hasMessage: root.current !== null
+
+  readonly property var menuModel: [
+    { title: "File", items: [
+      { id: "compose", label: "New message", glyph: "󰝒", shortcut: "c" },
+      { id: "compose-window", label: "New message in its own window",
+        glyph: "󰏋", shortcut: "Ctrl+N" },
+      { kind: "separator" },
+      { id: "add-account", label: "Add an account…", glyph: "󰀓" },
+      { id: "settings", label: "Settings", glyph: "󰒓", shortcut: "Ctrl+," },
+      { kind: "separator" },
+      { id: "refresh", label: "Check for mail", glyph: "󰑐", shortcut: "g" },
+      { id: "close", label: "Close window", glyph: "󰅖", shortcut: "Esc" }
+    ] },
+
+    { title: "View", items: [
+      { kind: "header", label: "Folder pane" },
+      { id: "folders-auto", label: "Fit to window", kind: "radio",
+        checked: root.folderPanePref === "auto" },
+      { id: "folders-expanded", label: "Names", kind: "radio",
+        checked: root.folderPanePref === "expanded" },
+      { id: "folders-icons", label: "Icons only", kind: "radio",
+        checked: root.folderPanePref === "icons" },
+      { kind: "separator" },
+      { kind: "header", label: "Reading pane" },
+      { id: "reader-right", label: "Right", kind: "radio",
+        checked: root.readingPanePref === "right", enabled: !root.stacked },
+      { id: "reader-bottom", label: "Bottom", kind: "radio",
+        checked: root.readingPanePref === "bottom", enabled: !root.stacked },
+      { kind: "separator" },
+      { kind: "header", label: "Message body" },
+      { id: "body-formatted", label: "Formatted", kind: "radio",
+        checked: readerPane.formatted, enabled: readerPane.hasRich },
+      { id: "body-plain", label: "Plain text", kind: "radio",
+        checked: !readerPane.formatted, enabled: readerPane.hasRich }
+    ] },
+
+    { title: "Message", items: [
+      { id: "reply", label: "Reply", glyph: "󰑚", shortcut: "r", enabled: root.hasMessage },
+      { id: "reply-all", label: "Reply all", glyph: "󰑛", shortcut: "a", enabled: root.hasMessage },
+      { id: "forward", label: "Forward", glyph: "󰒭", shortcut: "f", enabled: root.hasMessage },
+      { kind: "separator" },
+      { id: "archive", label: "Archive", glyph: "󰇠", shortcut: "e", enabled: root.hasMessage },
+      { id: "delete", label: "Delete", glyph: "󰩹", shortcut: "Del", enabled: root.hasMessage },
+      { kind: "separator" },
+      { id: "flag", glyph: "󰈻", shortcut: "s", enabled: root.hasMessage,
+        label: root.current && root.current.flagged ? "Remove flag" : "Flag" },
+      { id: "unread", glyph: "󰇮", shortcut: "u", enabled: root.hasMessage,
+        label: root.current && root.current.seen ? "Mark unread" : "Mark read" }
+    ] },
+
+    { title: "Help", items: [
+      { id: "shortcuts", label: "Keyboard shortcuts", glyph: "󰌌", shortcut: "?" }
+    ] }
+  ]
+
+  function runMenu(id) {
+    switch (id) {
+    case "compose": root.startCompose(null); return
+    case "compose-window": root.popOutCompose(null, null); return
+    case "add-account": root.openSettings(true); return
+    case "settings": root.openSettings(false); return
+    case "refresh": mail.sync(false); return
+    case "close": root.close(); return
+
+    case "folders-auto": root.folderPanePref = "auto"; return
+    case "folders-expanded": root.folderPanePref = "expanded"; return
+    case "folders-icons": root.folderPanePref = "icons"; return
+    case "reader-right": root.readingPanePref = "right"; return
+    case "reader-bottom": root.readingPanePref = "bottom"; return
+    case "body-formatted": readerPane.formatted = true; return
+    case "body-plain": readerPane.formatted = false; return
+
+    case "reply": case "reply-all": case "forward": root.replyTo(id); return
+    case "archive": if (mail.selected) mail.archive(mail.selected); return
+    case "delete": if (mail.selected) mail.remove(mail.selected); return
+    case "flag": if (mail.selected) mail.toggleFlagged(mail.selected); return
+    case "unread": if (mail.selected) mail.toggleRead(mail.selected); return
+
+    case "shortcuts": root.showShortcuts = !root.showShortcuts; return
+    }
   }
 
   // ----------------------------------------------------------------- keys
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) {
-      if (root.composing) root.cancelCompose()
+      if (root.showShortcuts) root.showShortcuts = false
+      else if (menuBar.menuOpen) menuBar.close()
+      else if (root.composing) root.cancelCompose()
+      // Stacked, the reading pane is covering the list; Escape steps back to
+      // it before it starts closing things.
+      else if (root.stacked && root.pane === "reader") root.pane = "list"
       else if (root.searchText !== "") { root.searchText = ""; mail.setQuery("") }
       else root.close()
       return true
     }
-    if (root.composing || root.searchFocused) return false
+    // An open menu owns the keyboard until it is done.
+    if (menuBar.menuOpen) {
+      switch (event.key) {
+      case Qt.Key_Left:  menuBar.stepMenu(-1); return true
+      case Qt.Key_Right: menuBar.stepMenu(1); return true
+      case Qt.Key_Down: case Qt.Key_J: menuBar.stepRow(1); return true
+      case Qt.Key_Up: case Qt.Key_K: menuBar.stepRow(-1); return true
+      case Qt.Key_Return: case Qt.Key_Enter: menuBar.activateHighlighted(); return true
+      }
+      menuBar.close()
+      return true
+    }
+    // F10 is the menu bar key everywhere else; a client you drive from the
+    // keyboard should not hide its menus behind the mouse.
+    if (event.key === Qt.Key_F10) {
+      menuBar.openMenu(0)
+      return true
+    }
+    if (root.showShortcuts && !root.composing) {
+      root.showShortcuts = false
+      return true
+    }
+    // Pop-out is the one shortcut that has to work while a message is being
+    // written; every other key belongs to the field with focus.
+    if (root.composing) {
+      if (event.key === Qt.Key_O && (event.modifiers & Qt.ControlModifier)
+          && (event.modifiers & Qt.ShiftModifier)) {
+        root.popOutCurrentCompose()
+        return true
+      }
+      return false
+    }
+    if (root.searchFocused) return false
 
     switch (event.key) {
     case Qt.Key_Down: case Qt.Key_J: stepRow(1); return true
@@ -161,7 +391,11 @@ Item {
     case Qt.Key_Home: selectRow(firstMessageRow()); return true
     case Qt.Key_Return: case Qt.Key_Enter:
       if (root.selectedRow < 0) stepRow(1)
+      else if (mail.inDrafts && root.current) root.openStoredDraft(root.current)
       else root.pane = "reader"
+      return true
+    case Qt.Key_Question:
+      root.showShortcuts = !root.showShortcuts
       return true
     case Qt.Key_Tab:
       root.pane = root.pane === "folders" ? "list" : (root.pane === "list" ? "reader" : "folders")
@@ -188,7 +422,11 @@ Item {
       if (root.current) replyTo("forward")
       return true
     case Qt.Key_C: case Qt.Key_N:
-      startCompose(null)
+      if (event.modifiers & Qt.ControlModifier) popOutCompose(null, null)
+      else startCompose(null)
+      return true
+    case Qt.Key_Comma:
+      if (event.modifiers & Qt.ControlModifier) root.openSettings(false)
       return true
     case Qt.Key_G:
       mail.sync(false)
@@ -207,8 +445,10 @@ Item {
     id: mail
     listLimit: 300
     // The bar widget polls in the background; the window only needs its own
-    // timer while someone is looking at it.
+    // timer while someone is looking at it — and while it is open it holds an
+    // IDLE connection instead, which stands the timer down entirely.
     pollEnabled: root.opened
+    watchEnabled: root.opened
 
     onMessagesLoaded: {
       if (root.pendingUid > 0 && root.selectByUid(root.pendingUid)) {
@@ -227,6 +467,20 @@ Item {
     function close(): void { root.close() }
     function toggle(): void { root.toggle() }
     function compose(): string { root.open('{"compose":true}'); return "ok" }
+    // Same, but with the message already half written — `{"to": [...],
+    // "subject": ..., "body": ..., "format": ..., "attachments": [...]}` —
+    // which is what a mailto: handler or a "mail this file" script wants.
+    function composeWith(draftJson: string): string {
+      root.open(JSON.stringify({ compose: Model.parseJson(draftJson, {}) || {} }))
+      return "ok"
+    }
+    // A compose window on its own, without dragging the whole client along.
+    function newMessage(): string { root.popOutCompose(null, null); return "ok" }
+    // Moves the message being written inline into its own window, for a
+    // Hyprland bind that does what the compose header's pop-out button does.
+    function popOut(): string { root.popOutCurrentCompose(); return "ok" }
+    function settings(): string { root.openSettings(false); return "ok" }
+    function addAccount(): string { root.openSettings(true); return "ok" }
   }
 
   // ------------------------------------------------------------------ theme
@@ -257,7 +511,7 @@ Item {
     color: ui.background
     implicitWidth: Style.space(1440)
     implicitHeight: Style.space(900)
-    minimumSize: Qt.size(Style.space(820), Style.space(520))
+    minimumSize: Qt.size(Style.space(520), Style.space(400))
 
     // The compositor can close or hide the window without going through
     // root.close(); keep our own state in step so the next summon reopens it.
@@ -283,6 +537,7 @@ Item {
           height: Style.space(52)
 
           Row {
+            id: brandGroup
             anchors.left: parent.left
             anchors.leftMargin: Style.space(16)
             anchors.verticalCenter: parent.verticalCenter
@@ -308,9 +563,18 @@ Item {
 
             Text {
               textFormat: Text.PlainText
+              // First thing to go when the window narrows: the rail already
+              // says which view you are in.
+              visible: window.width >= Style.space(820)
               anchors.verticalCenter: parent.verticalCenter
-              text: root.view === "mail" ? "Mail"
-                : (root.view === "calendar" ? "Calendar" : "People")
+              text: {
+                switch (root.view) {
+                case "mail": return "Mail"
+                case "calendar": return "Calendar"
+                case "settings": return "Settings"
+                default: return "People"
+                }
+              }
               color: ui.faint
               font.family: ui.fontFamily
               font.pixelSize: Style.font.title
@@ -320,8 +584,13 @@ Item {
           // Search sits centered, the way Outlook centers its search bar.
           BorderSurface {
             id: searchBox
+            // Centred, but never into the groups either side of it — that
+            // overlap is what made a narrow window look broken.
+            readonly property real room: commandBar.width - brandGroup.width
+              - actionGroup.width - Style.space(56)
+            visible: root.view === "mail" && room >= Style.space(150)
             anchors.centerIn: parent
-            width: Math.min(Style.space(520), commandBar.width * 0.42)
+            width: Math.min(Style.space(520), Math.max(Style.space(150), room))
             height: Style.space(30)
             radius: ui.radius
             color: root.searchFocused ? ui.hover : Util.alpha(ui.foreground, 0.04)
@@ -385,11 +654,17 @@ Item {
           }
 
           Row {
+            id: actionGroup
             anchors.right: parent.right
             anchors.rightMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(4)
 
+            MailButton {
+              glyph: "󰏋"
+              tooltip: "New message in its own window  (Ctrl+N)"
+              onTriggered: root.popOutCompose(null, null)
+            }
             MailButton {
               glyph: mail.syncing ? "󰑖" : "󰑐"
               tooltip: "Check for new mail  (g)"
@@ -411,10 +686,23 @@ Item {
           }
         }
 
+        // ------------------------------------------------------- menu bar
+        //
+        // Above the panes, so its popups paint over them: children of a
+        // Column are drawn in order, and z lifts this one over the rest.
+        MailMenuBar {
+          id: menuBar
+          width: parent.width
+          z: 50
+          ui: ui
+          menus: root.menuModel
+          onTriggered: function (id) { root.runMenu(id) }
+        }
+
         // ---------------------------------------------------------- body
         Item {
           width: parent.width
-          height: parent.height - commandBar.height - statusBar.height
+          height: parent.height - commandBar.height - menuBar.height - statusBar.height
 
           Row {
             anchors.fill: parent
@@ -428,13 +716,15 @@ Item {
               view: root.view
               unread: mail.unread
               onViewRequested: function (next) { root.setView(next) }
+              onSettingsRequested: root.openSettings(false)
             }
 
             MailFolderPane {
               id: folderPane
-              width: Style.space(220)
+              width: root.foldersCollapsed ? Style.space(50) : Style.space(220)
               height: parent.height
               visible: root.view === "mail"
+              collapsed: root.foldersCollapsed
               ui: ui
               service: mail
               active: root.pane === "folders"
@@ -446,75 +736,135 @@ Item {
               }
             }
 
-            MailList {
-              id: messageList
-              width: Style.space(380)
-              height: parent.height
-              visible: root.view === "mail"
-              ui: ui
-              service: mail
-              rows: root.rows
-              selectedRow: root.selectedRow
-              active: root.pane === "list"
-              onRowChosen: function (index) { root.selectRow(index) }
-              onFilterChosen: function (mode) {
-                root.selectedRow = -1
-                mail.setFilter(mode)
-              }
-            }
-
+            // The list and the reading pane share what is left. They sit side
+            // by side, or stacked top and bottom, or — in a window too narrow
+            // for either — take turns, which is why they are placed by hand
+            // rather than dropped into another Row.
             Item {
+              id: mainArea
               width: parent.width - rail.width
-                - (root.view === "mail" ? folderPane.width + messageList.width : 0)
+                - (folderPane.visible ? folderPane.width : 0)
               height: parent.height
 
-              MailReader {
-                anchors.fill: parent
-                visible: root.view === "mail" && !root.composing && !root.needsSignIn
+              readonly property bool split: root.view === "mail"
+              readonly property bool sideBySide: split && !root.stacked && !root.readerBelow
+              readonly property bool topBottom: split && !root.stacked && root.readerBelow
+
+              readonly property int listW: {
+                if (!mainArea.split) return 0
+                if (!mainArea.sideBySide) return mainArea.width
+                return Math.max(Style.space(240),
+                                Math.min(Style.space(400), Math.round(mainArea.width * 0.36)))
+              }
+              readonly property int listH: {
+                if (!mainArea.split) return 0
+                if (!mainArea.topBottom) return mainArea.height
+                return Math.max(Style.space(150), Math.round(mainArea.height * 0.42))
+              }
+
+              MailList {
+                id: messageList
+                x: 0
+                y: 0
+                width: mainArea.listW
+                height: mainArea.listH
+                visible: mainArea.split && !(root.stacked && root.pane === "reader")
+                edge: mainArea.sideBySide
                 ui: ui
                 service: mail
-                message: mail.selected
-                body: mail.body
-                active: root.pane === "reader"
-                onReplyRequested: function (kind) { root.replyTo(kind) }
-                onArchiveRequested: if (mail.selected) mail.archive(mail.selected)
-                onDeleteRequested: if (mail.selected) mail.remove(mail.selected)
-                onFlagRequested: if (mail.selected) mail.toggleFlagged(mail.selected)
-                onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
-                onAttachmentRequested: function (index) {
-                  if (mail.selected) mail.saveAttachment(mail.selected, index, true)
+                rows: root.rows
+                selectedRow: root.selectedRow
+                active: root.pane === "list"
+                onRowChosen: function (index) { root.openRow(index) }
+                onFilterChosen: function (mode) {
+                  root.selectedRow = -1
+                  mail.setFilter(mode)
                 }
               }
 
-              MailCompose {
-                id: composeForm
-                anchors.fill: parent
-                visible: root.view === "mail" && root.composing
-                ui: ui
-                service: mail
-                draft: root.draft
-                onSendRequested: function (payload) { root.sendDraft(payload) }
-                onCancelRequested: root.cancelCompose()
+              Rectangle {
+                visible: mainArea.topBottom
+                y: mainArea.listH
+                width: mainArea.width
+                height: 1
+                color: ui.border
               }
 
-              MailSignIn {
-                anchors.fill: parent
-                // Takes over the reading pane whenever there is nothing to
-                // read yet: no account at all, or one whose token expired.
-                visible: root.view === "mail" && !root.composing && root.needsSignIn
-                ui: ui
-                service: mail
-              }
+              Item {
+                id: readerArea
+                x: mainArea.sideBySide ? mainArea.listW : 0
+                y: mainArea.topBottom ? mainArea.listH : 0
+                width: mainArea.sideBySide ? mainArea.width - mainArea.listW : mainArea.width
+                height: mainArea.topBottom ? mainArea.height - mainArea.listH : mainArea.height
+                visible: !(mainArea.split && root.stacked && root.pane !== "reader")
 
-              MailPlaceholder {
-                anchors.fill: parent
-                visible: root.view !== "mail"
-                ui: ui
-                glyph: root.view === "calendar" ? "󰃭" : "󰀓"
-                title: root.view === "calendar" ? "Calendar" : "People"
-                subtitle: root.view === "calendar"
-                  ? "Your calendar lands here next — the mail engine already speaks to the same accounts."
-                  : "Contacts from your mail accounts will show up here."
+                MailReader {
+                  id: readerPane
+                  anchors.fill: parent
+                  compact: readerArea.width < Style.space(560)
+                  showBack: root.stacked
+                  onBackRequested: root.pane = "list"
+                  visible: root.view === "mail" && !root.composing && !root.needsSignIn
+                  ui: ui
+                  service: mail
+                  message: mail.selected
+                  body: mail.body
+                  active: root.pane === "reader"
+                  onReplyRequested: function (kind) { root.replyTo(kind) }
+                  onArchiveRequested: if (mail.selected) mail.archive(mail.selected)
+                  onDeleteRequested: if (mail.selected) mail.remove(mail.selected)
+                  onFlagRequested: if (mail.selected) mail.toggleFlagged(mail.selected)
+                  onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
+                  onAttachmentRequested: function (index) {
+                    if (mail.selected) mail.saveAttachment(mail.selected, index, true)
+                  }
+                }
+
+                MailCompose {
+                  id: composeForm
+                  anchors.fill: parent
+                  visible: root.view === "mail" && root.composing
+                  ui: ui
+                  service: mail
+                  draft: root.draft
+                  onSendRequested: function (payload) { root.sendDraft(payload) }
+                  onCancelRequested: root.cancelCompose()
+                  onPopOutRequested: root.popOutCurrentCompose()
+                }
+
+                MailSignIn {
+                  anchors.fill: parent
+                  // Takes over the reading pane whenever there is nothing to
+                  // read yet: no account at all, or one whose token expired.
+                  visible: root.view === "mail" && !root.composing && root.needsSignIn
+                  ui: ui
+                  service: mail
+                  onAddAccountRequested: root.openSettings(true)
+                }
+
+                MailSettings {
+                  id: settingsPane
+                  anchors.fill: parent
+                  visible: root.view === "settings"
+                  ui: ui
+                  service: mail
+                  // A freshly added account should land you in its inbox.
+                  onAccountOpened: function (accountId) {
+                    root.setView("mail")
+                    mail.setAccount(accountId)
+                  }
+                }
+
+                MailPlaceholder {
+                  anchors.fill: parent
+                  visible: root.view === "calendar" || root.view === "people"
+                  ui: ui
+                  glyph: root.view === "calendar" ? "󰃭" : "󰀓"
+                  title: root.view === "calendar" ? "Calendar" : "People"
+                  subtitle: root.view === "calendar"
+                    ? "Your calendar lands here next — the mail engine already speaks to the same accounts."
+                    : "Contacts from your mail accounts will show up here."
+                }
               }
             }
           }
@@ -567,6 +917,13 @@ Item {
             font.pixelSize: Style.font.caption
           }
         }
+      }
+      MailShortcuts {
+        anchors.fill: parent
+        visible: root.showShortcuts
+        z: 200
+        ui: ui
+        onDismissed: root.showShortcuts = false
       }
     }
   }

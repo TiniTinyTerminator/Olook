@@ -18,6 +18,8 @@ Item {
   property string verificationUri: ""
   property string errorText: ""
 
+  signal addAccountRequested()
+
   readonly property var account: service ? service.currentAccount : null
   readonly property bool configured: service ? service.configured : false
 
@@ -89,7 +91,7 @@ Item {
       visible: root.state === "idle" || root.state === "starting"
       text: root.configured
         ? "This account needs a fresh sign-in before Olook can read its mail."
-        : "Gmail, Outlook.com, Microsoft 365, or any IMAP server. Setup runs in a terminal so you can paste passwords safely."
+        : "Gmail, Outlook.com, Microsoft 365, or any IMAP server — Olook finds the server settings for you."
       color: ui.dim
       font.family: ui.fontFamily
       font.pixelSize: Style.font.bodySmall
@@ -173,21 +175,28 @@ Item {
       spacing: Style.space(8)
 
       PrimaryButton {
-        visible: root.configured
         label: {
+          if (!root.configured) return "Add an account"
           if (root.state === "starting") return "Starting…"
           if (root.state === "code" || root.state === "browser") return "Open sign-in page"
           if (root.state === "error") return "Try again"
           return "Sign in"
         }
         onTriggered: {
-          if (root.state === "code" || root.state === "browser") root.openVerification()
+          if (!root.configured) root.addAccountRequested()
+          else if (root.state === "code" || root.state === "browser") root.openVerification()
           else root.start()
         }
       }
 
       SecondaryButton {
-        label: root.configured ? "Add another account" : "Open setup"
+        visible: root.configured
+        label: "Add another account"
+        onTriggered: root.addAccountRequested()
+      }
+
+      SecondaryButton {
+        label: "Set up in a terminal"
         onTriggered: if (root.service) root.service.openSetupTerminal()
       }
     }

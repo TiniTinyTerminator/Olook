@@ -15,6 +15,9 @@ Item {
   property var rows: []
   property int selectedRow: -1
   property bool active: false
+  // Off when the reading pane is below rather than beside the list, where a
+  // line down the right-hand side would be drawing a border to nowhere.
+  property bool edge: true
 
   signal rowChosen(int index)
   signal filterChosen(string mode)
@@ -33,6 +36,7 @@ Item {
   }
 
   Rectangle {
+    visible: root.edge
     anchors.right: parent.right
     width: 1
     height: parent.height
@@ -62,6 +66,9 @@ Item {
 
       Text {
         textFormat: Text.PlainText
+        // The folder pane and the status bar both say where you are; in a
+        // narrow list this is the label that can go.
+        visible: root.width >= Style.space(300)
         anchors.right: parent.right
         anchors.rightMargin: Style.space(12)
         anchors.verticalCenter: parent.verticalCenter

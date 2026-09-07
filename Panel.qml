@@ -115,8 +115,10 @@ Panel {
     id: mail
     settings: root.settings
     // One syncer per desktop: the other monitors' widgets render the same
-    // cache this one fills.
+    // cache this one fills. It keeps an IDLE connection open per account, so
+    // new mail — and its notification — arrives when it arrives.
     pollEnabled: root.isPrimary
+    watchEnabled: root.isPrimary
 
     onNewMail: function (count, message) {
       if (!root.isPrimary || !mail.notifyOnNew || !message) return
@@ -195,7 +197,9 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(420))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
+    contentHeight: panel.fittedContentHeight(headerColumn.implicitHeight
+      + messageColumn.implicitHeight + footerColumn.implicitHeight
+      + Style.space(34), Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -213,19 +217,17 @@ Panel {
         else if (text === "o" || text === "O") root.openWindow({})
       }
 
-      Flickable {
-        id: panelFlick
+      // Header and footer are pinned: only the message list scrolls, so the
+      // account line and the two actions stay where you left them.
+      Item {
+        id: panelBody
         anchors.fill: parent
-        contentWidth: width
-        contentHeight: column.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        interactive: contentHeight > height
 
         Column {
-          id: column
-          width: panelFlick.width
+          id: headerColumn
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
           spacing: Style.space(12)
 
           PanelHero {
@@ -286,20 +288,38 @@ Panel {
             foreground: root.foreground
           }
 
-          Column {
+          PanelSectionHeader {
             visible: mail.configured
-            width: parent.width
-            spacing: Style.space(10)
+            text: root.mailboxLabel()
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+        }
 
-            PanelSectionHeader {
-              text: root.mailboxLabel()
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
+        // The only part that scrolls.
+        Flickable {
+          id: panelFlick
+          anchors.top: headerColumn.bottom
+          anchors.topMargin: Style.space(10)
+          anchors.bottom: footerColumn.top
+          anchors.bottomMargin: Style.space(12)
+          anchors.left: parent.left
+          anchors.right: parent.right
+          contentWidth: width
+          contentHeight: messageColumn.implicitHeight
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          flickableDirection: Flickable.VerticalFlick
+          interactive: contentHeight > height
+
+          Column {
+            id: messageColumn
+            width: panelFlick.width
+            spacing: Style.space(4)
 
             Text {
               textFormat: Text.PlainText
-              visible: root.visibleMessages.length === 0
+              visible: !!(mail.configured && root.visibleMessages.length === 0)
               width: parent.width
               text: mail.loading ? "Loading…" : "Nothing in this mailbox yet."
               color: root.dim
@@ -308,23 +328,25 @@ Panel {
               horizontalAlignment: Text.AlignHCenter
             }
 
-            Column {
-              id: messageColumn
-              width: parent.width
-              spacing: Style.space(4)
-
-              Repeater {
-                model: root.visibleMessages
-                MessageRow {
-                  required property var modelData
-                  required property int index
-                  width: messageColumn.width
-                  message: modelData
-                  rowIndex: index
-                }
+            Repeater {
+              model: root.visibleMessages
+              MessageRow {
+                required property var modelData
+                required property int index
+                width: messageColumn.width
+                message: modelData
+                rowIndex: index
               }
             }
           }
+        }
+
+        Column {
+          id: footerColumn
+          anchors.bottom: parent.bottom
+          anchors.left: parent.left
+          anchors.right: parent.right
+          spacing: Style.space(12)
 
           PanelSeparator {
             visible: mail.configured

@@ -47,6 +47,16 @@ Item {
   // it, and every other surface reads the cache the sync fills.
   property bool pollEnabled: true
 
+  // IMAP IDLE. `olook watch` holds a connection open per account and prints a
+  // line the moment the server says something changed, so mail lands in the
+  // cache when it arrives rather than on the next poll. While at least one
+  // watcher is up the poll timer stands down — this replaces polling rather
+  // than adding to it.
+  property bool watchEnabled: false
+  property int watchCount: 0
+  readonly property bool watching: watchCount > 0
+  property var watchProcs: ({})
+
   property string filter: "all"     // all | unread | flagged
   property string query: ""
   property int listLimit: 200
@@ -120,6 +130,53 @@ Item {
     return process
   }
 
+  // Same runner, but the payload goes in on stdin — passwords and message
+  // bodies never belong on a command line other processes can read.
+  Component {
+    id: stdinRunner
+
+    Process {
+      id: inProc
+      property string payload: ""
+      property var handler: null
+      property string label: ""
+      running: false
+      stdinEnabled: true
+      stdout: StdioCollector { id: inOut; waitForEnd: true }
+      stderr: StdioCollector { id: inErr; waitForEnd: true }
+      onStarted: {
+        inProc.write(inProc.payload)
+        inProc.stdinEnabled = false
+      }
+      onExited: function (exitCode) {
+        var parsed = Model.parseJson(inOut.text, null)
+        if (inProc.handler) {
+          inProc.handler(exitCode === 0 && parsed && parsed.ok !== false,
+                         parsed, String(inErr.text || ""))
+        }
+        Qt.callLater(function () { inProc.destroy() })
+      }
+    }
+  }
+
+  function runWithInput(args, input, handler, label) {
+    if (!cliPath || cliPath.indexOf("bin/olook") === -1) {
+      root.error = "Mail engine not found next to the plugin."
+      return null
+    }
+    var process = stdinRunner.createObject(root, {
+      command: [cliPath, "--json"].concat(args),
+      payload: String(input === undefined || input === null ? "" : input),
+      handler: handler, label: label || ""
+    })
+    if (!process) {
+      root.error = "Could not start the mail engine."
+      return null
+    }
+    process.running = true
+    return process
+  }
+
   function accountArgs(extra) {
     var args = extra.slice()
     if (root.accountId) args = args.concat(["--account", root.accountId])
@@ -155,6 +212,8 @@ Item {
         root.newMail(root.unread - previousUnread, newest)
       }
       if (thenLoad) root.loadFolders()
+      // Accounts may have appeared, been paused, or lost authorization.
+      if (root.watchEnabled) root.syncWatchers()
     }, "status")
   }
 
@@ -438,6 +497,57 @@ Item {
     }
   }
 
+  // True when the folder on screen is where drafts live, which is what makes
+  // clicking a row open the composer instead of the reading pane.
+  readonly property bool inDrafts: {
+    var folder = root.currentFolder
+    return !!(folder && String(folder.special || "") === "drafts")
+  }
+
+  // Turn a stored draft back into something the composer can load.
+  function openDraft(entry, handler) {
+    if (!entry) return null
+    var args = accountArgs(["body", "--folder", entry.folder,
+                            "--uid", String(entry.uid)])
+    return run(args, function (ok, payload, stderrText) {
+      if (!ok || !payload || !payload.body) {
+        reportFailure(payload, stderrText, "Could not open the draft")
+        if (handler) handler(null)
+        return
+      }
+      var headers = payload.body.headers || {}
+      var parts = payload.body.parts || []
+      var carried = 0
+      for (var i = 0; i < parts.length; i++)
+        if (parts[i] && parts[i].filename && !parts[i].cid) carried++
+      if (handler) handler({
+        to: splitHeaderList(headers["To"]),
+        cc: splitHeaderList(headers["Cc"]),
+        subject: String((payload.message && payload.message.subject)
+                        || headers["Subject"] || ""),
+        body: String(payload.body.text || ""),
+        format: "plain",
+        attachments: [],
+        // The stored copy this composer now stands in for: saving again
+        // replaces it rather than piling up another draft.
+        draftUid: entry.uid,
+        // Files on the saved copy are not pulled back down, so say so rather
+        // than letting them vanish quietly.
+        strandedAttachments: carried
+      })
+    }, "body")
+  }
+
+  function splitHeaderList(value) {
+    var out = []
+    var parts = String(value || "").split(",")
+    for (var i = 0; i < parts.length; i++) {
+      var one = parts[i].trim()
+      if (one !== "") out.push(one)
+    }
+    return out
+  }
+
   function buildDraft(entry, kind, handler) {
     if (!entry) return
     var args = accountArgs(["draft", "--folder", entry.folder,
@@ -451,52 +561,23 @@ Item {
     }, "draft")
   }
 
-  function send(draft, handler) {
+  // `accountId` lets a popped-out compose window keep sending as the account
+  // it was started from, whatever the main window is showing by then.
+  function send(draft, handler, accountId) {
     root.busy = true
-    var payloadText = JSON.stringify(draft)
-    var process = sendRunner.createObject(root, {
-      command: [cliPath, "--json", "send", "--account", root.accountId, "--draft", "-"],
-      payload: payloadText,
-      handler: handler
-    })
-    if (!process) {
+    runWithInput(["send", "--account", String(accountId || root.accountId),
+                  "--draft", "-"],
+                 JSON.stringify(draft), function (ok, payload, stderrText) {
       root.busy = false
-      root.actionFailed("Could not start the mail engine.")
-      return
-    }
-    process.running = true
-  }
-
-  Component {
-    id: sendRunner
-
-    Process {
-      id: sendProc
-      property string payload: ""
-      property var handler: null
-      running: false
-      stdinEnabled: true
-      stdout: StdioCollector { id: sendOut; waitForEnd: true }
-      stderr: StdioCollector { id: sendErr; waitForEnd: true }
-      onStarted: {
-        sendProc.write(sendProc.payload)
-        sendProc.stdinEnabled = false
+      if (ok) {
+        root.notice = "Message sent"
+        noticeTimer.restart()
+        root.sent()
+      } else {
+        root.reportFailure(payload, stderrText, "Could not send the message")
       }
-      onExited: function (exitCode) {
-        var parsed = Model.parseJson(sendOut.text, null)
-        var ok = exitCode === 0 && parsed && parsed.ok !== false
-        root.busy = false
-        if (ok) {
-          root.notice = "Message sent"
-          noticeTimer.restart()
-          root.sent()
-        } else {
-          root.reportFailure(parsed, sendErr.text, "Could not send the message")
-        }
-        if (sendProc.handler) sendProc.handler(ok, parsed)
-        Qt.callLater(function () { sendProc.destroy() })
-      }
-    }
+      if (handler) handler(ok, payload)
+    }, "send")
   }
 
   function saveAttachment(entry, index, open) {
@@ -514,10 +595,13 @@ Item {
     }, "attachment")
   }
 
-  function authorize(handler) {
-    if (!root.accountId) return
+  // Streams the OAuth sign-in for one account (the current one by default),
+  // handing every event to the caller so the UI can show a device code.
+  function authorize(handler, accountId) {
+    var id = String(accountId || root.accountId || "")
+    if (!id) return null
     var process = authRunner.createObject(root, {
-      command: [cliPath, "auth", root.accountId, "--stream"],
+      command: [cliPath, "auth", id, "--stream"],
       handler: handler
     })
     if (process) process.running = true
@@ -541,6 +625,287 @@ Item {
     }
   }
 
+  // ------------------------------------------------------- account setup
+
+  // The full account list, disabled accounts included — `status` deliberately
+  // hides those, but the settings panel is where you turn one back on.
+  function listAccounts(handler) {
+    run(["accounts"], function (ok, payload) {
+      if (handler) handler(ok && payload ? (payload.accounts || []) : [])
+    }, "accounts")
+  }
+
+  // Looks up the server settings for an address without writing anything, so
+  // the setup panel can show what it found before the account exists.
+  function discover(email, handler) {
+    if (!email) return
+    run(["discover", String(email)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not look up that domain")
+        if (handler) handler(false, null)
+        return
+      }
+      if (handler) handler(true, payload)
+    }, "discover")
+  }
+
+  // `spec` mirrors the CLI: { email, name, imapHost, imapPort, smtpHost,
+  // smtpPort, auth, username }. Everything but the address is optional and
+  // falls back to what discovery found.
+  function addAccount(spec, handler) {
+    if (!spec || !spec.email) return
+    var args = ["add", String(spec.email)]
+    if (spec.name) args = args.concat(["--name", String(spec.name)])
+    if (spec.username) args = args.concat(["--username", String(spec.username)])
+    if (spec.auth) args = args.concat(["--auth", String(spec.auth)])
+    if (spec.imapHost) args = args.concat(["--imap-host", String(spec.imapHost)])
+    if (spec.imapPort) args = args.concat(["--imap-port", String(spec.imapPort)])
+    if (spec.smtpHost) args = args.concat(["--smtp-host", String(spec.smtpHost)])
+    if (spec.smtpPort) args = args.concat(["--smtp-port", String(spec.smtpPort)])
+    if (spec.tenant) args = args.concat(["--tenant", String(spec.tenant)])
+    if (spec.clientId) args = args.concat(["--client-id", String(spec.clientId)])
+    run(args, function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not add the account")
+        if (handler) handler(false, null)
+        return
+      }
+      root.error = ""
+      if (handler) handler(true, (payload && payload.account) || null)
+    }, "add")
+  }
+
+  function setPassword(accountId, password, handler) {
+    if (!accountId) return
+    runWithInput(["auth", String(accountId), "--password-stdin"], password,
+                 function (ok, payload, stderrText) {
+      if (!ok) reportFailure(payload, stderrText, "Could not store the password")
+      if (handler) handler(ok, payload)
+    }, "auth-password")
+  }
+
+  // Writes one or more fields back onto an existing account. `changes` may
+  // carry name, username, signature, enabled, imapHost/Port, smtpHost/Port.
+  function updateAccount(accountId, changes, handler) {
+    if (!accountId || !changes) return
+    var args = ["set", String(accountId)]
+    var stdinText = null
+    if (changes.name !== undefined) args = args.concat(["--name", String(changes.name)])
+    if (changes.username !== undefined) args = args.concat(["--username", String(changes.username)])
+    if (changes.signature !== undefined) {
+      // Signatures are multi-line and user-written; keep them off argv.
+      stdinText = String(changes.signature)
+      args.push("--signature-stdin")
+    }
+    if (changes.enabled !== undefined) args.push(changes.enabled ? "--enable" : "--disable")
+    if (changes.imapHost) args = args.concat(["--imap-host", String(changes.imapHost)])
+    if (changes.imapPort) args = args.concat(["--imap-port", String(changes.imapPort)])
+    if (changes.smtpHost) args = args.concat(["--smtp-host", String(changes.smtpHost)])
+    if (changes.smtpPort) args = args.concat(["--smtp-port", String(changes.smtpPort)])
+
+    function done(ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not save the account")
+      } else {
+        root.notice = "Saved"
+        noticeTimer.restart()
+        root.refreshStatus()
+      }
+      if (handler) handler(ok, payload)
+    }
+    if (stdinText === null) run(args, done, "set")
+    else runWithInput(args, stdinText, done, "set")
+  }
+
+  function removeAccount(accountId, handler) {
+    if (!accountId) return
+    run(["remove", String(accountId)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remove the account")
+        if (handler) handler(false)
+        return
+      }
+      if (accountId === root.accountId) {
+        root.accountId = ""
+        root.messages = []
+        root.selected = null
+        root.body = null
+      }
+      root.notice = "Account removed"
+      noticeTimer.restart()
+      root.refreshStatus(true)
+      if (handler) handler(true)
+    }, "remove")
+  }
+
+  // Round trip to both servers with the stored credentials. This is the step
+  // that tells someone their app password is wrong before their first sync.
+  function testAccount(accountId, handler) {
+    if (!accountId) return
+    run(["test", String(accountId)], function (ok, payload, stderrText) {
+      if (handler) {
+        handler(ok, payload || { imap: String(stderrText || "failed"), smtp: "" })
+      }
+    }, "test")
+  }
+
+  // A first sync for a freshly added account, independent of which account
+  // the window happens to be showing.
+  function syncAccount(accountId, handler) {
+    if (!accountId) return
+    run(["sync", "--account", String(accountId), "--folder", "INBOX",
+         "--limit", "200"], function (ok, payload, stderrText) {
+      if (ok) {
+        root.error = ""
+        root.refreshStatus(true)
+      }
+      if (handler) handler(ok, payload)
+    }, "sync-account")
+  }
+
+  // Attachment picking runs through the desktop's own file chooser rather
+  // than a hand-rolled browser inside the compose form.
+  Component {
+    id: pickerRunner
+
+    Process {
+      id: pickProc
+      property var handler: null
+      running: false
+      stdout: StdioCollector { id: pickOut; waitForEnd: true }
+      onExited: function (exitCode) {
+        var paths = []
+        var lines = String(pickOut.text || "").split("\n")
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].trim()
+          if (line !== "") paths.push(line)
+        }
+        if (pickProc.handler) pickProc.handler(exitCode === 0 ? paths : [])
+        Qt.callLater(function () { pickProc.destroy() })
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------ drafts
+
+  // A draft lives in the account's Drafts folder, not in this process, so
+  // closing the composer — or the whole client — cannot lose it. `replaceUid`
+  // is the copy this save supersedes, which the engine deletes once the new
+  // one is safely stored.
+  function saveDraft(draft, replaceUid, accountId, handler) {
+    var id = String(accountId || root.accountId || "")
+    if (!id) return null
+    var args = ["draft-save", "--account", id]
+    if (replaceUid > 0) args = args.concat(["--replace", String(replaceUid)])
+    return runWithInput(args, JSON.stringify(draft), handler, "draft")
+  }
+
+  function discardDraft(uid, accountId, handler) {
+    var id = String(accountId || root.accountId || "")
+    if (!id || !(uid > 0)) return null
+    return run(["draft-discard", "--account", id, "--uid", String(uid)],
+               handler, "draft")
+  }
+
+  // ------------------------------------------------------------------- IDLE
+
+  // Idempotent: brings the running watchers in line with the accounts that
+  // should have one. Safe to call whenever the account list changes.
+  function syncWatchers() {
+    if (!root.watchEnabled || !root.configured) {
+      root.stopWatching()
+      return
+    }
+    var wanted = ({})
+    for (var i = 0; i < root.accounts.length; i++) {
+      var account = root.accounts[i]
+      // Demo accounts have no server, and an account that lost its
+      // authorization would just reconnect-fail in a loop.
+      if (!account || account.demo === true || account.authorized === false) continue
+      wanted[String(account.id)] = true
+    }
+    for (var running in root.watchProcs)
+      if (!wanted[running]) root.stopWatcher(running)
+    for (var id in wanted)
+      if (!root.watchProcs[id]) root.startWatcher(id)
+  }
+
+  function startWatcher(accountId) {
+    var process = watchRunner.createObject(root, { accountId: accountId })
+    if (!process) return
+    root.watchProcs[accountId] = process
+    root.watchCount = Object.keys(root.watchProcs).length
+    process.running = true
+  }
+
+  function stopWatcher(accountId) {
+    var process = root.watchProcs[accountId]
+    if (!process) return
+    delete root.watchProcs[accountId]
+    root.watchCount = Object.keys(root.watchProcs).length
+    process.running = false
+    Qt.callLater(function () { process.destroy() })
+  }
+
+  function stopWatching() {
+    for (var id in root.watchProcs) root.stopWatcher(id)
+  }
+
+  onWatchEnabledChanged: root.syncWatchers()
+  onConfiguredChanged: root.syncWatchers()
+
+  Component {
+    id: watchRunner
+
+    Process {
+      id: watchProc
+      property string accountId: ""
+      command: [root.cliPath, "--json", "watch", "--account", watchProc.accountId]
+      running: false
+      stdout: SplitParser {
+        onRead: function (line) {
+          var event = Model.parseJson(line, null)
+          if (!event) return
+          // The engine only speaks up when the folder actually changed, so
+          // every sync line is worth a cache read — which is also what raises
+          // newMail, and so what puts the notification on screen.
+          if (String(event.event || "") === "sync") root.refreshStatus(true)
+        }
+      }
+      // The engine reconnects across network hiccups on its own; if it exits,
+      // it gave up. Drop it so polling resumes, and let watchTimer retry.
+      onExited: {
+        if (root.watchProcs[watchProc.accountId] === watchProc) {
+          delete root.watchProcs[watchProc.accountId]
+          root.watchCount = Object.keys(root.watchProcs).length
+        }
+        Qt.callLater(function () { watchProc.destroy() })
+      }
+    }
+  }
+
+  Timer {
+    id: watchTimer
+    interval: 60000
+    repeat: true
+    running: root.watchEnabled
+    onTriggered: root.syncWatchers()
+  }
+
+  function pickFiles(handler) {
+    var process = pickerRunner.createObject(root, {
+      command: ["zenity", "--file-selection", "--multiple", "--separator=\n",
+                "--title=Attach files to this message"],
+      handler: handler
+    })
+    if (!process) {
+      root.actionFailed("Could not open the file chooser.")
+      return null
+    }
+    process.running = true
+    return process
+  }
+
   function openSetupTerminal() {
     Quickshell.execDetached(["uwsm-app", "--", "alacritty", "-e",
                              cliPath, "setup"])
@@ -556,7 +921,9 @@ Item {
     id: syncTimer
     interval: root.syncIntervalSec * 1000
     repeat: true
-    running: root.configured && root.pollEnabled
+    // A live watcher already hears about new mail the instant it lands, so
+    // polling on top of it would just be a second, slower way to find out.
+    running: root.configured && root.pollEnabled && !root.watching
     onTriggered: root.sync(false)
   }
 
