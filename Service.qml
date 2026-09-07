@@ -279,6 +279,34 @@ Item {
   }
 
   // One click in the tree picks an account and a folder together.
+  // A folder only ever has rows because something synced it, and the timer
+  // only ever syncs the one on screen. Without this, every folder but the
+  // inbox stayed empty however much mail was really in it.
+  property var syncedFolders: ({})
+
+  function folderKey(accountId, folderName) {
+    return String(accountId) + "\u241f" + String(folderName)
+  }
+
+  function ensureFolderSynced() {
+    if (!root.accountId || !root.folder) return
+    var account = root.currentAccount
+    if (account && (account.demo === true || account.authorized === false)) return
+    var key = root.folderKey(root.accountId, root.folder)
+    if (root.syncedFolders[key]) return
+    // Only one sync runs at a time. Opening an account sets its inbox syncing
+    // and the folder you actually asked for arrives moments later, so waiting
+    // our turn matters more than giving up.
+    if (root.syncing) return
+    // Marked before the result comes back, and left marked even on failure:
+    // retrying from onSyncingChanged would turn one unreachable folder into a
+    // loop of failing syncs. `g` still forces a fresh attempt.
+    root.syncedFolders[key] = true
+    root.sync(false)
+  }
+
+  onSyncingChanged: if (!root.syncing) Qt.callLater(root.ensureFolderSynced)
+
   function openFolder(accountId, folderName) {
     if (!accountId || !folderName) return
     if (accountId === root.accountId && folderName === root.folder) return
@@ -289,6 +317,7 @@ Item {
     root.body = null
     root.messages = []
     loadMessages()
+    ensureFolderSynced()
   }
 
   function setAccount(id) {
@@ -300,6 +329,7 @@ Item {
     root.messages = []
     root.folders = root.foldersFor(id)
     loadFolders()
+    ensureFolderSynced()
   }
 
   function setFolder(name) {
@@ -308,6 +338,7 @@ Item {
     root.selected = null
     root.body = null
     loadMessages()
+    ensureFolderSynced()
   }
 
   function setFilter(mode) {
@@ -378,6 +409,8 @@ Item {
       }
       root.error = ""
       root.refreshStatus()
+      // finish() at the end of loadFolders reloads the message list, so the
+      // rows this sync just fetched land on screen.
       root.loadFolders()
     }, "sync")
   }
