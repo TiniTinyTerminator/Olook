@@ -106,6 +106,7 @@ Item {
 
     // --------------------------------------------------------- account tree
     Flickable {
+      id: treeFlick
       width: parent.width
       height: Math.max(0, parent.height - y)
       contentWidth: width
@@ -140,6 +141,8 @@ Item {
           wrapMode: Text.WordWrap
         }
       }
+
+      SmoothScroll { view: treeFlick }
     }
   }
 

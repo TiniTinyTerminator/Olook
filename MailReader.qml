@@ -379,6 +379,8 @@ Item {
             wrapMode: Text.WordWrap
           }
         }
+
+        SmoothScroll { view: bodyFlick }
       }
     }
   }

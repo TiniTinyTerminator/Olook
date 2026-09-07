@@ -25,7 +25,11 @@ Item {
   readonly property string filter: service ? service.filter : "all"
 
   function positionAt(index) {
-    if (index >= 0 && index < listView.count) listView.positionViewAtIndex(index, ListView.Contain)
+    if (index < 0 || index >= listView.count) return
+    // Stop any wheel glide first: it would finish afterwards and drag the
+    // list back off the row the keyboard just selected.
+    listScroll.cancel()
+    listView.positionViewAtIndex(index, ListView.Contain)
   }
 
   onSelectedRowChanged: positionAt(selectedRow)
@@ -268,6 +272,8 @@ Item {
             }
           }
         }
+
+        SmoothScroll { id: listScroll; view: listView }
       }
 
       // ---- empty states

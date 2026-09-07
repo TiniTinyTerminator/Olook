@@ -409,6 +409,8 @@ Panel {
               }
             }
           }
+
+          SmoothScroll { view: panelFlick }
         }
 
         Column {

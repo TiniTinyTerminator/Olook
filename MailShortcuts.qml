@@ -73,6 +73,7 @@ Item {
     MouseArea { anchors.fill: parent }
 
     Flickable {
+      id: sheetFlick
       anchors.fill: parent
       anchors.margins: Style.space(24)
       contentWidth: width
@@ -167,6 +168,8 @@ Item {
           }
         }
       }
+
+      SmoothScroll { view: sheetFlick }
     }
   }
 }

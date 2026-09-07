@@ -80,6 +80,7 @@ Item {
 
   // --------------------------------------------------------------- accounts
   Flickable {
+    id: accountsFlick
     anchors.fill: parent
     visible: root.mode === "accounts"
     contentWidth: width
@@ -200,6 +201,8 @@ Item {
         }
       }
     }
+
+    SmoothScroll { view: accountsFlick }
   }
 
   // ------------------------------------------------------------- components

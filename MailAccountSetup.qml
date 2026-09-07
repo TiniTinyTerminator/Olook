@@ -215,6 +215,7 @@ Item {
   }
 
   Flickable {
+    id: setupFlick
     anchors.fill: parent
     contentWidth: width
     contentHeight: card.height + Style.space(80)
@@ -650,6 +651,8 @@ Item {
         }
       }
     }
+
+    SmoothScroll { view: setupFlick }
   }
 
   // ------------------------------------------------------------- components

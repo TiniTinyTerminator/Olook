@@ -632,6 +632,8 @@ Item {
             font.pixelSize: Style.font.body
           }
         }
+
+        SmoothScroll { view: bodyFlick }
       }
     }
   }
