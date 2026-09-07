@@ -7,6 +7,11 @@ bar, themed by whatever Omarchy theme you are using.
 It is laid out like Outlook on Windows: an app rail, a folder pane, a message
 list grouped by date, and a reading pane.
 
+The bar panel shows every inbox at once by default. The avatar row under the
+header narrows it to a single account — the address it is showing is spelled
+out beneath the row, and the unread count follows the choice. It lasts for the
+session; the panel opens on **All** again after a restart.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ ✉ Olook  Mail          [ Search mail ]                        ⟳    ✕     │
@@ -38,7 +43,9 @@ list grouped by date, and a reading pane.
   servers and walks you through the sign-in, so the terminal is optional
 - A settings view for the accounts you already have: rename, edit the
   signature, re-authorize, pause syncing, test the connection, remove
-- Bar widget with an unread badge and the newest mail across every account
+- Bar widget with an unread badge and the newest mail across every account,
+  filterable to one mailbox — click an account's avatar in the panel, or step
+  through them with `←` / `→`
 - Read, reply, reply-all, forward, archive, delete, flag, mark read/unread
 - HTML mail rendered properly, with remote images blocked and a toggle back to
   plain text

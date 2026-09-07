@@ -29,7 +29,48 @@ Panel {
   }
   readonly property bool hideWhenRead: setting("unreadOnlyBadge", false) === true
 
-  readonly property var visibleMessages: mail.recent.slice(0, panelMessageCount)
+  // Which mailbox the panel is showing, by account id; "" is all of them.
+  // Session-scoped on purpose: the widget opens showing everything.
+  property string accountFilter: ""
+
+  readonly property var filteredAccount: {
+    if (root.accountFilter === "") return null
+    for (var i = 0; i < mail.accounts.length; i++)
+      if (String(mail.accounts[i].id) === root.accountFilter) return mail.accounts[i]
+    return null
+  }
+
+  readonly property var filteredRecent: {
+    if (root.accountFilter === "") return mail.recent
+    var out = []
+    for (var i = 0; i < mail.recent.length; i++)
+      if (String(mail.recent[i].account) === root.accountFilter) out.push(mail.recent[i])
+    return out
+  }
+
+  readonly property var visibleMessages: root.filteredRecent.slice(0, panelMessageCount)
+
+  onAccountFilterChanged: {
+    root.messageIndex = 0
+    root.ensureCursor()
+  }
+
+  // An account can be removed or paused while the panel remembers it.
+  Connections {
+    target: mail
+    function onAccountsChanged() {
+      if (root.accountFilter !== "" && !root.filteredAccount) root.accountFilter = ""
+    }
+  }
+
+  // "" (all inboxes) then each account, wrapping.
+  function stepAccountFilter(step) {
+    var ids = [""]
+    for (var i = 0; i < mail.accounts.length; i++) ids.push(String(mail.accounts[i].id))
+    var at = ids.indexOf(root.accountFilter)
+    if (at < 0) at = 0
+    root.accountFilter = ids[(at + step + ids.length) % ids.length]
+  }
   readonly property bool hasUnread: mail.unread > 0
   readonly property color barIconColor: hasUnread ? barForeground : Qt.darker(barForeground, 1.45)
 
@@ -59,6 +100,12 @@ Panel {
   function moveCursor(dx, dy) {
     cursorActive = true
     ensureCursor()
+    // The chip row is horizontal and dx meant nothing here before, so left
+    // and right step through the mailboxes.
+    if (dx !== 0 && mail.accounts.length > 1) {
+      root.stepAccountFilter(dx > 0 ? 1 : -1)
+      return
+    }
     if (dy === 0) return
     if (focusSection === "header") {
       if (dy > 0 && visibleMessages.length > 0) {
@@ -237,7 +284,12 @@ Panel {
             meta: {
               if (!mail.configured) return "No account yet"
               if (mail.syncing) return "Checking for mail…"
-              if (mail.unread > 0) return mail.unread + (mail.unread === 1 ? " unread message" : " unread messages")
+              // With one mailbox picked, the count should be that mailbox's,
+              // not every account's.
+              var unread = root.filteredAccount ? (root.filteredAccount.unread || 0)
+                                                : mail.unread
+              if (unread > 0)
+                return unread + (unread === 1 ? " unread message" : " unread messages")
               return "You're all caught up"
             }
             foreground: root.foreground
@@ -286,6 +338,24 @@ Panel {
           PanelSeparator {
             visible: mail.configured
             foreground: root.foreground
+          }
+
+          // Pick one mailbox, or all of them. Wraps, so a fourth account
+          // does not push the row off the edge of the panel.
+          Flow {
+            visible: mail.configured && mail.accounts.length > 1
+            width: parent.width
+            spacing: Style.space(6)
+
+            AccountChip {}
+
+            Repeater {
+              model: mail.accounts
+              AccountChip {
+                required property var modelData
+                account: modelData
+              }
+            }
           }
 
           PanelSectionHeader {
@@ -375,10 +445,93 @@ Panel {
   }
 
   function mailboxLabel() {
+    if (root.filteredAccount)
+      return String(root.filteredAccount.email || "Inbox").toUpperCase()
     if (mail.accounts.length > 1) return "ALL INBOXES"
     var account = mail.currentAccount
     var label = account ? (account.email || "Inbox") : "Inbox"
     return label.toUpperCase()
+  }
+
+  // One mailbox, as an avatar; or "All" for every inbox at once. The address
+  // itself is in the tooltip and spelled out in the section header below, so
+  // the row stays narrow however long the addresses are.
+  component AccountChip: Rectangle {
+    id: chip
+    property var account: null
+    readonly property string accountId: chip.account ? String(chip.account.id) : ""
+    readonly property bool current: root.accountFilter === chip.accountId
+
+    width: chip.account ? Style.space(28) : allLabel.implicitWidth + Style.space(18)
+    height: Style.space(28)
+    radius: height / 2
+    color: chip.current ? Util.alpha(Color.accent, 0.22)
+      : (chipHover.containsMouse ? Util.alpha(root.foreground, 0.10) : "transparent")
+    border.width: 1
+    border.color: chip.current ? Util.alpha(Color.accent, 0.65)
+                               : Util.alpha(root.foreground, 0.18)
+
+    Text {
+      id: allLabel
+      textFormat: Text.PlainText
+      visible: !chip.account
+      anchors.centerIn: parent
+      text: "All"
+      color: chip.current ? Color.accent : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: chip.current
+    }
+
+    Rectangle {
+      visible: !!chip.account
+      anchors.centerIn: parent
+      width: Style.space(20)
+      height: width
+      radius: width / 2
+      color: Qt.hsla(Model.avatarHue(chip.account ? chip.account.email : "") / 360,
+                     0.45, 0.45, 1.0)
+
+      Text {
+        anchors.centerIn: parent
+        text: Model.initials(chip.account ? chip.account.name : "",
+                             chip.account ? chip.account.email : "")
+        color: "white"
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+
+      Rectangle {
+        visible: !!(chip.account && chip.account.unread > 0)
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.rightMargin: -Style.space(1)
+        anchors.topMargin: -Style.space(1)
+        width: Style.space(8)
+        height: width
+        radius: width / 2
+        color: Color.accent
+      }
+    }
+
+    MouseArea {
+      id: chipHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.accountFilter = chip.accountId
+    }
+
+    PanelToolTip {
+      visible: chipHover.containsMouse
+      text: {
+        if (!chip.account) return "All inboxes"
+        var unread = chip.account.unread || 0
+        return String(chip.account.email) + (unread > 0 ? " — " + unread + " unread" : "")
+      }
+      fontFamily: root.fontFamily
+    }
   }
 
   component SetupRow: CursorSurface {
