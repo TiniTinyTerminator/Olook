@@ -151,7 +151,12 @@ def _group_fetch(data):
         if item is None:
             continue
         head = item[0] if isinstance(item, tuple) else item
-        if isinstance(head, bytes) and re.match(rb"^\s*\*?\s*\d+\s+FETCH", head, re.I):
+        # imaplib hands back one item per message as `<seq> (<data>`, having
+        # already eaten the `* ` and the FETCH keyword. Requiring the word
+        # FETCH here matched nothing, so every response in a batch was
+        # concatenated into a single blob and only the first message survived.
+        if isinstance(head, bytes) and re.match(rb"^\s*\*?\s*\d+\s+(?:FETCH\s+)?\(",
+                                                head, re.I):
             if current:
                 groups.append(current)
             current = {"raw": b"", "literals": []}

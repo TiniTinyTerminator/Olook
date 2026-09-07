@@ -239,16 +239,37 @@ Item {
       root.loadMessages()
     }
 
+    function fetch(id, fromServer, done) {
+      var args = ["folders", "--account", id]
+      if (fromServer) args.push("--refresh")
+      run(args, function (ok, payload) {
+        done((ok && payload) ? (payload.folders || []) : [])
+      }, "folders")
+    }
+
     for (var index = 0; index < root.accounts.length; index++) {
-      (function (id) {
-        var args = ["folders", "--account", id]
-        if (refresh && id === root.accountId) args.push("--refresh")
-        run(args, function (ok, payload) {
-          collected[id] = (ok && payload) ? (payload.folders || []) : []
+      (function (account) {
+        var id = account.id
+        var fromServer = !!refresh && id === root.accountId
+        fetch(id, fromServer, function (list) {
+          // A cold cache is not an empty mailbox. An account that has never
+          // had its folder list fetched — a newly added one, or one that was
+          // unauthorized the last time anyone asked — has to go to the server
+          // once, or it sits in the pane with no folders under it.
+          if (list.length === 0 && !fromServer
+              && account.demo !== true && account.authorized !== false) {
+            fetch(id, true, function (fresh) {
+              collected[id] = fresh
+              pending -= 1
+              if (pending === 0) finish()
+            })
+            return
+          }
+          collected[id] = list
           pending -= 1
           if (pending === 0) finish()
-        }, "folders")
-      })(root.accounts[index].id)
+        })
+      })(root.accounts[index])
     }
   }
 
