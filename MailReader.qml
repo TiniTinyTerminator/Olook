@@ -30,6 +30,15 @@ Item {
   signal unreadRequested()
   signal attachmentRequested(int index)
   signal showImagesRequested()
+  signal popOutRequested()
+
+  // False once the message is already in a window of its own, where the
+  // button would have nowhere to go. Mirrors MailCompose.
+  property bool allowPopOut: true
+  // Which account this message arrived on. Shown when the list is mixing
+  // accounts, so a reply's sender is never a surprise.
+  property var account: null
+  property bool showAccount: false
 
   readonly property var attachments: body && body.parts ? body.parts : []
   readonly property bool loadingBody: message !== null && body === null
@@ -200,17 +209,65 @@ Item {
               font.pixelSize: Style.font.caption
               elide: Text.ElideRight
             }
+
+            // Which mailbox this arrived on. Only worth saying when the list
+            // is mixing accounts, and worth saying then: it is the address a
+            // reply will go out from.
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              visible: root.showAccount && !!root.account
+              text: root.account
+                ? "Received by " + String(root.account.email || root.account.name || "")
+                : ""
+              color: ui.accent
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
+            }
           }
 
           Text {
             id: dateLabel
             textFormat: Text.PlainText
-            anchors.right: parent.right
+            anchors.right: popOutButton.visible ? popOutButton.left : parent.right
+            anchors.rightMargin: popOutButton.visible ? Style.space(10) : 0
             anchors.verticalCenter: parent.verticalCenter
             text: root.message ? Model.fullTime(root.message.date) : ""
             color: ui.faint
             font.family: ui.fontFamily
             font.pixelSize: Style.font.caption
+          }
+
+          // Hand this message to a window of its own, so it can sit on another
+          // workspace while the client goes back to the list.
+          Rectangle {
+            id: popOutButton
+            visible: root.allowPopOut && root.message !== null
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(30)
+            height: Style.space(30)
+            radius: ui.radius
+            color: popOutHover.containsMouse ? ui.hover : "transparent"
+            border.width: 1
+            border.color: ui.border
+
+            Text {
+              anchors.centerIn: parent
+              text: "󰏋"
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.iconSmall
+            }
+
+            MouseArea {
+              id: popOutHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.popOutRequested()
+            }
           }
         }
 

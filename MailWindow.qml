@@ -57,6 +57,21 @@ Item {
 
   function open(payloadJson) {
     var payload = Model.parseJson(payloadJson, {}) || {}
+
+    // A summon naming one message and asking for a popout gets that message
+    // in its own window, and the client stays as it was -- closed, or on
+    // whatever it was showing. This is how the bar widget opens mail.
+    if (payload.popout && payload.uid) {
+      root.popOutReader({
+        account: payload.account || mail.accountId,
+        folder: payload.folder || mail.folder,
+        uid: Number(payload.uid),
+        subject: payload.subject || "",
+        seen: false
+      }, null)
+      return
+    }
+
     root.opened = true
     root.view = payload.view === "calendar" ? "calendar" : "mail"
     root.composing = false
@@ -182,6 +197,52 @@ Item {
   Component {
     id: composeWindowFactory
     MailComposeWindow {}
+  }
+
+  // Popped-out messages, one window each. Parented to the plugin root like
+  // the compose windows, so closing the client leaves them where they are.
+  property var readerWindows: []
+
+  Component {
+    id: readerWindowFactory
+    MailReaderWindow {}
+  }
+
+  function popOutReader(entry, account) {
+    if (!entry) return null
+    var win = readerWindowFactory.createObject(root, {
+      ui: ui,
+      service: mail,
+      message: entry,
+      body: null,
+      account: account || mail.accountFor(entry.account),
+      showAccount: mail.folder === Model.ALL_FOLDER,
+      visible: true
+    })
+    if (!win) {
+      mail.actionFailed("Could not open a message window.")
+      return null
+    }
+    // The window owns its message: fetched separately so the client behind it
+    // can go on selecting others without either redrawing the other.
+    mail.fetchBody(entry, entry.seen !== true, function (body, summary) {
+      win.body = body
+      if (summary) win.message = summary
+    })
+    root.readerWindows.push(win)
+    win.dismissed.connect(function () {
+      var kept = []
+      for (var i = 0; i < root.readerWindows.length; i++)
+        if (root.readerWindows[i] !== win) kept.push(root.readerWindows[i])
+      root.readerWindows = kept
+      Qt.callLater(function () { win.destroy() })
+    })
+    win.composeRequested.connect(function (kind, message, account) {
+      mail.buildDraft(message, kind, function (draft) {
+        root.popOutCompose(draft, account)
+      })
+    })
+    return win
   }
 
   function popOutCompose(prefill, account) {
@@ -816,6 +877,7 @@ Item {
                   onFlagRequested: if (mail.selected) mail.toggleFlagged(mail.selected)
                   onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
                   onShowImagesRequested: mail.loadRemoteImages()
+                  onPopOutRequested: if (mail.selected) root.popOutReader(mail.selected, null)
                   onAttachmentRequested: function (index) {
                     if (mail.selected) mail.saveAttachment(mail.selected, index, true)
                   }

@@ -127,9 +127,13 @@ Panel {
     else openMessage(selectedMessage())
   }
 
+  // A message picked here opens in a window of its own rather than summoning
+  // the whole client: reading one mail is not a reason to take over the
+  // screen. The header, and the keyboard's "o", still open the client.
   function openMessage(entry) {
     if (!entry) return
-    openWindow({ account: entry.account, folder: entry.folder, uid: entry.uid })
+    openWindow({ account: entry.account, folder: entry.folder, uid: entry.uid,
+                 popout: true })
   }
 
   function openWindow(payload) {

@@ -177,9 +177,13 @@ Item {
     return process
   }
 
-  function accountArgs(extra) {
+  // `accountId` names an account other than the one on screen. A popped-out
+  // reader, and every row of the All folder, belongs to whichever account the
+  // message arrived on rather than to whatever the client is showing now.
+  function accountArgs(extra, accountId) {
     var args = extra.slice()
-    if (root.accountId) args = args.concat(["--account", root.accountId])
+    var target = accountId || root.accountId
+    if (target) args = args.concat(["--account", target])
     return args
   }
 
@@ -465,6 +469,38 @@ Item {
     }, "body")
   }
 
+  // The account record a message belongs to. Rows carry an account id; the
+  // reader and the reply need the whole account behind it.
+  function accountFor(accountId) {
+    var wanted = String(accountId || root.accountId || "")
+    for (var i = 0; i < root.accounts.length; i++)
+      if (String(root.accounts[i].id) === wanted) return root.accounts[i]
+    return root.currentAccount
+  }
+
+  // Read one message without touching what the client has open. A popped-out
+  // reader owns its message: the window behind it goes on selecting others,
+  // and neither should redraw the other.
+  function fetchBody(entry, markRead, handler, remoteImages) {
+    if (!entry || !handler) return
+    var args = accountArgs(["body", "--folder", entry.folder,
+                            "--uid", String(entry.uid)], entry.account)
+    if (markRead) args.push("--mark-read")
+    if (remoteImages) args.push("--remote-images")
+    run(args, function (ok, payload, stderrText) {
+      if (!ok || !payload || !payload.body) {
+        reportFailure(payload, stderrText, "Could not open the message")
+        handler({ text: "", html: "", parts: [], headers: {}, failed: true }, entry)
+        return
+      }
+      handler(payload.body, payload.message || entry)
+      if (markRead) {
+        markLocalSeen(entry, true)
+        root.refreshStatus()
+      }
+    }, "body")
+  }
+
   function markLocalSeen(entry, seen) {
     var next = []
     for (var i = 0; i < root.messages.length; i++) {
@@ -626,7 +662,8 @@ Item {
   function buildDraft(entry, kind, handler) {
     if (!entry) return
     var args = accountArgs(["draft", "--folder", entry.folder,
-                            "--uid", String(entry.uid), "--kind", kind])
+                            "--uid", String(entry.uid), "--kind", kind],
+                           entry.account)
     run(args, function (ok, payload, stderrText) {
       if (!ok) {
         reportFailure(payload, stderrText, "Could not build the reply")

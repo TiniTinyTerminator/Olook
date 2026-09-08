@@ -96,6 +96,15 @@ function fileSize(bytes) {
   return (value / (1024 * 1024)).toFixed(1) + " MB"
 }
 
+// The virtual folder that shows every account's mail at once. Not an IMAP
+// folder: no server has one, nothing is ever moved into it, and every row in
+// it remembers the account it actually came from.
+var ALL_FOLDER = "__all__"
+
+function isAllFolder(name) {
+  return String(name || "") === ALL_FOLDER
+}
+
 function senderLabel(message) {
   if (!message) return ""
   return String(message.fromName || message.fromAddr || "Unknown")
