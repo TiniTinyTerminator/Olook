@@ -21,9 +21,14 @@ KEEP = {
     "code", "table", "thead", "tbody", "tr", "td", "th", "hr", "a", "img", "span",
     "div", "font", "center", "small", "big",
 }
-DROP_TREE = {"script", "style", "head", "title", "meta", "link", "noscript",
-             "object", "iframe", "embed", "applet", "form", "input", "button",
-             "select", "textarea", "svg", "video", "audio"}
+DROP_TREE = {"script", "style", "head", "title", "noscript", "object",
+             "iframe", "applet", "form", "button", "select", "textarea",
+             "svg", "video", "audio"}
+# Dropped too, but these have no closing tag. Counting them the way the tree
+# above is counted would leave the counter up for the rest of the message and
+# swallow everything after the <meta> every mail carries in its head.
+DROP_VOID = {"meta", "link", "base", "input", "embed", "source", "track",
+             "param", "col"}
 SELF_CLOSING = {"br", "hr", "img"}
 
 # Attributes worth keeping: enough for structure and colour, nothing that can
@@ -59,6 +64,8 @@ class _Rewriter(HTMLParser):
     # ---------------------------------------------------------------- tags
 
     def handle_starttag(self, tag, attrs):
+        if tag in DROP_VOID:
+            return
         if tag in DROP_TREE:
             self.drop_depth += 1
             return
@@ -80,7 +87,8 @@ class _Rewriter(HTMLParser):
             self.open_tags.append(tag)
 
     def handle_startendtag(self, tag, attrs):
-        if tag in DROP_TREE or self.drop_depth or tag not in KEEP:
+        if tag in DROP_VOID or tag in DROP_TREE or self.drop_depth \
+                or tag not in KEEP:
             return
         if tag == "img":
             self._image(dict(attrs))
@@ -88,6 +96,8 @@ class _Rewriter(HTMLParser):
         self.out.append(f"<{tag}{self._attrs(tag, dict(attrs))}>")
 
     def handle_endtag(self, tag):
+        if tag in DROP_VOID:
+            return
         if tag in DROP_TREE:
             self.drop_depth = max(0, self.drop_depth - 1)
             return
