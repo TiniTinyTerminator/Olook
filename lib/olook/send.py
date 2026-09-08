@@ -227,13 +227,16 @@ def reply_draft(account, original, body_text, reply_all=False):
     sender = headers.get("From", "")
     date = headers.get("Date", "")
     quoted = "\n".join("> " + line for line in str(body_text or "").splitlines())
-    body = f"\n\nOn {date}, {sender} wrote:\n{quoted}"
 
     return {
         "to": to,
         "cc": cc,
         "subject": subject,
-        "body": body,
+        # The reply is what you write; the chain underneath it is separate so
+        # the composer can fold it away and hand back an empty page to write
+        # on. They are joined again when the message is sent.
+        "body": "",
+        "quoted": f"On {date}, {sender} wrote:\n{quoted}",
         "inReplyTo": headers.get("Message-ID", ""),
         "references": " ".join(filter(None, [headers.get("References", ""),
                                              headers.get("Message-ID", "")])).strip(),
@@ -246,12 +249,12 @@ def forward_draft(account, original, body_text):
     if not subject.lower().startswith("fwd:"):
         subject = f"Fwd: {subject}"
     lines = [
-        "", "", "---------- Forwarded message ----------",
+        "---------- Forwarded message ----------",
         f"From: {headers.get('From', '')}",
         f"Date: {headers.get('Date', '')}",
         f"Subject: {headers.get('Subject', '')}",
         f"To: {headers.get('To', '')}",
         "", str(body_text or ""),
     ]
-    return {"to": [], "cc": [], "subject": subject, "body": "\n".join(lines),
-            "inReplyTo": "", "references": ""}
+    return {"to": [], "cc": [], "subject": subject, "body": "",
+            "quoted": "\n".join(lines), "inReplyTo": "", "references": ""}

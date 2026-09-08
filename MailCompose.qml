@@ -30,6 +30,10 @@ Item {
   property string ccText: ""
   property string subjectText: ""
   property string bodyText: ""
+  // The chain being replied to, kept apart from what you are writing so it
+  // can be folded away. Rejoined when the message goes out.
+  property string quotedText: ""
+  property bool quoteExpanded: false
   // plain | markdown | html — how the body is written, and therefore what
   // goes on the wire: plain text alone, or text plus an HTML alternative.
   property string format: "plain"
@@ -61,6 +65,8 @@ Item {
     ccText = (source.cc || []).join(", ")
     subjectText = String(source.subject || "")
     bodyText = String(source.body || "")
+    quotedText = String(source.quoted || "")
+    quoteExpanded = false
     format = String(source.format || "plain")
     attachments = (source.attachments || []).slice()
     draftUid = Number(source.draftUid || 0)
@@ -211,7 +217,9 @@ Item {
       to: splitAddresses(toText),
       cc: splitAddresses(ccText),
       subject: subjectText,
-      body: bodyText,
+      // What you wrote, then the chain. The engine only knows about a body.
+      body: root.quotedText === ""
+        ? bodyText : bodyText.replace(/\s+$/, "") + "\n\n" + root.quotedText,
       format: root.format,
       attachments: root.attachments.slice(),
       inReplyTo: source.inReplyTo || "",
@@ -590,46 +598,106 @@ Item {
         anchors.fill: parent
         anchors.margins: Style.space(20)
         contentWidth: width
-        contentHeight: bodyField.implicitHeight + Style.space(20)
+        contentHeight: bodyColumn.implicitHeight + Style.space(20)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        TextEdit {
-          id: bodyField
+        Column {
+          id: bodyColumn
           width: bodyFlick.width - Style.space(12)
-          text: root.bodyText
-          onTextChanged: root.bodyText = text
-          color: ui.foreground
-          selectionColor: Util.alpha(ui.accent, 0.35)
-          selectedTextColor: ui.foreground
-          font.family: ui.fontFamily
-          font.pixelSize: Style.font.body
-          wrapMode: TextEdit.Wrap
-          selectByMouse: true
-          textFormat: TextEdit.PlainText
-          // Ctrl+Enter is the send shortcut everywhere else; keep it here too.
-          Keys.onPressed: function (event) {
-            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                && (event.modifiers & Qt.ControlModifier)) {
-              root.submit()
-              event.accepted = true
+          spacing: Style.space(10)
+
+          TextEdit {
+            id: bodyField
+            width: parent.width
+            text: root.bodyText
+            onTextChanged: root.bodyText = text
+            color: ui.foreground
+            selectionColor: Util.alpha(ui.accent, 0.35)
+            selectedTextColor: ui.foreground
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.body
+            wrapMode: TextEdit.Wrap
+            selectByMouse: true
+            textFormat: TextEdit.PlainText
+            // Ctrl+Enter is the send shortcut everywhere else; keep it here too.
+            Keys.onPressed: function (event) {
+              if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                  && (event.modifiers & Qt.ControlModifier)) {
+                root.submit()
+                event.accepted = true
+              }
+            }
+
+            Text {
+              anchors.top: parent.top
+              anchors.left: parent.left
+              visible: bodyField.text === ""
+              text: {
+                if (root.format === "markdown")
+                  return "Write your message in Markdown — **bold**, lists, links…"
+                if (root.format === "html") return "Write HTML — it is sent as-is."
+                return "Write your message…"
+              }
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.body
             }
           }
 
-          Text {
-            anchors.top: parent.top
-            anchors.left: parent.left
-            visible: bodyField.text === ""
-            text: {
-              if (root.format === "markdown")
-                return "Write your message in Markdown — **bold**, lists, links…"
-              if (root.format === "html") return "Write HTML — it is sent as-is."
-              return "Write your message…"
+          // The message being replied to. Folded by default: it is context, not
+          // the thing being written, and a reply that opens onto a screenful of
+          // someone else's text is a worse place to start. Still there, still
+          // editable once opened, and still sent either way.
+          Rectangle {
+            visible: root.quotedText !== ""
+            width: Style.space(46)
+            height: Style.space(22)
+            radius: ui.radius
+            color: quoteHover.containsMouse ? ui.hover : ui.surface
+            border.width: 1
+            border.color: ui.border
+
+            Text {
+              anchors.centerIn: parent
+              text: "\u00b7\u00b7\u00b7"
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
             }
-            color: ui.faint
+
+            MouseArea {
+              id: quoteHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.quoteExpanded = !root.quoteExpanded
+            }
+
+            PanelToolTip {
+              visible: quoteHover.containsMouse
+              text: root.quoteExpanded ? "Hide the quoted message"
+                                       : "Show the quoted message"
+              fontFamily: ui.fontFamily
+            }
+          }
+
+          TextEdit {
+            id: quoteField
+            visible: root.quotedText !== "" && root.quoteExpanded
+            width: parent.width
+            text: root.quotedText
+            onTextChanged: root.quotedText = text
+            color: ui.dim
+            selectionColor: Util.alpha(ui.accent, 0.35)
+            selectedTextColor: ui.foreground
             font.family: ui.fontFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize: Style.font.bodySmall
+            wrapMode: TextEdit.Wrap
+            selectByMouse: true
+            textFormat: TextEdit.PlainText
           }
         }
 

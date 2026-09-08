@@ -478,55 +478,53 @@ Item {
       // and a whole row of height to say "Formatted" is height the message
       // could have used instead. They stay put while it scrolls under them,
       // which also keeps them in reach at the bottom of a long mail.
-      Rectangle {
+      // No ground of its own: the message shows through. The ink is the
+      // paper's rather than the theme's, though -- these sit on the light card
+      // the message is drawn on, where the dim grey the rest of the app uses
+      // would barely be there at all.
+      Row {
+        id: controlRow
         anchors.right: bodyFlick.right
         anchors.top: bodyFlick.top
-        anchors.rightMargin: Style.space(12)
-        anchors.topMargin: Style.space(8)
-        width: controlRow.implicitWidth + Style.space(16)
-        height: controlRow.implicitHeight + Style.space(10)
-        radius: ui.radius
-        // Its own ground. These float over whatever the message put there,
-        // and mail brings its own colours: without this they would be legible
-        // on a white newsletter and invisible on a dark one.
-        color: ui.background
-        border.width: 1
-        border.color: ui.border
+        anchors.rightMargin: Style.space(14)
+        anchors.topMargin: Style.space(10)
+        spacing: Style.space(8)
         visible: root.hasRich && !root.loadingBody
         z: 1
 
-        Row {
-          id: controlRow
-          anchors.centerIn: parent
-          spacing: Style.space(8)
+        readonly property color ink: "#5a616b"
+        readonly property color edge: Qt.rgba(0, 0, 0, 0.14)
 
-          ViewToggle {
-            label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
-            onTriggered: root.formatted = !root.formatted
-          }
+        ViewToggle {
+          label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
+          ink: controlRow.ink
+          edge: controlRow.edge
+          onTriggered: root.formatted = !root.formatted
+        }
 
-          Text {
-            textFormat: Text.PlainText
-            anchors.verticalCenter: parent.verticalCenter
-            visible: root.blockedImages > 0
-            text: root.blockedImages === 1
-              ? "1 remote image blocked"
-              : root.blockedImages + " remote images blocked"
-            color: ui.faint
-            font.family: ui.fontFamily
-            font.pixelSize: Style.font.caption
-          }
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          visible: root.blockedImages > 0
+          text: root.blockedImages === 1
+            ? "1 remote image blocked"
+            : root.blockedImages + " remote images blocked"
+          color: controlRow.ink
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+        }
 
-          // Fetching a message's pictures tells the sender the mail was
-          // opened -- that is what the tracking pixel among them is for. So
-          // it stays the reader's decision, one message at a time.
-          ViewToggle {
-            label: "󰋩  Show images"
-            visible: root.blockedImages > 0 && root.formatted
-            onTriggered: {
-              root.remoteImages = true
-              root.showImagesRequested()
-            }
+        // Fetching a message's pictures tells the sender the mail was
+        // opened -- that is what the tracking pixel among them is for. So
+        // it stays the reader's decision, one message at a time.
+        ViewToggle {
+          label: "󰋩  Show images"
+          visible: root.blockedImages > 0 && root.formatted
+          ink: controlRow.ink
+          edge: controlRow.edge
+          onTriggered: {
+            root.remoteImages = true
+            root.showImagesRequested()
           }
         }
       }
@@ -536,21 +534,27 @@ Item {
   component ViewToggle: Rectangle {
     id: viewToggle
     property string label: ""
+    // Defaults are the app's own. The pair floating over a message override
+    // them, because there the background is the sender's, not the theme's.
+    property color ink: ui.dim
+    property color edge: ui.border
     signal triggered()
 
     width: viewToggleText.implicitWidth + Style.space(20)
     height: Style.space(26)
     radius: ui.radius
-    color: viewToggleHover.containsMouse ? ui.hover : "transparent"
+    color: viewToggleHover.containsMouse
+      ? Qt.rgba(viewToggle.ink.r, viewToggle.ink.g, viewToggle.ink.b, 0.10)
+      : "transparent"
     border.width: 1
-    border.color: ui.border
+    border.color: viewToggle.edge
 
     Text {
       id: viewToggleText
       textFormat: Text.PlainText
       anchors.centerIn: parent
       text: viewToggle.label
-      color: ui.dim
+      color: viewToggle.ink
       font.family: ui.fontFamily
       font.pixelSize: Style.font.caption
     }
