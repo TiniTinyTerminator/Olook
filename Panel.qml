@@ -410,7 +410,7 @@ Panel {
             }
           }
 
-          SmoothScroll { view: panelFlick }
+          MomentumScroll { view: panelFlick }
         }
 
         Column {

@@ -380,7 +380,7 @@ Item {
           }
         }
 
-        SmoothScroll { view: bodyFlick }
+        MomentumScroll { view: bodyFlick }
       }
     }
   }

@@ -169,7 +169,7 @@ Item {
         }
       }
 
-      SmoothScroll { view: sheetFlick }
+      MomentumScroll { view: sheetFlick }
     }
   }
 }

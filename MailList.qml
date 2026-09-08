@@ -26,8 +26,8 @@ Item {
 
   function positionAt(index) {
     if (index < 0 || index >= listView.count) return
-    // Stop any wheel glide first: it would finish afterwards and drag the
-    // list back off the row the keyboard just selected.
+    // Stop any throw still in flight first: it would carry on afterwards and
+    // drag the list back off the row the keyboard just selected.
     listScroll.cancel()
     listView.positionViewAtIndex(index, ListView.Contain)
   }
@@ -273,7 +273,7 @@ Item {
           }
         }
 
-        SmoothScroll { id: listScroll; view: listView }
+        MomentumScroll { id: listScroll; view: listView }
       }
 
       // ---- empty states

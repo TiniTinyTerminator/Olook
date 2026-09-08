@@ -202,7 +202,7 @@ Item {
       }
     }
 
-    SmoothScroll { view: accountsFlick }
+    MomentumScroll { view: accountsFlick }
   }
 
   // ------------------------------------------------------------- components

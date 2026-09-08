@@ -142,7 +142,7 @@ Item {
         }
       }
 
-      SmoothScroll { view: treeFlick }
+      MomentumScroll { view: treeFlick }
     }
   }
 

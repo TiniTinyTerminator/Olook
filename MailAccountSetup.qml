@@ -652,7 +652,7 @@ Item {
       }
     }
 
-    SmoothScroll { view: setupFlick }
+    MomentumScroll { view: setupFlick }
   }
 
   // ------------------------------------------------------------- components
