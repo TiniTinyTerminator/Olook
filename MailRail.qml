@@ -67,13 +67,10 @@ Item {
     width: Style.space(40)
     height: Style.space(40)
 
-    Rectangle {
-      anchors.fill: parent
-      radius: ui.radius
-      color: railButton.current ? ui.selected
-        : (hover.containsMouse ? ui.hover : "transparent")
-    }
-
+    // No plate behind these icons, hovered or current. The rail already says
+    // which app is open twice over -- the bar on the leading edge and the
+    // accent on the glyph -- and hovering brightens the glyph itself.
+    //
     // Outlook marks the active app with a bar on the leading edge.
     Rectangle {
       visible: railButton.current
@@ -90,7 +87,8 @@ Item {
       id: railGlyph
       anchors.centerIn: parent
       text: railButton.glyph
-      color: railButton.current ? ui.accent : ui.dim
+      color: railButton.current ? ui.accent
+        : (hover.containsMouse ? ui.foreground : ui.dim)
       font.family: ui.fontFamily
       font.pixelSize: Style.font.iconLarge
     }
