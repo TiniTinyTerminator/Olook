@@ -21,6 +21,18 @@ Item {
   property string selected: ""
   property string filter: ""
 
+  // The list's width, as asked for by dragging the edge. Kept as the request
+  // rather than the result, so a window too narrow to honour it gives it back
+  // when the window grows again.
+  property real listAsked: 0
+  readonly property int listMin: Style.space(200)
+  readonly property int listMax: Math.max(root.listMin, Math.round(root.width * 0.6))
+  readonly property int listWidth: {
+    var wanted = root.listAsked > 0 ? root.listAsked
+      : Math.min(Style.space(420), Math.round(root.width * 0.34))
+    return Math.max(root.listMin, Math.min(root.listMax, wanted))
+  }
+
   signal composeRequested(string address)
   signal mailRequested(string address)
 
@@ -44,8 +56,7 @@ Item {
 
     // ------------------------------------------------------------ the list
     Item {
-      width: Math.max(Style.space(260),
-                      Math.min(Style.space(420), Math.round(root.width * 0.34)))
+      width: root.listWidth
       height: parent.height
 
       Column {
@@ -182,13 +193,19 @@ Item {
       }
     }
 
-    Rectangle { width: 1; height: parent.height; color: ui.border }
+    PaneSplitter {
+      id: listSplit
+      height: parent.height
+      ui: root.ui
+      onMoved: function (delta) {
+        root.listAsked = Math.max(root.listMin,
+                                  Math.min(root.listMax, root.listWidth + delta))
+      }
+    }
 
     // ---------------------------------------------------------- one person
     Item {
-      width: parent.width - Style.space(1)
-        - Math.max(Style.space(260),
-                   Math.min(Style.space(420), Math.round(root.width * 0.34)))
+      width: parent.width - root.listWidth - listSplit.width
       height: parent.height
 
       MailPlaceholder {

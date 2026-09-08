@@ -34,6 +34,26 @@ Item {
   property string folderPanePref: "auto"      // auto | expanded | icons
   property string readingPanePref: "right"    // right | bottom
 
+  // Pane widths the pointer can change. Kept as what was asked for rather
+  // than what was granted: a window too narrow to honour the request should
+  // give it back when the window grows again, not forget it.
+  // Zero means "never dragged": the pane keeps the width it always had until
+  // someone asks for a different one.
+  property real folderPaneAsked: 0
+  property real listAsked: 0
+
+  readonly property int folderPaneMin: Style.space(150)
+  // Bounded by the row the panes actually live in, not by the plugin root:
+  // the root is not the window, and using it made the ceiling 40% of the
+  // wrong number and pinned the pane to its floor.
+  readonly property int folderPaneMax: Math.max(
+    root.folderPaneMin,
+    Math.min(Style.space(460), Math.round(bodyRow.width * 0.4)))
+
+  function clamp(value, low, high) {
+    return Math.max(low, Math.min(high, value))
+  }
+
   // Three tiers, each one giving up chrome rather than capability. First the
   // folder pane trades its names for icons and tooltips; then the list and the
   // reading pane stop sharing the width and take turns, with a back button.
@@ -766,6 +786,7 @@ Item {
           height: parent.height - commandBar.height - menuBar.height - statusBar.height
 
           Row {
+            id: bodyRow
             anchors.fill: parent
             spacing: 0
 
@@ -782,7 +803,11 @@ Item {
 
             MailFolderPane {
               id: folderPane
-              width: root.foldersCollapsed ? Style.space(50) : Style.space(220)
+              width: root.foldersCollapsed
+                ? Style.space(50)
+                : root.clamp(root.folderPaneAsked > 0 ? root.folderPaneAsked
+                                                      : Style.space(220),
+                             root.folderPaneMin, root.folderPaneMax)
               height: parent.height
               visible: root.view === "mail"
               collapsed: root.foldersCollapsed
@@ -797,6 +822,18 @@ Item {
               }
             }
 
+            PaneSplitter {
+              id: folderSplit
+              height: parent.height
+              visible: folderPane.visible && !root.foldersCollapsed
+              ui: ui
+              onMoved: function (delta) {
+                root.folderPaneAsked = root.clamp(folderPane.width + delta,
+                                                  root.folderPaneMin,
+                                                  root.folderPaneMax)
+              }
+            }
+
             // The list and the reading pane share what is left. They sit side
             // by side, or stacked top and bottom, or — in a window too narrow
             // for either — take turns, which is why they are placed by hand
@@ -805,17 +842,23 @@ Item {
               id: mainArea
               width: parent.width - rail.width
                 - (folderPane.visible ? folderPane.width : 0)
+                - (folderSplit.visible ? folderSplit.width : 0)
               height: parent.height
 
               readonly property bool split: root.view === "mail"
               readonly property bool sideBySide: split && !root.stacked && !root.readerBelow
               readonly property bool topBottom: split && !root.stacked && root.readerBelow
 
+              readonly property int listMin: Style.space(200)
+              readonly property int listMax: Math.max(
+                mainArea.listMin, Math.round(mainArea.width * 0.7))
               readonly property int listW: {
                 if (!mainArea.split) return 0
                 if (!mainArea.sideBySide) return mainArea.width
-                return Math.max(Style.space(240),
-                                Math.min(Style.space(400), Math.round(mainArea.width * 0.36)))
+                // Until it has been dragged, the old proportion decides.
+                var wanted = root.listAsked > 0 ? root.listAsked
+                  : Math.min(Style.space(400), Math.round(mainArea.width * 0.36))
+                return root.clamp(wanted, mainArea.listMin, mainArea.listMax)
               }
               readonly property int listH: {
                 if (!mainArea.split) return 0
@@ -843,6 +886,18 @@ Item {
                 }
               }
 
+              PaneSplitter {
+                id: listSplit
+                x: mainArea.listW
+                height: mainArea.height
+                visible: mainArea.sideBySide && messageList.visible
+                ui: ui
+                onMoved: function (delta) {
+                  root.listAsked = root.clamp(mainArea.listW + delta,
+                                              mainArea.listMin, mainArea.listMax)
+                }
+              }
+
               Rectangle {
                 visible: mainArea.topBottom
                 y: mainArea.listH
@@ -853,9 +908,11 @@ Item {
 
               Item {
                 id: readerArea
-                x: mainArea.sideBySide ? mainArea.listW : 0
+                x: mainArea.sideBySide ? mainArea.listW + listSplit.width : 0
                 y: mainArea.topBottom ? mainArea.listH : 0
-                width: mainArea.sideBySide ? mainArea.width - mainArea.listW : mainArea.width
+                width: mainArea.sideBySide
+                  ? mainArea.width - mainArea.listW - listSplit.width
+                  : mainArea.width
                 height: mainArea.topBottom ? mainArea.height - mainArea.listH : mainArea.height
                 visible: !(mainArea.split && root.stacked && root.pane !== "reader")
 
