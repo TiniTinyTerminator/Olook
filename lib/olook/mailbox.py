@@ -6,10 +6,13 @@ folders and Exchange's `Deleted Items`, because folder roles are resolved from
 RFC 6154 SPECIAL-USE flags first and only fall back to configured names.
 """
 
+import base64
+import binascii
 import email
 import email.policy
 import email.utils
 import imaplib
+import quopri
 import re
 import ssl
 import time
@@ -451,8 +454,10 @@ class Session:
             summary[uid]["headers"] = parsed
 
         # A cheap snippet for the list rows. Part 1 is the text part on the
-        # overwhelming majority of messages; when it isn't, the row just shows
-        # no preview rather than paying for a full body fetch during sync.
+        # overwhelming majority of messages; when it isn't -- plenty of mail
+        # puts a multipart/alternative there, and asking for part 1 then hands
+        # back that whole nested part, boundaries and headers included -- the
+        # row shows no preview rather than showing the raw MIME.
         try:
             data = self.imap.uid("FETCH", ranges, "(UID BODY.PEEK[1]<0.400>)")
             if data[0] == "OK":
@@ -532,15 +537,81 @@ _ROLE_GUESSES = {
 }
 
 
-def _decode_snippet(raw):
-    for encoding in ("utf-8", "latin-1"):
+# A part that is itself multipart arrives as its own boundary line followed by
+# its own headers, and a header block arrives as headers. Neither is a snippet
+# of the message, and both are what used to end up in the list rows.
+MIME_LOOKING = re.compile(
+    rb"^\s*(--[-=_A-Za-z0-9.]{6,}|(Content-(Type|Transfer-Encoding|Disposition)"
+    rb"|Delivered-To|Received|Return-Path|MIME-Version)\s*:)", re.I)
+
+
+def _looks_like_mime(raw):
+    return bool(MIME_LOOKING.match(raw or b""))
+
+
+def _looks_like_base64(raw):
+    """True for a part that is plainly base64 even though nothing said so.
+
+    Real prose has spaces and punctuation; a long unbroken run of the base64
+    alphabet is not a sentence. Without this the row shows the encoding.
+    """
+    body = (raw or b"").strip()
+    # Only line breaks may interrupt it. Stripping all whitespace first would
+    # let any space-separated prose through, which is how this first went
+    # wrong: "Keep track of your Google Account data" matches the alphabet
+    # perfectly once its spaces are gone.
+    if not re.fullmatch(rb"[A-Za-z0-9+/=\r\n]+", body):
+        return False
+    return len(re.sub(rb"\s", b"", body)) >= 40
+
+
+def _from_base64(raw):
+    try:
+        # A part cut off at 400 bytes rarely lands on a 4-character boundary.
+        trimmed = re.sub(rb"\s", b"", raw or b"")
+        return base64.b64decode(trimmed[:len(trimmed) // 4 * 4])
+    except (ValueError, binascii.Error):
+        return b""
+
+
+def _decode_snippet(raw, headers=None):
+    """Turn the first few hundred bytes of a body part into readable text.
+
+    The part arrives as it sits on the server, so quoted-printable leaves
+    "=3D" where an equals sign belongs and "=E2=82=AC" where a euro sign does.
+    Its own MIME headers say how it was encoded and in what charset; without
+    them we can still recognise quoted-printable by sight, which is the one
+    that turns readable text into rubbish rather than into obvious binary.
+    """
+    encoding = ""
+    charset = ""
+    if headers is not None:
+        encoding = str(headers.get("Content-Transfer-Encoding", "")).strip().lower()
+        charset = headers.get_content_charset() or ""
+
+    if _looks_like_mime(raw):
+        return ""
+
+    if encoding == "base64":
+        raw = _from_base64(raw)
+    elif not encoding and _looks_like_base64(raw):
+        raw = _from_base64(raw)
+    elif encoding == "quoted-printable" or (not encoding
+                                            and re.search(rb"=[0-9A-F]{2}", raw)):
+        # A soft line break splits an escape; drop a trailing partial one.
+        raw = quopri.decodestring(re.sub(rb"=[0-9A-F]?$", b"", raw))
+
+    for candidate in (charset, "utf-8", "latin-1"):
+        if not candidate:
+            continue
         try:
-            text = raw.decode(encoding)
+            text = raw.decode(candidate)
             break
-        except UnicodeDecodeError:
+        except (UnicodeDecodeError, LookupError):
             continue
     else:
         return ""
+
     if "<" in text and ">" in text:
         text = htmltext.to_text(text)
     return text
