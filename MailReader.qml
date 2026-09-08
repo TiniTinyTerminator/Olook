@@ -354,6 +354,12 @@ Item {
               Connections {
                 target: htmlView.item
                 function onLinkActivated(link) { Qt.openUrlExternally(link) }
+                function onWheeled(angleY, pixelY) {
+                  if (pixelY !== 0)
+                    bodyScroll.slideBy(pixelY)
+                  else if (angleY !== 0)
+                    bodyScroll.throwBy(angleY / 120)
+                }
               }
             }
 
@@ -415,7 +421,7 @@ Item {
           }
         }
 
-        MomentumScroll { view: bodyFlick }
+        MomentumScroll { id: bodyScroll; view: bodyFlick }
       }
     }
   }

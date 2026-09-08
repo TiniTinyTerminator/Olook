@@ -31,6 +31,9 @@ Item {
   readonly property real contentHeight: Math.max(root.measured, 120)
 
   signal linkActivated(string link)
+  // Raised for a scroll that arrived here rather than at the reading pane's
+  // own handler, so the pane can act on it. See the MouseArea below.
+  signal wheeled(real angleY, real pixelY)
 
   implicitHeight: root.contentHeight
 
@@ -82,6 +85,21 @@ Item {
     // A target="_blank" link asks for a window. It gets the browser instead.
     onNewWindowRequested: function (request) {
       root.linkActivated(String(request.requestedUrl))
+    }
+  }
+
+  // An engine accepts every wheel event it is offered, including the ones it
+  // cannot act on — this page is sized to its content and has nothing of its
+  // own to scroll. So a scroll that reaches it is a scroll that disappears.
+  // This sits on top and hands scrolling back out to the reading pane, which
+  // is what should be moving. Clicks, hover and selection pass straight
+  // through: it takes no buttons.
+  MouseArea {
+    anchors.fill: parent
+    acceptedButtons: Qt.NoButton
+    onWheel: function (event) {
+      root.wheeled(event.angleDelta.y, event.pixelDelta.y)
+      event.accepted = true
     }
   }
 }

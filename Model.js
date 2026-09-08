@@ -110,17 +110,22 @@ function recipientLabel(message) {
 
 // Folder glyphs come from the special-use role, not the name, so a German
 // "Gesendete Elemente" gets the same icon as an English "Sent".
+//
+// Every codepoint here was checked by rendering it from the Nerd Font rather
+// than taken from a table: the previous set was eight valid glyphs that all
+// drew the wrong picture — Inbox was a plus in a box, Sent a target, Trash a
+// bluetooth transfer, Flagged a speech bubble.
 function folderGlyph(folder) {
   var role = folder && folder.special ? folder.special : ""
   var name = String(folder && folder.name ? folder.name : "").toLowerCase()
-  if (role === "inbox" || name === "inbox") return "󰋠"
-  if (role === "sent") return "󰕈"
-  if (role === "drafts") return "󰙊"
-  if (role === "trash") return "󰂴"
-  if (role === "junk") return "󰖚"
-  if (role === "archive" || role === "all") return "󰇠"
-  if (role === "flagged") return "󰊌"
-  return "󰁋"
+  if (role === "inbox" || name === "inbox") return "󰋻"   // tray, arrow in
+  if (role === "sent") return "󰒊"                        // paper plane
+  if (role === "drafts") return "󰏫"                      // pencil
+  if (role === "trash") return "󰆴"                       // trash can
+  if (role === "junk") return "󰀦"                        // alert
+  if (role === "archive" || role === "all") return "󰀼"   // archive box
+  if (role === "flagged") return "󰈻"                     // flag
+  return "󰉋"                                             // folder
 }
 
 function folderLabel(folder) {
