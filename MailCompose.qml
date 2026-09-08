@@ -28,6 +28,10 @@ Item {
 
   property string toText: ""
   property string ccText: ""
+  property string bccText: ""
+  // Hidden until wanted, the way Outlook hides it: most mail has no blind
+  // copy, and a field that is nearly always empty is a field in the way.
+  property bool showBcc: false
   property string subjectText: ""
   property string bodyText: ""
   // The chain being replied to, kept apart from what you are writing so it
@@ -50,6 +54,7 @@ Item {
   property bool loading: false
 
   readonly property bool worthSaving: toText.trim() !== "" || ccText.trim() !== ""
+    || bccText.trim() !== ""
     || subjectText.trim() !== "" || bodyText.trim() !== "" || attachments.length > 0
   // Demo accounts have no server to put a draft on.
   readonly property bool canSaveDraft: !!(service && account && account.demo !== true)
@@ -63,6 +68,8 @@ Item {
     root.loading = true
     toText = (source.to || []).join(", ")
     ccText = (source.cc || []).join(", ")
+    bccText = (source.bcc || []).join(", ")
+    showBcc = bccText !== ""
     subjectText = String(source.subject || "")
     bodyText = String(source.body || "")
     quotedText = String(source.quoted || "")
@@ -199,6 +206,84 @@ Item {
     else bodyField.forceActiveFocus()
   }
 
+  // ---------------------------------------------- recipient completion
+  //
+  // The address book is the mail already on disk, so the names offered are
+  // the people actually written to. Only the fragment after the last comma is
+  // matched: recipient fields hold a list, and the one being typed is the
+  // last of them.
+  property var completingField: null
+  property int completionIndex: 0
+  property real completionX: 0
+  property real completionY: 0
+
+  readonly property string completionFragment: {
+    if (!root.completingField) return ""
+    var text = String(root.completingField.text || "")
+    return text.slice(text.lastIndexOf(",") + 1).trim()
+  }
+
+  readonly property var completions: {
+    var needle = root.completionFragment.toLowerCase()
+    // One letter matches most of an address book, which is not a suggestion.
+    if (!root.service || needle.length < 2) return []
+    var people = root.service.contacts || []
+    var out = []
+    for (var i = 0; i < people.length && out.length < 6; i++) {
+      var person = people[i]
+      if (String(person.address).indexOf(needle) >= 0
+          || String(person.name || "").toLowerCase().indexOf(needle) >= 0)
+        out.push(person)
+    }
+    return out
+  }
+
+  function beginCompletion(field) {
+    root.completingField = field
+    root.completionIndex = 0
+    if (!field) return
+    var point = field.mapToItem(root, 0, field.height + Style.space(6))
+    root.completionX = point.x
+    root.completionY = point.y
+  }
+
+  function acceptCompletion(person) {
+    var field = root.completingField
+    if (!field || !person) return
+    var text = String(field.text || "")
+    var cut = text.lastIndexOf(",")
+    var head = cut < 0 ? "" : text.slice(0, cut + 1) + " "
+    field.text = head + (person.name
+      ? person.name + " <" + person.address + ">" : person.address) + ", "
+    field.cursorPosition = field.text.length
+    root.completionIndex = 0
+  }
+
+  // Returns true when the key belonged to the suggestion list rather than to
+  // the field, so the caller knows to stop there.
+  function completionKey(event) {
+    if (root.completions.length === 0) return false
+    if (event.key === Qt.Key_Down) {
+      root.completionIndex = (root.completionIndex + 1) % root.completions.length
+      return true
+    }
+    if (event.key === Qt.Key_Up) {
+      root.completionIndex = (root.completionIndex + root.completions.length - 1)
+        % root.completions.length
+      return true
+    }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+        || event.key === Qt.Key_Tab) {
+      root.acceptCompletion(root.completions[root.completionIndex])
+      return true
+    }
+    if (event.key === Qt.Key_Escape) {
+      root.completingField = null
+      return true
+    }
+    return false
+  }
+
   function splitAddresses(text) {
     var parts = String(text || "").split(/[,;]/)
     var out = []
@@ -216,6 +301,7 @@ Item {
     return {
       to: splitAddresses(toText),
       cc: splitAddresses(ccText),
+      bcc: splitAddresses(bccText),
       subject: subjectText,
       // What you wrote, then the chain. The engine only knows about a body.
       body: root.quotedText === ""
@@ -236,6 +322,9 @@ Item {
     anchors.fill: parent
     color: ui.background
   }
+
+  Component.onCompleted: if (root.service && (root.service.contacts || []).length === 0)
+    root.service.loadContacts("")
 
   Column {
     anchors.fill: parent
@@ -432,6 +521,11 @@ Item {
         TextInput {
           id: toField
           anchors.fill: parent
+          onActiveFocusChanged: root.beginCompletion(activeFocus ? toField : null)
+          Keys.onPressed: function (event) {
+            if (root.completingField === toField && root.completionKey(event))
+              event.accepted = true
+          }
           verticalAlignment: TextInput.AlignVCenter
           text: root.toText
           onTextChanged: root.toText = text
@@ -460,6 +554,12 @@ Item {
         TextInput {
           id: ccField
           anchors.fill: parent
+          onActiveFocusChanged: root.beginCompletion(activeFocus ? ccField : null)
+          Keys.onPressed: function (event) {
+            if (root.completingField === ccField && root.completionKey(event))
+              event.accepted = true
+          }
+          anchors.rightMargin: bccToggle.width + Style.space(8)
           verticalAlignment: TextInput.AlignVCenter
           text: root.ccText
           onTextChanged: root.ccText = text
@@ -469,7 +569,64 @@ Item {
           font.family: ui.fontFamily
           font.pixelSize: Style.font.body
           clip: true
+          KeyNavigation.tab: root.showBcc ? bccField : subjectField
+        }
+
+        Text {
+          id: bccToggle
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          visible: !root.showBcc
+          text: "Bcc"
+          color: bccHover.containsMouse ? ui.accent : ui.faint
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+
+          MouseArea {
+            id: bccHover
+            anchors.fill: parent
+            anchors.margins: -Style.space(6)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              root.showBcc = true
+              bccField.forceActiveFocus()
+            }
+          }
+        }
+      }
+
+      FieldRow {
+        label: "Bcc"
+        field: bccField
+        visible: root.showBcc
+        TextInput {
+          id: bccField
+          anchors.fill: parent
+          onActiveFocusChanged: root.beginCompletion(activeFocus ? bccField : null)
+          Keys.onPressed: function (event) {
+            if (root.completingField === bccField && root.completionKey(event))
+              event.accepted = true
+          }
+          verticalAlignment: TextInput.AlignVCenter
+          text: root.bccText
+          onTextChanged: root.bccText = text
+          color: ui.foreground
+          selectionColor: Util.alpha(ui.accent, 0.35)
+          selectedTextColor: ui.foreground
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.body
+          clip: true
           KeyNavigation.tab: subjectField
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: bccField.text === ""
+            text: "Blind copies — nobody else sees these"
+            color: ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.body
+          }
         }
       }
 
@@ -753,6 +910,75 @@ Item {
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
           onClicked: root.detach(attachmentChip.path)
+        }
+      }
+    }
+  }
+
+  // The suggestion list. A child of the composer rather than of the field, so
+  // it can hang over the rows underneath instead of being clipped by its own.
+  Rectangle {
+    id: completionList
+    x: root.completionX
+    y: root.completionY
+    z: 50
+    visible: root.completions.length > 0
+    width: Math.min(Style.space(380), root.width - root.completionX - Style.space(24))
+    height: completionColumn.implicitHeight + Style.space(8)
+    radius: ui.radius
+    color: ui.surface
+    border.width: 1
+    border.color: ui.border
+
+    Column {
+      id: completionColumn
+      x: Style.space(4)
+      y: Style.space(4)
+      width: parent.width - Style.space(8)
+
+      Repeater {
+        model: root.completions
+
+        Rectangle {
+          required property var modelData
+          required property int index
+          width: completionColumn.width
+          height: Style.space(34)
+          radius: ui.radius
+          color: index === root.completionIndex ? ui.selected
+            : (suggestionHover.containsMouse ? ui.hover : "transparent")
+
+          Column {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(1)
+
+            Text {
+              textFormat: Text.PlainText
+              text: modelData.name || modelData.address
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: !!modelData.name
+              text: modelData.address
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+
+          MouseArea {
+            id: suggestionHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.acceptCompletion(modelData)
+          }
         }
       }
     }
