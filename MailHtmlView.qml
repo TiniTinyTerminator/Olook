@@ -42,9 +42,38 @@ Item {
 
   onDocumentChanged: {
     root.measured = 0
+    root.fitPending = true
+    view.zoomFactor = 1
     settle.ticks = 0
     settle.restart()
     view.loadHtml(root.document, root.baseUrl)
+  }
+
+  // Mail is written for a width of its own choosing, and a reading pane is
+  // whatever width the window left it. When the message is the wider of the
+  // two it gets scaled down to fit rather than running off the edge.
+  //
+  // Worked out once per document and then left alone. Zooming changes what
+  // the page reports, so recomputing from the new measurement would be the
+  // same trap the height fell into: each correction feeding the next.
+  property bool fitPending: true
+  readonly property real minimumScale: 0.4
+
+  function fitWidth() {
+    if (!root.fitPending || root.width <= 0)
+      return
+    var natural = view.contentsSize.width
+    if (natural <= 0)
+      return
+    root.fitPending = false
+    if (natural <= root.width + 1)
+      return
+    view.zoomFactor = Math.max(root.minimumScale, root.width / natural)
+    // The page is a different height at a different scale, and the
+    // measurement only ever climbs, so it starts again from here.
+    root.measured = 0
+    settle.ticks = 0
+    settle.restart()
   }
 
   // contentsSize reports only when it changes. Load a second document that
@@ -55,7 +84,8 @@ Item {
   // on listening afterwards for the pictures that arrive late and make the
   // page taller.
   function measure() {
-    var height = view.contentsSize.height
+    root.fitWidth()
+    var height = view.contentsSize.height * view.zoomFactor
     if (height > root.measured)
       root.measured = Math.min(height, root.maxHeight)
   }
