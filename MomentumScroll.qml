@@ -50,7 +50,9 @@ MouseArea {
   // carries on afterwards and drags the content back off the row.
   function cancel() {
     root.velocity = 0
-    if (root.view)
+    root.slideVelocity = 0
+    glide.stop()
+    if (root.view && root.view.flicking)
       root.view.cancelFlick()
   }
 
@@ -76,15 +78,58 @@ MouseArea {
     root.view.flick(0, root.velocity)
   }
 
-  // Move the content directly, the way a Flickable does for a drag. Used for
-  // the touchpad, which reports pixels and is already smooth: throwing the
-  // content on every one of those deltas would run away with it.
+  // Touchpad. Qt reports pixels here rather than clicks, so the content
+  // follows the fingers directly instead of being thrown once per notch.
+  //
+  // Two things matter for this to feel like scrolling rather than stepping.
+  // The flick is only cancelled when one is actually running: cancelFlick()
+  // on every event, sixty or more times a second, is churn the Flickable has
+  // to absorb between the moves it is being asked to make. And the gesture
+  // gets an ending -- there is no event to say the fingers left the pad, so a
+  // short silence stands in for one, and whatever speed they left behind
+  // carries on and runs down, the same way a wheel throw does.
+  property double slideAt: 0
+  property real slideVelocity: 0
+
   function slideBy(pixels) {
     if (!root.view)
       return
-    root.cancel()
+    if (root.view.flicking)
+      root.view.cancelFlick()
+    root.velocity = 0
+
+    var now = Date.now()
+    var gap = now - root.slideAt
     var room = Math.max(0, root.view.contentHeight - root.view.height)
     root.view.contentY = Math.max(0, Math.min(room, root.view.contentY - pixels))
+
+    // Pixels per second, smoothed, so one late event does not decide the
+    // throw. A long gap means the last gesture is over and this is a new one.
+    if (gap > 0 && gap < 100) {
+      var sample = pixels * 1000 / gap
+      root.slideVelocity = root.slideVelocity === 0
+        ? sample : root.slideVelocity * 0.6 + sample * 0.4
+    } else {
+      root.slideVelocity = 0
+    }
+    root.slideAt = now
+    glide.restart()
+  }
+
+  Timer {
+    id: glide
+    interval: 90
+    onTriggered: {
+      // Nothing for 90ms: the fingers have gone. Let the motion they left
+      // carry on and slow down rather than stopping dead under them.
+      if (root.view && Math.abs(root.slideVelocity) > 60) {
+        var cap = root.view.maximumFlickVelocity
+        root.velocity = Math.max(-cap, Math.min(cap, root.slideVelocity))
+        root.sentAt = Date.now()
+        root.view.flick(0, root.velocity)
+      }
+      root.slideVelocity = 0
+    }
   }
 
   onWheel: function (event) {
