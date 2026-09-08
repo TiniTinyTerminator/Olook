@@ -76,14 +76,37 @@ MouseArea {
     root.view.flick(0, root.velocity)
   }
 
+  // Move the content directly, the way a Flickable does for a drag. Used for
+  // the touchpad, which reports pixels and is already smooth: throwing the
+  // content on every one of those deltas would run away with it.
+  function slideBy(pixels) {
+    if (!root.view)
+      return
+    root.cancel()
+    var room = Math.max(0, root.view.contentHeight - root.view.height)
+    root.view.contentY = Math.max(0, Math.min(room, root.view.contentY - pixels))
+  }
+
   onWheel: function (event) {
-    // angleDelta is the field Qt always fills in. A touchpad adds pixelDelta
-    // on top and is already smooth — throwing the content on every one of
-    // those deltas would run away with it — so it keeps the Flickable's own
-    // handling. flick() takes the velocity of the content, which travels
-    // against the scroll, and so does the delta: a click towards you is
-    // negative and sends the content up the screen.
-    if (!root.view || event.angleDelta.y === 0 || event.pixelDelta.y !== 0) {
+    // Every vertical scroll is answered here, and none is handed back. An
+    // unaccepted wheel does not travel up to the Flickable — it carries on
+    // down to whatever is underneath, and in the reading pane that is a
+    // browser engine, which takes it and scrolls a page that is already sized
+    // to its content. Nothing moves.
+    //
+    // flick() takes the velocity of the content, which travels against the
+    // scroll, and so does the delta: a click towards you is negative and
+    // sends the content up the screen.
+    if (!root.view) {
+      event.accepted = false
+      return
+    }
+    if (event.pixelDelta.y !== 0) {
+      root.slideBy(event.pixelDelta.y)
+      event.accepted = true
+      return
+    }
+    if (event.angleDelta.y === 0) {
       event.accepted = false
       return
     }
