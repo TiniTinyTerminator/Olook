@@ -41,6 +41,13 @@ Item {
   // someone asks for a different one.
   property real folderPaneAsked: 0
   property real listAsked: 0
+  // The list starts as a share of the space beside it and is pinned to that
+  // many pixels as soon as there is a real width to take a share of. After
+  // that it is a number, not a proportion, which is the whole point: dragging
+  // the folder pane changes what is left over, and a pane still expressed as
+  // a share of the leftovers would slide about every time a different edge
+  // moved. Only the reading pane gives and takes.
+  property bool listPinned: false
 
   readonly property int folderPaneMin: Style.space(150)
   // Bounded by the row the panes actually live in, not by the plugin root:
@@ -855,11 +862,22 @@ Item {
               readonly property int listW: {
                 if (!mainArea.split) return 0
                 if (!mainArea.sideBySide) return mainArea.width
-                // Until it has been dragged, the old proportion decides.
                 var wanted = root.listAsked > 0 ? root.listAsked
                   : Math.min(Style.space(400), Math.round(mainArea.width * 0.36))
                 return root.clamp(wanted, mainArea.listMin, mainArea.listMax)
               }
+
+              onWidthChanged: mainArea.pinList()
+
+              function pinList() {
+                if (root.listPinned || mainArea.width <= 0)
+                  return
+                root.listAsked = Math.min(Style.space(400),
+                                          Math.round(mainArea.width * 0.36))
+                root.listPinned = true
+              }
+
+              Component.onCompleted: mainArea.pinList()
               readonly property int listH: {
                 if (!mainArea.split) return 0
                 if (!mainArea.topBottom) return mainArea.height

@@ -25,6 +25,10 @@ Item {
   // rather than the result, so a window too narrow to honour it gives it back
   // when the window grows again.
   property real listAsked: 0
+  // Pinned to pixels once there is a width to take a share of, for the same
+  // reason the mail view's list is: a pane measured as a share of what is
+  // left moves whenever anything else does.
+  property bool listPinned: false
   readonly property int listMin: Style.space(200)
   readonly property int listMax: Math.max(root.listMin, Math.round(root.width * 0.6))
   readonly property int listWidth: {
@@ -45,6 +49,16 @@ Item {
 
   onVisibleChanged: if (visible && root.people.length === 0 && service)
     service.loadContacts("")
+
+  onWidthChanged: root.pinList()
+  Component.onCompleted: root.pinList()
+
+  function pinList() {
+    if (root.listPinned || root.width <= 0)
+      return
+    root.listAsked = Math.min(Style.space(420), Math.round(root.width * 0.34))
+    root.listPinned = true
+  }
 
   Rectangle {
     anchors.fill: parent
