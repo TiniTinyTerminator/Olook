@@ -385,15 +385,25 @@ def cmd_body(args):
 
     if not cached:
         with mailbox.Session(account) as session:
-            session.select(folder, readonly=True)
+            # Read-write when the message is about to be marked read: STORE
+            # against a folder opened read-only is an error, and it used to
+            # take the whole message down with it — you asked to read a mail
+            # and got "could not be loaded" instead.
+            session.select(folder, readonly=not args.mark_read)
             raw = session.fetch_message(args.uid)
             extracted = message.extract(raw)
             _save_inline_images(raw, extracted, account["id"], folder, args.uid)
             store.save_body(conn, account["id"], folder, args.uid, extracted["text"],
                             extracted["html"], extracted["parts"], extracted["headers"])
             if args.mark_read:
-                session.store_flags([args.uid], ["\\Seen"], add=True)
-                store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
+                # The body is already in hand; a server that will not take
+                # the flag is not a reason to withhold it.
+                try:
+                    session.store_flags([args.uid], ["\\Seen"], add=True)
+                except mailbox.MailError:
+                    pass
+                else:
+                    store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
         cached = store.get_body(conn, account["id"], folder, args.uid)
     elif args.mark_read:
         _mark_seen(account, conn, folder, [args.uid], True)
