@@ -391,9 +391,12 @@ Item {
               active: root.webRenderer && root.webDocument !== ""
                 && root.hasRich && root.formatted && !root.loadingBody
               source: "MailHtmlView.qml"
+              // Remote access first, then the document: setting the
+              // document is what triggers the load, and a load that starts
+              // before the setting is in place renders without the pictures.
               onLoaded: {
-                item.document = Qt.binding(function () { return root.webDocument })
                 item.allowRemote = Qt.binding(function () { return root.remoteImages })
+                item.document = Qt.binding(function () { return root.webDocument })
               }
 
               Connections {

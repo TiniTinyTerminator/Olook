@@ -40,7 +40,16 @@ Item {
 
   implicitHeight: root.contentHeight
 
-  onDocumentChanged: {
+  onDocumentChanged: root.reload()
+
+  // Whether remote images may load is a setting on the view, and a setting
+  // read at load time: changing it afterwards leaves the page as it was
+  // rendered. So the page is rendered again. This is what made images vanish
+  // when the reading pane went to plain text and back -- the view is rebuilt
+  // from scratch on the way back, and its default is to allow nothing.
+  onAllowRemoteChanged: if (root.document !== "") root.reload()
+
+  function reload() {
     root.measured = 0
     root.fitPending = true
     view.zoomFactor = 1
