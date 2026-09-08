@@ -127,6 +127,7 @@ function recipientLabel(message) {
 function folderGlyph(folder) {
   var role = folder && folder.special ? folder.special : ""
   var name = String(folder && folder.name ? folder.name : "").toLowerCase()
+  if (role === "allaccounts") return "󰉓"                  // stacked folders
   if (role === "inbox" || name === "inbox") return "󰋻"   // tray, arrow in
   if (role === "sent") return "󰒊"                        // paper plane
   if (role === "drafts") return "󰏫"                      // pencil
@@ -142,7 +143,8 @@ function folderLabel(folder) {
   var role = folder && folder.special ? folder.special : ""
   var pretty = {
     inbox: "Inbox", sent: "Sent Items", drafts: "Drafts", trash: "Deleted Items",
-    junk: "Junk Email", archive: "Archive", all: "Archive"
+    junk: "Junk Email", archive: "Archive", all: "Archive",
+    allaccounts: "All mail"
   }
   if (pretty[role]) return pretty[role]
   if (name.toUpperCase() === "INBOX") return "Inbox"

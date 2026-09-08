@@ -51,6 +51,13 @@ def _csp(allow_remote):
 # styles itself. The paper colour matches the card the view sits on.
 BASE_CSS = """
 html { -webkit-text-size-adjust: 100%; }
+/* A page that sizes itself to its viewport cannot be shown in a view that
+   sizes itself to the page: each one grows the other, and the message runs on
+   until it hits the height cap with nothing in it. Mail asks for this to make
+   a background colour fill the window, which is not something it gets to do
+   here anyway. Height comes from content, and only from content. */
+html, body { height: auto !important; min-height: 0 !important;
+             max-height: none !important; }
 body { margin: 0; padding: 0; background: #fbfbf9; color: #16181d;
        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
        overflow-wrap: break-word; }

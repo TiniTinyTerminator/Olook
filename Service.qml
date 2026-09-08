@@ -74,6 +74,11 @@ Item {
     return accounts.length > 0 ? accounts[0] : null
   }
   readonly property var currentFolder: {
+    // The All folder is not in any account's folder list, so it describes
+    // itself: without this the header shows the raw name nobody should see.
+    if (Model.isAllFolder(folder))
+      return { name: folder, special: "allaccounts",
+               unseen: root.unreadEverywhere }
     for (var i = 0; i < folders.length; i++)
       if (folders[i].name === folder) return folders[i]
     return null
@@ -312,7 +317,20 @@ Item {
   onSyncingChanged: if (!root.syncing) Qt.callLater(root.ensureFolderSynced)
 
   function openFolder(accountId, folderName) {
-    if (!accountId || !folderName) return
+    if (!folderName) return
+    // The All folder belongs to no account, so it names none. Whichever
+    // account was current stays current: it is what a new message is sent
+    // from, and reading across accounts should not silently change that.
+    if (Model.isAllFolder(folderName)) {
+      if (root.viewingAll) return
+      root.folder = folderName
+      root.selected = null
+      root.body = null
+      root.messages = []
+      loadMessages()
+      return
+    }
+    if (!accountId) return
     if (accountId === root.accountId && folderName === root.folder) return
     root.accountId = accountId
     root.folders = root.foldersFor(accountId)
@@ -322,6 +340,14 @@ Item {
     root.messages = []
     loadMessages()
     ensureFolderSynced()
+  }
+
+  // Unread across every account, for the All row's badge.
+  readonly property int unreadEverywhere: {
+    var total = 0
+    for (var i = 0; i < root.accounts.length; i++)
+      total += Number(root.accounts[i].unread || 0)
+    return total
   }
 
   function setAccount(id) {
@@ -342,7 +368,9 @@ Item {
     root.selected = null
     root.body = null
     loadMessages()
-    ensureFolderSynced()
+    // Nothing to sync for a folder no server has; its contents are whatever
+    // the accounts have already pulled down.
+    if (!root.viewingAll) ensureFolderSynced()
   }
 
   function setFilter(mode) {
@@ -358,11 +386,17 @@ Item {
 
   // ---------------------------------------------------------------- messages
 
+  readonly property bool viewingAll: Model.isAllFolder(root.folder)
+
   function loadMessages() {
     if (!root.accountId) return
     root.loading = true
-    var args = accountArgs(["list", "--folder", root.folder,
-                            "--limit", String(root.listLimit)])
+    // The All folder is not a mailbox on any server: it is every account's
+    // inbox in one list, so it names no account and no folder of its own.
+    var args = root.viewingAll
+      ? ["list", "--all-accounts", "--limit", String(root.listLimit)]
+      : accountArgs(["list", "--folder", root.folder,
+                     "--limit", String(root.listLimit)])
     if (root.filter === "unread") args.push("--unread")
     if (root.filter === "flagged") args.push("--flagged")
     if (root.query) args = args.concat(["--query", root.query])
@@ -379,7 +413,8 @@ Item {
       if (root.selected) {
         for (var i = 0; i < root.messages.length; i++) {
           if (root.messages[i].uid === root.selected.uid
-              && root.messages[i].folder === root.selected.folder) {
+              && root.messages[i].folder === root.selected.folder
+              && root.messages[i].account === root.selected.account) {
             root.selected = root.messages[i]
             return
           }
@@ -424,7 +459,7 @@ Item {
     root.selected = entry
     root.body = null
     var args = accountArgs(["body", "--folder", entry.folder,
-                            "--uid", String(entry.uid)])
+                            "--uid", String(entry.uid)], entry.account)
     if (!entry.seen) args.push("--mark-read")
     run(args, function (ok, payload, stderrText) {
       if (!ok) {
@@ -457,7 +492,8 @@ Item {
     var entry = root.selected
     if (!entry) return
     var args = accountArgs(["body", "--folder", entry.folder,
-                            "--uid", String(entry.uid), "--remote-images"])
+                            "--uid", String(entry.uid), "--remote-images"],
+                           entry.account)
     run(args, function (ok, payload, stderrText) {
       if (!ok || !payload || !payload.body) {
         reportFailure(payload, stderrText, "Could not load the images")
@@ -523,7 +559,8 @@ Item {
     if (!entry) return
     root.busy = true
     var args = accountArgs(["flag", "--folder", entry.folder,
-                            "--uid", String(entry.uid), "--set", flagName])
+                            "--uid", String(entry.uid), "--set", flagName],
+                           entry.account)
     run(args, function (ok, payload, stderrText) {
       root.busy = false
       if (!ok) {
@@ -550,7 +587,8 @@ Item {
     root.busy = true
     dropLocal(entry)
     var args = accountArgs(["move", "--folder", entry.folder,
-                            "--uid", String(entry.uid), "--to", target])
+                            "--uid", String(entry.uid), "--to", target],
+                           entry.account)
     run(args, function (ok, payload, stderrText) {
       root.busy = false
       if (!ok) {
@@ -572,7 +610,7 @@ Item {
     root.busy = true
     dropLocal(entry)
     var args = accountArgs(["delete", "--folder", entry.folder,
-                            "--uid", String(entry.uid)])
+                            "--uid", String(entry.uid)], entry.account)
     run(args, function (ok, payload, stderrText) {
       root.busy = false
       if (!ok) {
@@ -619,7 +657,7 @@ Item {
   function openDraft(entry, handler) {
     if (!entry) return null
     var args = accountArgs(["body", "--folder", entry.folder,
-                            "--uid", String(entry.uid)])
+                            "--uid", String(entry.uid)], entry.account)
     return run(args, function (ok, payload, stderrText) {
       if (!ok || !payload || !payload.body) {
         reportFailure(payload, stderrText, "Could not open the draft")
@@ -695,7 +733,8 @@ Item {
   function saveAttachment(entry, index, open) {
     if (!entry) return
     var args = accountArgs(["attachment", "--folder", entry.folder,
-                            "--uid", String(entry.uid), "--index", String(index)])
+                            "--uid", String(entry.uid), "--index", String(index)],
+                           entry.account)
     if (open) args.push("--open")
     run(args, function (ok, payload, stderrText) {
       if (!ok) {

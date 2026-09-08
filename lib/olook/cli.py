@@ -343,9 +343,17 @@ def cmd_sync(args):
              for r in d["results"]))
 
 
+# The virtual folder that merges every account's inbox. Matches ALL_FOLDER in
+# Model.js; no server has a folder by this name and nothing is moved into it.
+ALL_FOLDER = "__all__"
+
+
 def cmd_list(args):
-    account = config.account(args.account)
     conn = store.connect()
+    if args.all_accounts:
+        cmd_list_all(args, conn)
+        return
+    account = config.account(args.account)
     folder = args.folder
     if folder in ("archive", "sent", "trash", "drafts", "junk"):
         folder = _role_folder(conn, account, folder)
@@ -358,6 +366,37 @@ def cmd_list(args):
              f"{'●' if not m['seen'] else ' '} {when(m['date']):>10}  "
              f"{(m['fromName'] or m['fromAddr'])[:22]:22}  {m['subject'][:60]}"
              for m in d["messages"]) or "No messages cached. Run: olook sync")
+
+
+def cmd_list_all(args, conn):
+    """Every account's inbox in one list, newest first.
+
+    Deliberately the inboxes and nothing else: a view that also mixed in Sent,
+    Trash and Junk would not be "all my mail", it would be unusable. Each row
+    carries the account it came from, which is what the reading pane shows and
+    what a reply is sent from.
+    """
+    pairs = []
+    for entry in config.accounts():
+        if entry.get("enabled") is False:
+            continue
+        pairs.append((entry["id"], _inbox_folder(conn, entry)))
+    messages = store.list_across(
+        conn, pairs, limit=args.limit, offset=args.offset,
+        unread_only=args.unread, flagged_only=args.flagged, query=args.query or "")
+    emit({"ok": True, "account": "", "folder": ALL_FOLDER,
+          "messages": messages, "count": len(messages)},
+         lambda d: "\n".join(
+             f"{'●' if not m['seen'] else ' '} {when(m['date']):>10}  "
+             f"{(m['fromName'] or m['fromAddr'])[:22]:22}  {m['subject'][:60]}"
+             for m in d["messages"]) or "No messages cached. Run: olook sync")
+
+
+def _inbox_folder(conn, account):
+    for entry in store.list_folders(conn, account["id"]):
+        if entry["special"] == "inbox":
+            return entry["name"]
+    return "INBOX"
 
 
 def _role_folder(conn, account, role):
@@ -956,6 +995,8 @@ def build_parser():
     p.add_argument("--unread", action="store_true")
     p.add_argument("--flagged", action="store_true")
     p.add_argument("--query", default="")
+    p.add_argument("--all-accounts", action="store_true",
+                   help="every account's inbox in one list")
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser("body", help="fetch one message body")

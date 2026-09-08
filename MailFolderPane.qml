@@ -121,6 +121,20 @@ Item {
         width: parent.width
         spacing: Style.space(4)
 
+        // Every account's inbox in one list. Only worth offering when there
+        // is more than one account to merge.
+        FolderRow {
+          width: treeColumn.width
+          visible: root.accounts.length > 1
+          isAll: true
+          accountId: ""
+          folder: ({
+            name: Model.ALL_FOLDER,
+            special: "allaccounts",
+            unseen: root.service ? root.service.unreadEverywhere : 0
+          })
+        }
+
         Repeater {
           model: root.accounts
           AccountSection {
@@ -324,9 +338,13 @@ Item {
     id: folderRow
     property var folder: null
     property string accountId: ""
-    readonly property bool current: root.service
-      && root.service.accountId === accountId
-      && root.service.folder === (folder ? folder.name : "")
+    // The All row belongs to no account, so it cannot be matched on one.
+    property bool isAll: false
+    readonly property bool current: folderRow.isAll
+      ? !!(root.service && Model.isAllFolder(root.service.folder))
+      : !!(root.service
+           && root.service.accountId === accountId
+           && root.service.folder === (folder ? folder.name : ""))
 
     height: Style.space(26)
     radius: ui.radius

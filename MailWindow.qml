@@ -868,6 +868,11 @@ Item {
                   visible: root.view === "mail" && !root.composing && !root.needsSignIn
                   ui: ui
                   service: mail
+                  // In the All folder the reader says which mailbox the
+                  // message arrived on, because that is the address a reply
+                  // leaves from.
+                  account: mail.accountFor(mail.selected ? mail.selected.account : "")
+                  showAccount: mail.viewingAll
                   message: mail.selected
                   body: mail.body
                   active: root.pane === "reader"

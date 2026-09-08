@@ -153,6 +153,34 @@ def list_messages(conn, account, folder=None, limit=100, offset=0,
     return [row_to_message(row) for row in conn.execute(sql, params)]
 
 
+def list_across(conn, pairs, limit=100, offset=0, unread_only=False,
+                flagged_only=False, query=""):
+    """List messages from several (account, folder) mailboxes at once.
+
+    One query rather than one per account, so the merged list is sorted by
+    date across all of them instead of being stitched together afterwards and
+    truncated in the wrong place.
+    """
+    if not pairs:
+        return []
+    where = ["(" + " OR ".join(["(account = ? AND folder = ?)"] * len(pairs)) + ")"]
+    params = []
+    for account, folder in pairs:
+        params.extend([account, folder])
+    if unread_only:
+        where.append("seen = 0")
+    if flagged_only:
+        where.append("flagged = 1")
+    if query:
+        where.append("(subject LIKE ? OR from_name LIKE ? OR from_addr LIKE ? OR preview LIKE ?)")
+        like = f"%{query}%"
+        params.extend([like, like, like, like])
+    sql = (f"SELECT * FROM messages WHERE {' AND '.join(where)} "
+           f"ORDER BY date DESC, uid DESC LIMIT ? OFFSET ?")
+    params.extend([int(limit), int(offset)])
+    return [row_to_message(row) for row in conn.execute(sql, params)]
+
+
 def get_message(conn, account, folder, uid):
     row = conn.execute(
         "SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?",

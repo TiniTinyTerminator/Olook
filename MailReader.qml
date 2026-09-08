@@ -319,26 +319,32 @@ Item {
       width: parent.width
       height: parent.height - header.height
 
+      // No inset. A message is the thing being read, so it gets the whole
+      // pane: its own markup already carries the margins its designer wanted,
+      // and a second set around the outside only makes the column narrower.
+      // The parts that are ours rather than the sender's -- attachments, the
+      // plain-text view, the notices -- keep their own breathing room below.
       Flickable {
         id: bodyFlick
         anchors.fill: parent
-        anchors.leftMargin: Style.space(24)
-        anchors.rightMargin: Style.space(12)
-        anchors.topMargin: Style.space(16)
         contentWidth: width
-        contentHeight: bodyColumn.implicitHeight + Style.space(24)
+        contentHeight: bodyColumn.implicitHeight + Style.space(16)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         Column {
           id: bodyColumn
-          width: bodyFlick.width - Style.space(12)
+          width: bodyFlick.width
           spacing: Style.space(16)
+          // What our own chrome insets itself by, so it does not sit against
+          // the edge the message is allowed to use.
+          readonly property real gutter: Style.space(20)
 
           // attachments strip
           Flow {
-            width: parent.width
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
             spacing: Style.space(8)
             visible: root.attachments.length > 0
 
@@ -353,48 +359,13 @@ Item {
 
           Text {
             textFormat: Text.PlainText
-            width: parent.width
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
             visible: root.loadingBody
             text: "Loading message…"
             color: ui.faint
             font.family: ui.fontFamily
             font.pixelSize: Style.font.body
-          }
-
-          // ------------------------------------------------- html controls
-          Row {
-            width: parent.width
-            spacing: Style.space(10)
-            visible: root.hasRich && !root.loadingBody
-
-            ViewToggle {
-              label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
-              onTriggered: root.formatted = !root.formatted
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              anchors.verticalCenter: parent.verticalCenter
-              visible: root.blockedImages > 0
-              text: root.blockedImages === 1
-                ? "1 remote image blocked"
-                : root.blockedImages + " remote images blocked"
-              color: ui.faint
-              font.family: ui.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-
-            // Fetching a message's pictures tells the sender the mail was
-            // opened -- that is what the tracking pixel among them is for. So
-            // it stays the reader's decision, one message at a time.
-            ViewToggle {
-              label: "󰋩  Show images"
-              visible: root.blockedImages > 0 && root.formatted
-              onTriggered: {
-                root.remoteImages = true
-                root.showImagesRequested()
-              }
-            }
           }
 
           // The formatted view: a light card, because mail HTML assumes one.
@@ -405,20 +376,17 @@ Item {
             readonly property bool web: htmlView.status === Loader.Ready
             width: parent.width
             height: visible
-              ? (web ? htmlView.item.contentHeight : richText.implicitHeight)
-                + Style.space(28)
+              ? (web ? htmlView.item.contentHeight
+                     : richText.implicitHeight + Style.space(28))
               : 0
             visible: root.hasRich && root.formatted && !root.loadingBody
-            radius: ui.radius
+            // Flush: no rounding, no outline, no inset. The paper runs to the
+            // edges of the pane and the message decides its own margins.
             color: "#fbfbf9"
-            border.width: 1
-            border.color: Util.alpha(ui.foreground, 0.16)
 
             Loader {
               id: htmlView
-              x: Style.space(14)
-              y: Style.space(14)
-              width: parent.width - Style.space(28)
+              width: parent.width
               height: item ? item.contentHeight : 0
               active: root.webRenderer && root.webDocument !== ""
                 && root.hasRich && root.formatted && !root.loadingBody
@@ -446,6 +414,8 @@ Item {
               x: Style.space(14)
               y: Style.space(14)
               width: parent.width - Style.space(28)
+              // Qt's rich text has no page of its own to carry margins, so
+              // this one keeps the inset the web view does not need.
               text: root.body ? String(root.body.rich || "") : ""
               textFormat: TextEdit.RichText
               color: "#16181d"
@@ -467,7 +437,8 @@ Item {
           }
 
           TextEdit {
-            width: parent.width
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
             visible: !root.loadingBody && !(root.hasRich && root.formatted)
             text: root.body ? String(root.body.text || "") : ""
             color: ui.foreground
@@ -483,7 +454,8 @@ Item {
 
           Text {
             textFormat: Text.PlainText
-            width: parent.width
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
             visible: !root.loadingBody && !!root.body && !root.hasRich
               && String(root.body.text || "") === ""
             text: root.body && root.body.failed === true
@@ -499,6 +471,64 @@ Item {
         }
 
         MomentumScroll { id: bodyScroll; view: bodyFlick }
+      }
+
+      // Pinned to the corner of the message rather than sitting on a row of
+      // its own above it. These controls belong to the message being shown,
+      // and a whole row of height to say "Formatted" is height the message
+      // could have used instead. They stay put while it scrolls under them,
+      // which also keeps them in reach at the bottom of a long mail.
+      Rectangle {
+        anchors.right: bodyFlick.right
+        anchors.top: bodyFlick.top
+        anchors.rightMargin: Style.space(12)
+        anchors.topMargin: Style.space(8)
+        width: controlRow.implicitWidth + Style.space(16)
+        height: controlRow.implicitHeight + Style.space(10)
+        radius: ui.radius
+        // Its own ground. These float over whatever the message put there,
+        // and mail brings its own colours: without this they would be legible
+        // on a white newsletter and invisible on a dark one.
+        color: ui.background
+        border.width: 1
+        border.color: ui.border
+        visible: root.hasRich && !root.loadingBody
+        z: 1
+
+        Row {
+          id: controlRow
+          anchors.centerIn: parent
+          spacing: Style.space(8)
+
+          ViewToggle {
+            label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
+            onTriggered: root.formatted = !root.formatted
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.blockedImages > 0
+            text: root.blockedImages === 1
+              ? "1 remote image blocked"
+              : root.blockedImages + " remote images blocked"
+            color: ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          // Fetching a message's pictures tells the sender the mail was
+          // opened -- that is what the tracking pixel among them is for. So
+          // it stays the reader's decision, one message at a time.
+          ViewToggle {
+            label: "󰋩  Show images"
+            visible: root.blockedImages > 0 && root.formatted
+            onTriggered: {
+              root.remoteImages = true
+              root.showImagesRequested()
+            }
+          }
+        }
       }
     }
   }
