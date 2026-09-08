@@ -923,15 +923,32 @@ Item {
                   }
                 }
 
+                MailContacts {
+                  anchors.fill: parent
+                  visible: root.view === "people"
+                  ui: ui
+                  service: mail
+
+                  onComposeRequested: function (address) {
+                    root.popOutCompose({ to: [address], cc: [], subject: "",
+                                         body: "", inReplyTo: "", references: "" },
+                                       mail.currentAccount)
+                  }
+                  // Everything exchanged with this person, in the mail view.
+                  onMailRequested: function (address) {
+                    root.setView("mail")
+                    root.searchText = address
+                    mail.setQuery(address)
+                  }
+                }
+
                 MailPlaceholder {
                   anchors.fill: parent
-                  visible: root.view === "calendar" || root.view === "people"
+                  visible: root.view === "calendar"
                   ui: ui
-                  glyph: root.view === "calendar" ? "󰃭" : "󰀓"
-                  title: root.view === "calendar" ? "Calendar" : "People"
-                  subtitle: root.view === "calendar"
-                    ? "Your calendar lands here next — the mail engine already speaks to the same accounts."
-                    : "Contacts from your mail accounts will show up here."
+                  glyph: "󰃭"
+                  title: "Calendar"
+                  subtitle: "Your calendar lands here next — the mail engine already speaks to the same accounts."
                 }
               }
             }

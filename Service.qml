@@ -505,6 +505,26 @@ Item {
     }, "body")
   }
 
+  // Everyone the cached mail has been to or from. Loaded on demand: the
+  // People view is the only thing that wants it, and it is a whole-mailbox
+  // scan rather than a folder listing.
+  property var contacts: []
+  property bool contactsLoading: false
+
+  function loadContacts(text) {
+    root.contactsLoading = true
+    var args = ["contacts", "--limit", "500"]
+    if (text) args = args.concat(["--query", String(text)])
+    run(args, function (ok, payload, stderrText) {
+      root.contactsLoading = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not read your contacts")
+        return
+      }
+      root.contacts = payload.contacts || []
+    }, "contacts")
+  }
+
   // The account record a message belongs to. Rows carry an account id; the
   // reader and the reply need the whole account behind it.
   function accountFor(accountId) {

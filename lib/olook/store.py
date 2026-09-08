@@ -181,6 +181,71 @@ def list_across(conn, pairs, limit=100, offset=0, unread_only=False,
     return [row_to_message(row) for row in conn.execute(sql, params)]
 
 
+def contacts(conn, accounts=None, mine=(), query="", limit=500):
+    """Everyone the cached mail has been to or from, most written-to first.
+
+    Built from what is already on disk rather than from an address book: the
+    people worth showing are the ones actually corresponded with, and the
+    ranking that matters is how often and how recently.
+    """
+    where, params = [], []
+    if accounts:
+        where.append("account IN (%s)" % ",".join("?" * len(accounts)))
+        params.extend(accounts)
+    sql = ("SELECT account, folder, from_name, from_addr, to_addrs, cc_addrs, date "
+           "FROM messages")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+
+    # Your own addresses are on nearly every message and are not people you
+    # correspond with; they would take the top of the list and stay there.
+    own = {str(address or "").strip().lower() for address in (mine or ())}
+    people = {}
+
+    def note(name, address, date, account, outgoing):
+        address = str(address or "").strip().lower()
+        if not address or "@" not in address or address in own:
+            return
+        entry = people.get(address)
+        if entry is None:
+            entry = people[address] = {
+                "address": address, "name": "", "messages": 0,
+                "received": 0, "sent": 0, "lastSeen": 0, "accounts": [],
+            }
+        # The prettiest name wins: senders give one, recipient lists rarely do.
+        name = str(name or "").strip()
+        if name and (not entry["name"] or len(name) > len(entry["name"])):
+            entry["name"] = name
+        entry["messages"] += 1
+        entry["sent" if outgoing else "received"] += 1
+        entry["lastSeen"] = max(entry["lastSeen"], int(date or 0))
+        if account not in entry["accounts"]:
+            entry["accounts"].append(account)
+
+    def listed(value):
+        # Stored as a JSON array; older rows may still be a plain string.
+        try:
+            parsed = json.loads(value or "[]")
+        except ValueError:
+            return [part for part in str(value or "").split(",") if part.strip()]
+        return parsed if isinstance(parsed, list) else [parsed]
+
+    for row in conn.execute(sql, params):
+        outgoing = "sent" in str(row["folder"] or "").lower()
+        note(row["from_name"], row["from_addr"], row["date"], row["account"], False)
+        for field in ("to_addrs", "cc_addrs"):
+            for address in listed(row[field]):
+                note("", address, row["date"], row["account"], outgoing)
+
+    found = list(people.values())
+    if query:
+        needle = query.strip().lower()
+        found = [p for p in found
+                 if needle in p["address"] or needle in p["name"].lower()]
+    found.sort(key=lambda p: (-p["messages"], -p["lastSeen"]))
+    return found[:int(limit)]
+
+
 def get_message(conn, account, folder, uid):
     row = conn.execute(
         "SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?",

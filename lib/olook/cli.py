@@ -406,6 +406,23 @@ def _role_folder(conn, account, role):
     return (account.get("folders") or {}).get(role, role)
 
 
+def cmd_contacts(args):
+    """Everyone the cached mail has been to or from."""
+    conn = store.connect()
+    accounts = None
+    if args.account:
+        accounts = [config.account(args.account)["id"]]
+    mine = [entry["email"] for entry in config.accounts()
+            if not accounts or entry["id"] in accounts]
+    people = store.contacts(conn, accounts=accounts, mine=mine,
+                            query=args.query or "", limit=args.limit)
+    emit({"ok": True, "contacts": people, "count": len(people)},
+         lambda d: "\n".join(
+             f"{(c['name'] or c['address'])[:28]:28}  {c['address'][:34]:34}  "
+             f"{c['messages']:4d}"
+             for c in d["contacts"]) or "No contacts yet. Run: olook sync")
+
+
 def cmd_body(args):
     account = config.account(args.account)
     conn = store.connect()
@@ -998,6 +1015,12 @@ def build_parser():
     p.add_argument("--all-accounts", action="store_true",
                    help="every account's inbox in one list")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("contacts", help="people from your cached mail")
+    p.add_argument("--account")
+    p.add_argument("--query", default="")
+    p.add_argument("--limit", type=int, default=500)
+    p.set_defaults(func=cmd_contacts)
 
     p = sub.add_parser("body", help="fetch one message body")
     p.add_argument("--account"), p.add_argument("--folder", default="INBOX")
