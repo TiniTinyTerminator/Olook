@@ -40,6 +40,14 @@ Item {
   readonly property int blockedImages: body && body.blockedImages ? body.blockedImages : 0
   property bool formatted: true
 
+  // The web renderer lays out the stylesheet the message came with, which is
+  // most of what makes mail look like itself. It is only safe to construct
+  // when Qt has an argument list: QtWebEngine aborts the process on an empty
+  // one, and that would take the shell down rather than this pane. Quickshell
+  // passes argc 0, so lib/argcshim.c is what makes this true.
+  readonly property bool webRenderer: Qt.application.arguments.length > 0
+  readonly property string webDocument: body ? String(body.document || "") : ""
+
   onMessageChanged: root.formatted = true
 
   Rectangle {
@@ -315,16 +323,43 @@ Item {
 
           // The formatted view: a light card, because mail HTML assumes one.
           Rectangle {
+            id: formattedCard
+            // A browser engine when the shell can host one, Qt's rich text
+            // when it cannot: the same card either way.
+            readonly property bool web: htmlView.status === Loader.Ready
             width: parent.width
-            height: visible ? richText.implicitHeight + Style.space(28) : 0
+            height: visible
+              ? (web ? htmlView.item.contentHeight : richText.implicitHeight)
+                + Style.space(28)
+              : 0
             visible: root.hasRich && root.formatted && !root.loadingBody
             radius: ui.radius
             color: "#fbfbf9"
             border.width: 1
             border.color: Util.alpha(ui.foreground, 0.16)
 
+            Loader {
+              id: htmlView
+              x: Style.space(14)
+              y: Style.space(14)
+              width: parent.width - Style.space(28)
+              height: item ? item.contentHeight : 0
+              active: root.webRenderer && root.webDocument !== ""
+                && root.hasRich && root.formatted && !root.loadingBody
+              source: "MailHtmlView.qml"
+              onLoaded: item.document = Qt.binding(function () {
+                return root.webDocument
+              })
+
+              Connections {
+                target: htmlView.item
+                function onLinkActivated(link) { Qt.openUrlExternally(link) }
+              }
+            }
+
             TextEdit {
               id: richText
+              visible: !formattedCard.web
               x: Style.space(14)
               y: Style.space(14)
               width: parent.width - Style.space(28)

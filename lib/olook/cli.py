@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import (config, htmlrich, htmltext, keyring, mailbox, message, oauth,
+from . import (config, htmldoc, htmlrich, htmltext, keyring, mailbox, message, oauth,
                providers, send, store)
 
 JSON_OUT = False
@@ -441,16 +441,23 @@ def _safe(name):
 
 
 def _with_rich(body):
-    """Add the sanitized rich-text rendering the reading pane displays."""
+    """Add the two renderings the reading pane can display.
+
+    `document` is the whole message for the web view, which lays out the
+    stylesheet the message came with. `rich` is the same message flattened for
+    Qt's rich text, and is what a shell without the web renderer shows.
+    """
     if not body:
         return body
     images = {}
     for part in body.get("parts") or []:
         if part.get("cid") and part.get("path"):
             images[part["cid"]] = part["path"]
-    rendered = htmlrich.to_rich(body.get("html", ""), images)
+    source = body.get("html", "")
+    rendered = htmlrich.to_rich(source, images)
     body["rich"] = rendered["html"]
     body["blockedImages"] = rendered["blockedImages"]
+    body["document"] = htmldoc.to_document(source, images)["html"]
     return body
 
 

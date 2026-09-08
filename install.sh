@@ -33,12 +33,47 @@ reload_shell() {
   fi
 }
 
+# The reading pane renders mail with QtWebEngine, which refuses to start when
+# QCoreApplication has no arguments -- and Quickshell gives it none. lib/argcshim.c
+# explains the whole story; this builds it. Without it the pane falls back to
+# Qt's rich text, so a machine with no compiler still gets a working client.
+build_shim() {
+  local source="$PLUGIN_DIR/lib/argcshim.c"
+  local target="$PLUGIN_DIR/lib/argcshim.so"
+
+  if ! command -v gcc >/dev/null 2>&1; then
+    echo "No gcc: skipping the HTML renderer shim (mail will use Qt's rich text)."
+    return
+  fi
+  if gcc -shared -fPIC -O2 -o "$target" "$source" -ldl 2>/dev/null; then
+    echo "Built the HTML renderer shim."
+  else
+    echo "Could not build the HTML renderer shim; mail will use Qt's rich text."
+    return
+  fi
+
+  local line="hl.env(\"LD_PRELOAD\", \"$target\")"
+  if grep -qs "argcshim.so" "$HOME/.config/hypr/hyprland.lua"; then
+    return
+  fi
+  echo
+  echo "To turn the HTML renderer on, add this to ~/.config/hypr/hyprland.lua"
+  echo "and run 'hyprctl reload && omarchy restart shell':"
+  echo "  $line"
+}
+
 if [[ "$MODE" == "uninstall" ]]; then
   rm -rf "$PLUGIN_DIR"
   rm -f "$BIN_DIR/olook"
   reload_shell
   echo "Olook removed. Mail cache and accounts were left alone:"
   echo "  ~/.config/olook  ~/.local/state/olook"
+  if grep -qs "argcshim.so" "$HOME/.config/hypr/hyprland.lua"; then
+    echo
+    echo "Also drop the LD_PRELOAD line from ~/.config/hypr/hyprland.lua:"
+    echo "  it names a file that is now gone, and the dynamic linker will"
+    echo "  complain about it in every process you start."
+  fi
   exit 0
 fi
 
@@ -56,6 +91,8 @@ fi
 
 ln -sfn "$PLUGIN_DIR/bin/olook" "$BIN_DIR/olook"
 echo "Linked the engine to $BIN_DIR/olook"
+
+build_shim
 
 reload_shell
 
