@@ -35,9 +35,17 @@ REMOTE_URL = re.compile(r"url\(\s*['\"]?\s*(?!data:|file:|cid:|#)[^)]*\)",
                         re.IGNORECASE)
 AT_IMPORT = re.compile(r"@import[^;]*;", re.IGNORECASE)
 
-CSP = ("default-src 'none'; img-src file: data:; style-src 'unsafe-inline'; "
-       "font-src data:; script-src 'none'; frame-src 'none'; "
-       "object-src 'none'; form-action 'none'; base-uri 'none'")
+def _csp(allow_remote):
+    """The policy the document carries with it.
+
+    Images are the only thing a message is ever allowed to fetch, and only
+    once the reader has asked for them: everything else stays 'none' whatever
+    the setting, so "show images" cannot quietly become "run scripts".
+    """
+    images = "file: data: https: http:" if allow_remote else "file: data:"
+    return (f"default-src 'none'; img-src {images}; style-src 'unsafe-inline'; "
+            "font-src data:; script-src 'none'; frame-src 'none'; "
+            "object-src 'none'; form-action 'none'; base-uri 'none'")
 
 # Enough to make an unstyled message readable without overriding one that
 # styles itself. The paper colour matches the card the view sits on.
@@ -59,9 +67,10 @@ MAX_LENGTH = 400_000
 
 
 class _Rewriter(HTMLParser):
-    def __init__(self, images):
+    def __init__(self, images, allow_remote=False):
         super().__init__(convert_charrefs=True)
         self.images = images or {}
+        self.allow_remote = allow_remote
         self.out = []
         self.css = []
         self.drop_depth = 0
@@ -110,7 +119,7 @@ class _Rewriter(HTMLParser):
         if self.drop_depth:
             return
         if self.in_style:
-            self.css.append(_clean_css(data))
+            self.css.append(_clean_css(data, self.allow_remote))
             return
         self.out.append(html.escape(data))
 
@@ -139,7 +148,7 @@ class _Rewriter(HTMLParser):
                     and not _safe_url(value):
                 continue
             if name == "style":
-                value = _clean_css(value)
+                value = _clean_css(value, self.allow_remote)
                 if not value.strip():
                     continue
             parts.append(f' {html.escape(name, quote=True)}='
@@ -160,6 +169,11 @@ class _Rewriter(HTMLParser):
         elif lowered.startswith("data:image/"):
             self._emit("img", attrs)
             return
+        if self.allow_remote and _safe_url(source):
+            # Asked for. The count stays at zero so the reading pane stops
+            # offering to do what it has already done.
+            self._emit("img", attrs)
+            return
         # Remote: the src goes, the box stays, so a layout built on image
         # widths does not collapse around the hole.
         self.blocked_images += 1
@@ -177,20 +191,29 @@ def _safe_url(value):
     return lowered.startswith(("mailto:", "tel:", "#", "file://", "data:image/"))
 
 
-def _clean_css(text):
+def _clean_css(text, allow_remote=False):
+    # @import always goes: it pulls in a whole stylesheet, which is not an
+    # image and is not what the reader agreed to.
     text = AT_IMPORT.sub("", str(text))
+    if allow_remote:
+        return text
     return REMOTE_URL.sub("none", text)
 
 
-def to_document(source, images=None):
-    """Return {"html": <full document>, "blockedImages": n} for `source`."""
+def to_document(source, images=None, allow_remote=False):
+    """Return {"html": <full document>, "blockedImages": n} for `source`.
+
+    With `allow_remote`, images the message points at over the network are
+    kept and the policy lets them through. Everything else is unchanged: this
+    turns on pictures, not scripts, frames or stylesheets.
+    """
     text = str(source or "")
     if not text.strip():
         return {"html": "", "blockedImages": 0}
     if len(text) > MAX_LENGTH:
         text = text[:MAX_LENGTH]
 
-    parser = _Rewriter(images)
+    parser = _Rewriter(images, allow_remote)
     try:
         parser.feed(text)
         parser.close()
@@ -202,10 +225,10 @@ def to_document(source, images=None):
     body = "".join(parser.out).strip()
     if not body:
         return {"html": "", "blockedImages": 0}
-    style = _clean_css("\n".join(parser.css))
+    style = _clean_css("\n".join(parser.css), allow_remote)
     document = (
         '<!DOCTYPE html><html><head><meta charset="utf-8">'
-        f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
+        f'<meta http-equiv="Content-Security-Policy" content="{_csp(allow_remote)}">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<style>{BASE_CSS}</style>"
         + (f"<style>{style}</style>" if style.strip() else "")

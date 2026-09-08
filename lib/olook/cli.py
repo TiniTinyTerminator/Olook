@@ -379,7 +379,7 @@ def cmd_body(args):
         if args.mark_read:
             store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
         summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-        emit({"ok": True, "message": summary, "body": _with_rich(cached)},
+        emit({"ok": True, "message": summary, "body": _with_rich(cached, args.remote_images)},
              lambda d: d["body"]["text"])
         return
 
@@ -409,7 +409,7 @@ def cmd_body(args):
         _mark_seen(account, conn, folder, [args.uid], True)
 
     summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-    emit({"ok": True, "message": summary, "body": _with_rich(cached)},
+    emit({"ok": True, "message": summary, "body": _with_rich(cached, args.remote_images)},
          lambda d: f"{d['message'].get('subject','')}\n"
                    f"From: {d['message'].get('fromName','')} <{d['message'].get('fromAddr','')}>\n"
                    f"{'-' * 60}\n{d['body']['text'][:4000]}")
@@ -440,7 +440,7 @@ def _safe(name):
     return "".join(c if c.isalnum() or c in "-_." else "-" for c in str(name))[:40]
 
 
-def _with_rich(body):
+def _with_rich(body, allow_remote=False):
     """Add the two renderings the reading pane can display.
 
     `document` is the whole message for the web view, which lays out the
@@ -457,7 +457,12 @@ def _with_rich(body):
     rendered = htmlrich.to_rich(source, images)
     body["rich"] = rendered["html"]
     body["blockedImages"] = rendered["blockedImages"]
-    body["document"] = htmldoc.to_document(source, images)["html"]
+    document = htmldoc.to_document(source, images, allow_remote)
+    body["document"] = document["html"]
+    if allow_remote:
+        # Nothing is being withheld any more, so the reading pane has nothing
+        # left to offer to load.
+        body["blockedImages"] = 0
     return body
 
 
@@ -958,6 +963,8 @@ def build_parser():
     p.add_argument("--uid", type=int, required=True)
     p.add_argument("--refresh", action="store_true")
     p.add_argument("--mark-read", action="store_true")
+    p.add_argument("--remote-images", action="store_true",
+                   help="keep the images the message points at over the network")
     p.set_defaults(func=cmd_body)
 
     p = sub.add_parser("attachment", help="save an attachment to disk")

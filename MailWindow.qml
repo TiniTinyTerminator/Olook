@@ -815,6 +815,7 @@ Item {
                   onDeleteRequested: if (mail.selected) mail.remove(mail.selected)
                   onFlagRequested: if (mail.selected) mail.toggleFlagged(mail.selected)
                   onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
+                  onShowImagesRequested: mail.loadRemoteImages()
                   onAttachmentRequested: function (index) {
                     if (mail.selected) mail.saveAttachment(mail.selected, index, true)
                   }

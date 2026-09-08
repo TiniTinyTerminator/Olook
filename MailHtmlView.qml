@@ -23,6 +23,9 @@ Item {
   // the sanitizer pointed at file:// paths.
   property url baseUrl: "file:///"
   property color paper: "#fbfbf9"
+  // Off unless the reader has asked for the message's remote images. The
+  // document's own policy has to agree as well, so this alone opens nothing.
+  property bool allowRemote: false
 
   // A page that sizes itself to the viewport would grow every time we grew to
   // match it, so the measurement only ever climbs, and stops somewhere sane.
@@ -39,7 +42,34 @@ Item {
 
   onDocumentChanged: {
     root.measured = 0
+    settle.ticks = 0
+    settle.restart()
     view.loadHtml(root.document, root.baseUrl)
+  }
+
+  // contentsSize reports only when it changes. Load a second document that
+  // happens to lay out to the same height as the last one -- the same message
+  // with its images allowed, say -- and no signal ever arrives, so a
+  // measurement waiting for one waits forever and the message collapses to
+  // the minimum. Sample it directly for a few seconds after each load, and go
+  // on listening afterwards for the pictures that arrive late and make the
+  // page taller.
+  function measure() {
+    var height = view.contentsSize.height
+    if (height > root.measured)
+      root.measured = Math.min(height, root.maxHeight)
+  }
+
+  Timer {
+    id: settle
+    interval: 200
+    repeat: true
+    property int ticks: 0
+    onTriggered: {
+      root.measure()
+      if (++settle.ticks >= 25)
+        settle.stop()
+    }
   }
 
   WebEngineProfile {
@@ -57,18 +87,14 @@ Item {
 
     settings.javascriptEnabled: false
     settings.localStorageEnabled: false
-    settings.localContentCanAccessRemoteUrls: false
+    settings.localContentCanAccessRemoteUrls: root.allowRemote
     settings.localContentCanAccessFileUrls: true
     settings.errorPageEnabled: false
     settings.pdfViewerEnabled: false
     settings.autoLoadImages: true
     settings.unknownUrlSchemePolicy: WebEngineSettings.DisallowUnknownUrlSchemes
 
-    onContentsSizeChanged: {
-      var height = view.contentsSize.height
-      if (height > root.measured)
-        root.measured = Math.min(height, root.maxHeight)
-    }
+    onContentsSizeChanged: root.measure()
 
     // The document itself arrives through loadHtml. Anything else is the
     // message trying to navigate, which mail does not get to do.

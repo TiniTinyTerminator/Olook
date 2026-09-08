@@ -29,6 +29,7 @@ Item {
   signal flagRequested()
   signal unreadRequested()
   signal attachmentRequested(int index)
+  signal showImagesRequested()
 
   readonly property var attachments: body && body.parts ? body.parts : []
   readonly property bool loadingBody: message !== null && body === null
@@ -47,8 +48,14 @@ Item {
   // passes argc 0, so lib/argcshim.c is what makes this true.
   readonly property bool webRenderer: Qt.application.arguments.length > 0
   readonly property string webDocument: body ? String(body.document || "") : ""
+  // Per message, never remembered. Asking for one sender's pictures is not
+  // agreeing to the next one's.
+  property bool remoteImages: false
 
-  onMessageChanged: root.formatted = true
+  onMessageChanged: {
+    root.formatted = true
+    root.remoteImages = false
+  }
 
   Rectangle {
     anchors.fill: parent
@@ -319,6 +326,18 @@ Item {
               font.family: ui.fontFamily
               font.pixelSize: Style.font.caption
             }
+
+            // Fetching a message's pictures tells the sender the mail was
+            // opened -- that is what the tracking pixel among them is for. So
+            // it stays the reader's decision, one message at a time.
+            ViewToggle {
+              label: "󰋩  Show images"
+              visible: root.blockedImages > 0 && root.formatted
+              onTriggered: {
+                root.remoteImages = true
+                root.showImagesRequested()
+              }
+            }
           }
 
           // The formatted view: a light card, because mail HTML assumes one.
@@ -347,9 +366,10 @@ Item {
               active: root.webRenderer && root.webDocument !== ""
                 && root.hasRich && root.formatted && !root.loadingBody
               source: "MailHtmlView.qml"
-              onLoaded: item.document = Qt.binding(function () {
-                return root.webDocument
-              })
+              onLoaded: {
+                item.document = Qt.binding(function () { return root.webDocument })
+                item.allowRemote = Qt.binding(function () { return root.remoteImages })
+              }
 
               Connections {
                 target: htmlView.item

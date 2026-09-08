@@ -444,6 +444,27 @@ Item {
     }, "body")
   }
 
+  // Fetch the open message again, this time keeping the images it points at
+  // over the network. Deliberately a second, explicit request: the document
+  // carrying those URLs is only built once the reader has asked for it, so
+  // there is no version of the message sitting around that could fetch them
+  // by accident.
+  function loadRemoteImages() {
+    var entry = root.selected
+    if (!entry) return
+    var args = accountArgs(["body", "--folder", entry.folder,
+                            "--uid", String(entry.uid), "--remote-images"])
+    run(args, function (ok, payload, stderrText) {
+      if (!ok || !payload || !payload.body) {
+        reportFailure(payload, stderrText, "Could not load the images")
+        return
+      }
+      if (!root.selected || root.selected.uid !== entry.uid) return
+      root.body = payload.body
+      root.bodyLoaded()
+    }, "body")
+  }
+
   function markLocalSeen(entry, seen) {
     var next = []
     for (var i = 0; i < root.messages.length; i++) {
