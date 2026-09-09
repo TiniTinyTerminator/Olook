@@ -17,7 +17,24 @@ Item {
 
   property string mode: "accounts"      // accounts | add
   property var rows: []                 // full account list, disabled included
-  property string expandedId: ""
+  // Which page the right-hand side is showing: "account:<id>", or one of
+  // general, calendar, widget. Empty means "whatever makes sense", which is
+  // the first account when there is one.
+  property string section: ""
+
+  readonly property string activeSection: {
+    if (root.section !== "") return root.section
+    return root.rows.length > 0 ? "account:" + root.rows[0].id : "general"
+  }
+
+  readonly property var selectedAccount: {
+    var wanted = root.activeSection
+    if (wanted.indexOf("account:") !== 0) return null
+    var id = wanted.substring(8)
+    for (var i = 0; i < root.rows.length; i++)
+      if (root.rows[i].id === id) return root.rows[i]
+    return root.rows.length > 0 ? root.rows[0] : null
+  }
   property string confirmRemoveId: ""
   property string testingId: ""
   property var testResults: ({})        // account id -> { ok, imap, smtp }
@@ -34,7 +51,11 @@ Item {
     setupPanel.reset()
   }
 
+  // All three are read from bindings that evaluate before the account list
+  // has arrived, and once more on the way out when it is emptied, so none of
+  // them may assume there is a row.
   function statusText(row) {
+    if (!row) return ""
     if (row.demo) return "Sample data"
     if (!row.authorized) return "Needs sign-in"
     if (!row.enabled) return "Paused"
@@ -42,12 +63,14 @@ Item {
   }
 
   function statusColor(row) {
+    if (!row) return ui.faint
     if (!row.authorized) return ui.urgent
     if (!row.enabled || row.demo) return ui.faint
     return ui.accent
   }
 
   function authLabel(row) {
+    if (!row) return ""
     if (row.demo) return "no server"
     return row.auth === "oauth2" ? "provider sign-in" : "password"
   }
@@ -78,176 +101,399 @@ Item {
     }
   }
 
-  // --------------------------------------------------------------- accounts
-  Flickable {
-    id: accountsFlick
+  // ----------------------------------------------------------------- shape
+  //
+  // A list of places on the left, one of them open on the right. Settings
+  // that were a single long scroll are now sorted into the things they are
+  // about, because "everything about this account" and "how the client
+  // behaves" are different questions and were being answered in one column.
+  Row {
     anchors.fill: parent
     visible: root.mode === "accounts"
-    contentWidth: width
-    contentHeight: page.height + Style.space(60)
-    clip: true
-    boundsBehavior: Flickable.StopAtBounds
-    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+    spacing: 0
 
-    Column {
-      id: page
-      y: Style.space(28)
-      anchors.horizontalCenter: parent.horizontalCenter
-      width: Math.min(Style.space(720), parent.width - Style.space(64))
-      spacing: Style.space(14)
+    Item {
+      id: nav
+      width: Math.max(Style.space(200),
+                      Math.min(Style.space(280), Math.round(root.width * 0.26)))
+      height: parent.height
 
-      // ----------------------------------------------------------- header
-      Item {
-        width: parent.width
-        height: Style.space(34)
+      Flickable {
+        id: navFlick
+        anchors.fill: parent
+        anchors.margins: Style.space(12)
+        contentWidth: width
+        contentHeight: navColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
 
-        Text {
-          textFormat: Text.PlainText
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          text: "Mail accounts"
-          color: ui.foreground
-          font.family: ui.fontFamily
-          font.pixelSize: Style.font.title
-          font.bold: true
+        Column {
+          id: navColumn
+          width: navFlick.width
+          spacing: Style.space(2)
+
+          // Above the accounts, because adding one is what you come here to
+          // do before there is anything to pick.
+          SettingsButton {
+            primary: true
+            glyph: "󰐕"
+            label: "Add account"
+            onTriggered: root.startAdd()
+          }
+
+          Item { width: 1; height: Style.space(8) }
+
+          NavHeading { text: "Accounts" }
+
+          Repeater {
+            model: root.rows
+
+            NavAccount {
+              required property var modelData
+              width: navColumn.width
+              row: modelData
+            }
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            visible: root.rows.length === 0
+            leftPadding: Style.space(10)
+            text: "None yet."
+            color: ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Item { width: 1; height: Style.space(10) }
+
+          NavHeading { text: "Client" }
+
+          NavItem { section: "general"; glyph: "󰒓"; label: "General" }
+          NavItem { section: "calendar"; glyph: "󰃭"; label: "Calendar" }
+          NavItem { section: "widget"; glyph: "󰍜"; label: "Bar widget" }
         }
 
-        SettingsButton {
-          anchors.right: parent.right
-          anchors.verticalCenter: parent.verticalCenter
-          primary: true
-          glyph: "󰐕"
-          label: "Add account"
-          onTriggered: root.startAdd()
-        }
+        MomentumScroll { view: navFlick }
       }
+    }
 
-      Text {
-        textFormat: Text.PlainText
-        width: parent.width
-        visible: root.rows.length === 0
-        text: "No accounts yet. Add Gmail, Outlook.com, a Microsoft 365 work "
-          + "address, or any IMAP server."
-        color: ui.dim
-        font.family: ui.fontFamily
-        font.pixelSize: Style.font.bodySmall
-        wrapMode: Text.WordWrap
-      }
+    Rectangle { width: 1; height: parent.height; color: ui.border }
 
-      Repeater {
-        model: root.rows
+    // ------------------------------------------------------------ the page
+    Item {
+      width: parent.width - nav.width - 1
+      height: parent.height
 
-        AccountCard {
-          required property var modelData
-          width: page.width
-          row: modelData
-        }
-      }
+      Flickable {
+        id: accountsFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: page.height + Style.space(60)
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-      // ------------------------------------------------------------ general
-      Text {
-        textFormat: Text.PlainText
-        text: "General"
-        color: ui.foreground
-        font.family: ui.fontFamily
-        font.pixelSize: Style.font.title
-        font.bold: true
-        topPadding: Style.space(10)
-      }
+        Column {
+          id: page
+          y: Style.space(24)
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: Math.min(Style.space(680), parent.width - Style.space(56))
+          spacing: Style.space(14)
 
-      InfoRow {
-        label: "Check for mail"
-        value: "every " + service.syncIntervalSec + " seconds"
-        hint: "Set on the Olook bar widget — right-click the bar icon."
-      }
+          // ------------------------------------------------------ account
+          AccountCard {
+            width: page.width
+            visible: root.activeSection.indexOf("account:") === 0
+            row: root.selectedAccount
+          }
 
-      InfoRow {
-        label: "New-mail notifications"
-        value: service.notifyOnNew ? "On" : "Off"
-        hint: "Also a bar widget setting."
-      }
+          // ------------------------------------------------------ general
+          Column {
+            width: parent.width
+            spacing: Style.space(14)
+            visible: root.activeSection === "general"
 
-      // Pictures in a message are fetched from whoever sent it, which tells
-      // them the mail was opened. This is the one privacy decision the client
-      // makes on your behalf, so it is said in full rather than hidden behind
-      // a switch labelled "safe".
-      Text {
-        textFormat: Text.PlainText
-        text: "Pictures in messages"
-        color: ui.foreground
-        font.family: ui.fontFamily
-        font.pixelSize: Style.font.subtitle
-        topPadding: Style.space(10)
-      }
+            Text {
+              textFormat: Text.PlainText
+              text: "General"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
 
-      Column {
-        width: parent.width
-        spacing: Style.space(4)
+            // Pictures in a message are fetched from whoever sent it, which
+            // tells them the mail was opened. This is the one privacy
+            // decision the client makes on your behalf, so it is said in full
+            // rather than hidden behind a switch labelled "safe".
+            Text {
+              textFormat: Text.PlainText
+              text: "Pictures in messages"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.subtitle
+            }
 
-        PolicyChoice {
-          value: "verified"
-          label: "When the sender is known"
-          hint: "Signed by the sender's own domain, or someone you named. "
-                + "Most real mail is signed; a tracking pixel in it will load."
-        }
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
 
-        PolicyChoice {
-          value: "trusted"
-          label: "Only senders I have named"
-          hint: "Nothing loads until you say so for that sender."
-        }
+              PolicyChoice {
+                value: "verified"
+                label: "When the sender is known"
+                hint: "Signed by the sender's own domain, or someone you named. "
+                      + "Most real mail is signed; a tracking pixel in it will load."
+              }
 
-        PolicyChoice {
-          value: "never"
-          label: "Never, always ask"
-          hint: "Every message offers the button and none acts on its own."
-        }
-      }
+              PolicyChoice {
+                value: "trusted"
+                label: "Only senders I have named"
+                hint: "Nothing loads until you say so for that sender."
+              }
 
-      InfoRow {
-        label: "Accounts file"
-        value: "~/.config/olook/accounts.json"
-        hint: "Passwords and tokens live in the keyring, never in this file."
-      }
+              PolicyChoice {
+                value: "never"
+                label: "Never, always ask"
+                hint: "Every message offers the button and none acts on its own."
+              }
+            }
 
-      InfoRow {
-        label: "Mail cache"
-        value: "~/.local/state/olook/mail.db"
-        hint: "Removing an account deletes its cached mail with it."
-      }
+            InfoRow {
+              label: "Accounts file"
+              value: "~/.config/olook/accounts.json"
+              hint: "Passwords and tokens live in the keyring, never in this file."
+            }
 
-      Row {
-        spacing: Style.space(8)
-        topPadding: Style.space(6)
+            InfoRow {
+              label: "Mail cache"
+              value: "~/.local/state/olook/mail.db"
+              hint: "Removing an account deletes its cached mail with it."
+            }
 
-        SettingsButton {
-          glyph: "󰑐"
-          label: "Check all accounts now"
-          onTriggered: {
-            for (var i = 0; i < root.rows.length; i++) {
-              if (root.rows[i].enabled && !root.rows[i].demo)
-                service.syncAccount(root.rows[i].id)
+            Row {
+              spacing: Style.space(8)
+              topPadding: Style.space(6)
+
+              SettingsButton {
+                glyph: "󰑐"
+                label: "Check all accounts now"
+                onTriggered: {
+                  for (var i = 0; i < root.rows.length; i++) {
+                    if (root.rows[i].enabled && !root.rows[i].demo)
+                      service.syncAccount(root.rows[i].id)
+                  }
+                }
+              }
+
+              SettingsButton {
+                glyph: "󰆍"
+                label: "Advanced setup in a terminal"
+                onTriggered: service.openSetupTerminal()
+              }
+            }
+          }
+
+          // ----------------------------------------------------- calendar
+          Column {
+            width: parent.width
+            spacing: Style.space(12)
+            visible: root.activeSection === "calendar"
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Calendar"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Not built yet. The accounts already here carry one, and "
+                + "the engine speaks to the same servers, so what is missing "
+                + "is the reading and writing of calendar data rather than a "
+                + "way to reach it."
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          // ------------------------------------------------------- widget
+          Column {
+            width: parent.width
+            spacing: Style.space(12)
+            visible: root.activeSection === "widget"
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Bar widget"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            InfoRow {
+              label: "Check for mail"
+              value: "every " + service.syncIntervalSec + " seconds"
+              hint: "These belong to the widget rather than to the client, so "
+                + "the bar owns them: right-click the Olook icon to change one."
+            }
+
+            InfoRow {
+              label: "New-mail notifications"
+              value: service.notifyOnNew ? "On" : "Off"
             }
           }
         }
 
-        SettingsButton {
-          glyph: "󰆍"
-          label: "Advanced setup in a terminal"
-          onTriggered: service.openSetupTerminal()
-        }
+        MomentumScroll { view: accountsFlick }
       }
     }
-
-    MomentumScroll { view: accountsFlick }
   }
 
   // ------------------------------------------------------------- components
 
+  component NavHeading: Text {
+    textFormat: Text.PlainText
+    leftPadding: Style.space(10)
+    bottomPadding: Style.space(2)
+    color: ui.faint
+    font.family: ui.fontFamily
+    font.pixelSize: Style.font.caption
+  }
+
+  component NavItem: Rectangle {
+    id: navItem
+    property string section: ""
+    property string glyph: ""
+    property string label: ""
+    readonly property bool current: root.activeSection === navItem.section
+
+    width: parent ? parent.width : 0
+    height: Style.space(30)
+    radius: ui.radius
+    color: navItem.current ? ui.selected
+      : (navItemHover.containsMouse ? ui.hover : "transparent")
+
+    Row {
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(8)
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: navItem.glyph
+        color: navItem.current ? ui.accent : ui.dim
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.iconSmall
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        anchors.verticalCenter: parent.verticalCenter
+        text: navItem.label
+        color: ui.foreground
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    MouseArea {
+      id: navItemHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.section = navItem.section
+    }
+  }
+
+  // An account in the list: enough to tell them apart and to see which one
+  // needs attention, and nothing else -- the rest is on the right.
+  component NavAccount: Rectangle {
+    id: navAccount
+    property var row: null
+    readonly property string key: row ? "account:" + row.id : ""
+    readonly property bool current: root.activeSection === navAccount.key
+
+    height: Style.space(42)
+    radius: ui.radius
+    color: navAccount.current ? ui.selected
+      : (navAccountHover.containsMouse ? ui.hover : "transparent")
+
+    Rectangle {
+      id: navAvatar
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(26)
+      height: width
+      radius: width / 2
+      color: Qt.hsla(Model.avatarHue(String((navAccount.row
+             && navAccount.row.email) || "")) / 360, 0.45, 0.42, 1.0)
+
+      Text {
+        anchors.centerIn: parent
+        text: Model.initials(String((navAccount.row && (navAccount.row.name
+              || navAccount.row.email)) || ""))
+        color: "#ffffff"
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+    }
+
+    Column {
+      anchors.left: navAvatar.right
+      anchors.leftMargin: Style.space(9)
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: 0
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: String((navAccount.row && (navAccount.row.name
+              || navAccount.row.email)) || "")
+        color: ui.foreground
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: navAccount.row ? root.statusText(navAccount.row) : ""
+        color: navAccount.row ? root.statusColor(navAccount.row) : ui.faint
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+    }
+
+    MouseArea {
+      id: navAccountHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.section = navAccount.key
+    }
+  }
+
   component AccountCard: Rectangle {
     id: cardRoot
     property var row: null
-    readonly property bool expanded: !!(row && root.expandedId === row.id)
+    // The card is the page now rather than a row that opens, so it is open.
+    readonly property bool expanded: true
 
     // Local edits, committed by Save so a half-typed name never gets written.
     property string nameDraft: ""
@@ -358,11 +604,6 @@ Item {
             onTriggered: root.signIn(cardRoot.row.id)
           }
 
-          SettingsButton {
-            glyph: cardRoot.expanded ? "󰅀" : "󰅂"
-            label: cardRoot.expanded ? "Close" : "Edit"
-            onTriggered: root.expandedId = cardRoot.expanded ? "" : cardRoot.row.id
-          }
         }
       }
 
