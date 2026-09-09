@@ -548,6 +548,31 @@ Item {
     }, "contacts")
   }
 
+  // When pictures in a message may load without being asked:
+  // verified | trusted | never. Kept by the engine so the terminal and the
+  // client cannot disagree about it.
+  property string imagePolicy: "verified"
+
+  function loadImagePolicy() {
+    run(["images"], function (ok, payload) {
+      if (ok && payload && payload.policy) root.imagePolicy = String(payload.policy)
+    }, "images")
+  }
+
+  function setImagePolicy(value, done) {
+    if (!value || value === root.imagePolicy) return
+    run(["images", String(value)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not change that")
+        return
+      }
+      root.imagePolicy = String((payload && payload.policy) || value)
+      // The open message was rendered under the old rule.
+      if (root.selected) root.openMessage(root.selected)
+      if (done) done()
+    }, "images")
+  }
+
   // Senders whose pictures load without being asked. Kept by the engine, so
   // the terminal and the client agree about who is on the list.
   function trustSender(address, trusted, done) {
@@ -1362,5 +1387,6 @@ Item {
   Component.onCompleted: {
     refreshStatus(true)
     refreshOutbox()
+    loadImagePolicy()
   }
 }

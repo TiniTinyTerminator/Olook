@@ -84,8 +84,12 @@ has that this client is better off without.
   checked (verified lets seven images through, trusted and never hold them) —
   but the verified line and the "Always from this sender" button have not been
   seen on screen.
-- **The image policy has no interface.** `olook images verified | trusted |
-  never` sets it; nothing in the settings pane does.
+- **The image policy's setting is unproven.** It is in the settings pane and
+  renders correctly with the current choice marked, and the command behind it
+  works when run directly. Two synthetic clicks on the other two choices did
+  not change it, and the screen was taken back before that could be run down:
+  either the clicks missed the row or the button is not wired. Worth a click
+  before trusting it.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.

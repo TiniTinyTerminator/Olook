@@ -167,6 +167,43 @@ Item {
         hint: "Also a bar widget setting."
       }
 
+      // Pictures in a message are fetched from whoever sent it, which tells
+      // them the mail was opened. This is the one privacy decision the client
+      // makes on your behalf, so it is said in full rather than hidden behind
+      // a switch labelled "safe".
+      Text {
+        textFormat: Text.PlainText
+        text: "Pictures in messages"
+        color: ui.foreground
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.subtitle
+        topPadding: Style.space(10)
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(4)
+
+        PolicyChoice {
+          value: "verified"
+          label: "When the sender is known"
+          hint: "Signed by the sender's own domain, or someone you named. "
+                + "Most real mail is signed; a tracking pixel in it will load."
+        }
+
+        PolicyChoice {
+          value: "trusted"
+          label: "Only senders I have named"
+          hint: "Nothing loads until you say so for that sender."
+        }
+
+        PolicyChoice {
+          value: "never"
+          label: "Never, always ask"
+          hint: "Every message offers the button and none acts on its own."
+        }
+      }
+
       InfoRow {
         label: "Accounts file"
         value: "~/.config/olook/accounts.json"
@@ -612,6 +649,69 @@ Item {
       root.testResults = next
       root.testingId = ""
     })
+  }
+
+  component PolicyChoice: Rectangle {
+    id: choice
+    property string value: ""
+    property string label: ""
+    property string hint: ""
+    readonly property bool current: !!(service && service.imagePolicy === choice.value)
+
+    width: parent ? parent.width : 0
+    height: choiceColumn.implicitHeight + Style.space(14)
+    radius: ui.radius
+    color: choiceHover.containsMouse ? ui.hover : "transparent"
+    border.width: 1
+    border.color: choice.current ? ui.accent : "transparent"
+
+    Row {
+      anchors.fill: parent
+      anchors.margins: Style.space(8)
+      spacing: Style.space(10)
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: choice.current ? "󰄲" : "󰄱"
+        color: choice.current ? ui.accent : ui.dim
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.icon
+      }
+
+      Column {
+        id: choiceColumn
+        width: parent.width - Style.space(40)
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(2)
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: choice.label
+          color: ui.foreground
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          text: choice.hint
+          color: ui.faint
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+      }
+    }
+
+    MouseArea {
+      id: choiceHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: if (service) service.setImagePolicy(choice.value)
+    }
   }
 
   component InfoRow: Item {
