@@ -283,10 +283,11 @@ Item {
         // write a new message, then the ones that file or mark this one.
         // Sharing an outline reads as a single control and takes far less
         // width — and a Flow, so the second group wraps instead of running off
-        // the edge when the pane is narrow.
+        // the edge when the pane is narrow. Sized to sit on one line at any
+        // width worth reading mail at.
         Flow {
           width: parent.width
-          spacing: Style.space(8)
+          spacing: Style.space(6)
 
           SegmentedGroup {
             SegButton { glyph: "󰑚"; label: "Reply"; onTriggered: root.replyRequested("reply") }
@@ -655,7 +656,7 @@ Item {
     default property alias segments: segmentRow.data
 
     width: segmentRow.implicitWidth
-    height: Style.space(24)
+    height: Style.space(22)
     radius: ui.radius
     color: "transparent"
     border.width: 1
@@ -676,8 +677,8 @@ Item {
     property bool highlighted: false
     signal triggered()
 
-    width: segmentContent.implicitWidth + Style.space(root.compact ? 14 : 18)
-    height: parent ? parent.height : Style.space(24)
+    width: segmentContent.implicitWidth + Style.space(root.compact ? 10 : 12)
+    height: parent ? parent.height : Style.space(22)
     color: segmentHover.containsMouse ? ui.hover : "transparent"
 
     // A divider on the leading edge of every button but the first, which is
@@ -694,7 +695,7 @@ Item {
     Row {
       id: segmentContent
       anchors.centerIn: parent
-      spacing: Style.space(5)
+      spacing: Style.space(4)
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
