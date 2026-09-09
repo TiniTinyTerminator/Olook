@@ -25,9 +25,12 @@ has that this client is better off without.
 - **Date range in search.** `from:`, `to:`, `subject:`, `is:unread`,
   `is:read`, `is:flagged` and `has:attachment` all work; `before:` and
   `after:` do not.
-- **Conversation grouping.** Replies are separate rows. Outlook threads them,
-  and for anything with more than two messages it is the difference between
-  reading a conversation and reassembling one.
+- **Conversation grouping is by subject, not by References.** Two unrelated
+  messages that happen to share a subject will be threaded together, and a
+  reply whose subject was edited will not be. The cache does not keep
+  References; adding it is a schema change and a resync.
+- **Conversations do not expand in the list.** The row is the newest message
+  and the reading pane lists the rest; Outlook expands the row itself.
 - **Empty Deleted Items / Junk.**
 
 ## Composing

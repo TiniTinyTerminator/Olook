@@ -470,6 +470,10 @@ Item {
       { id: "reader-bottom", label: "Bottom", kind: "radio",
         checked: root.readingPanePref === "bottom", enabled: !root.stacked },
       { kind: "separator" },
+      { id: "conversations", label: "Group by conversation", kind: "check",
+        checked: mail.conversationMode },
+      { kind: "separator" },
+
       { kind: "header", label: "Sort by" },
       { id: "sort-date", label: "Date", kind: "radio",
         checked: mail.sortMode === "date" },
@@ -534,6 +538,7 @@ Item {
     case "mark-all-read": mail.markVisibleRead(); root.clearSelection(); return
     case "undo": mail.undoLast(); return
 
+    case "conversations": mail.setConversations(!mail.conversationMode); return
     case "sort-date": mail.setSort("date"); return
     case "sort-sender": mail.setSort("sender"); return
     case "sort-subject": mail.setSort("subject"); return
@@ -1113,6 +1118,7 @@ Item {
                   onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
                   onShowImagesRequested: mail.loadRemoteImages()
                   onPopOutRequested: if (mail.selected) root.popOutReader(mail.selected, null)
+                  onThreadMessageRequested: function (entry) { mail.openMessage(entry) }
                   onAttachmentRequested: function (index) {
                     if (mail.selected) mail.saveAttachment(mail.selected, index, true)
                   }

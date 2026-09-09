@@ -390,6 +390,15 @@ Item {
 
   // date | sender | subject | size | unread
   property string sortMode: "date"
+  // One row per conversation rather than per message.
+  property bool conversationMode: false
+
+  function setConversations(on) {
+    if (on === root.conversationMode) return
+    root.conversationMode = on
+    root.selected = null
+    loadMessages()
+  }
 
   function setSort(mode) {
     if (!mode || mode === root.sortMode) return
@@ -408,6 +417,7 @@ Item {
       : accountArgs(["list", "--folder", root.folder,
                      "--limit", String(root.listLimit)])
     args = args.concat(["--sort", root.sortMode])
+    if (root.conversationMode) args.push("--conversations")
     if (root.filter === "unread") args.push("--unread")
     if (root.filter === "flagged") args.push("--flagged")
     if (root.query) args = args.concat(["--query", root.query])

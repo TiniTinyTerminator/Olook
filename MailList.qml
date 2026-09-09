@@ -189,6 +189,34 @@ Item {
               : rowItem.current ? ui.selected
               : (rowHover.containsMouse ? ui.hover : "transparent")
 
+            // How many messages the conversation holds, when the list is
+            // grouped. Outlook puts the number on the row; so does this.
+            Rectangle {
+              visible: !!(rowItem.modelData && rowItem.modelData.threadCount > 1)
+              anchors.right: parent.right
+              anchors.rightMargin: Style.space(10)
+              anchors.bottom: parent.bottom
+              anchors.bottomMargin: Style.space(10)
+              width: threadCount.implicitWidth + Style.space(12)
+              height: Style.space(16)
+              radius: height / 2
+              color: Util.alpha(ui.accent, 0.18)
+
+              Text {
+                id: threadCount
+                textFormat: Text.PlainText
+                anchors.centerIn: parent
+                text: rowItem.modelData
+                  ? rowItem.modelData.threadCount + (
+                      rowItem.modelData.threadUnread > 0
+                        ? " · " + rowItem.modelData.threadUnread + " new" : "")
+                  : ""
+                color: ui.accent
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
+
             // Unread marker: a bar on the leading edge, like Outlook's.
             Rectangle {
               visible: !!(rowItem.modelData && !rowItem.modelData.seen)

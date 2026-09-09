@@ -31,6 +31,12 @@ Item {
   signal attachmentRequested(int index)
   signal showImagesRequested()
   signal popOutRequested()
+  signal threadMessageRequested(var entry)
+
+  // The rest of the conversation, when the list is grouped. Grouping that
+  // hid the older messages with no way back to them would be worse than not
+  // grouping at all.
+  readonly property var threadMembers: message && message.thread ? message.thread : []
 
   // False once the message is already in a window of its own, where the
   // button would have nowhere to go. Mirrors MailCompose.
@@ -340,6 +346,77 @@ Item {
           // What our own chrome insets itself by, so it does not sit against
           // the edge the message is allowed to use.
           readonly property real gutter: Style.space(20)
+
+          // The rest of this conversation.
+          Column {
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
+            spacing: Style.space(4)
+            visible: root.threadMembers.length > 0 && !root.loadingBody
+
+            Text {
+              textFormat: Text.PlainText
+              text: root.threadMembers.length === 1
+                ? "1 earlier message in this conversation"
+                : root.threadMembers.length + " earlier messages in this conversation"
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Repeater {
+              model: root.threadMembers
+
+              Rectangle {
+                required property var modelData
+                width: parent.width
+                height: Style.space(28)
+                radius: ui.radius
+                color: earlierHover.containsMouse ? ui.hover : "transparent"
+
+                Row {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(8)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(8)
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: modelData.seen ? "󰇮" : "󰇯"
+                    color: modelData.seen ? ui.faint : ui.accent
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.iconSmall
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: Model.senderLabel(modelData)
+                    color: ui.foreground
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: Model.fullTime(modelData.date)
+                    color: ui.faint
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+                }
+
+                MouseArea {
+                  id: earlierHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.threadMessageRequested(modelData)
+                }
+              }
+            }
+          }
 
           // attachments strip
           Flow {

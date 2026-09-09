@@ -328,6 +328,60 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
     return found[:int(limit)]
 
 
+# "Re:", "Fwd:", and the ones other languages put in front of the same thing.
+REPLY_PREFIX = re.compile(r"^\s*((re|fwd|fw|aw|antw|sv|vs|rif)\s*(\[\d+\])?\s*:\s*)+",
+                          re.IGNORECASE)
+
+
+def conversation_key(message):
+    """What makes two messages the same conversation.
+
+    Subject with the reply prefixes stripped. Not References, which would be
+    stricter and better, but which the cache does not keep -- and which plenty
+    of senders break anyway by starting a fresh message with an old subject.
+    A message with no subject is its own conversation rather than joining a
+    pile of every other blank one.
+    """
+    subject = REPLY_PREFIX.sub("", str(message.get("subject") or "")).strip().lower()
+    if not subject:
+        return "uid:%s:%s:%s" % (message.get("account"), message.get("folder"),
+                                 message.get("uid"))
+    return subject
+
+
+def as_conversations(messages):
+    """Collapse a list to one row per conversation, newest first.
+
+    The row is the newest message of the thread, carrying the count and the
+    others' uids so the reading pane can offer them.
+    """
+    threads = {}
+    order = []
+    for message in messages:
+        key = conversation_key(message)
+        if key not in threads:
+            threads[key] = []
+            order.append(key)
+        threads[key].append(message)
+
+    out = []
+    for key in order:
+        members = sorted(threads[key], key=lambda m: m.get("date") or 0, reverse=True)
+        newest = dict(members[0])
+        newest["threadKey"] = key
+        newest["threadCount"] = len(members)
+        newest["threadUnread"] = sum(1 for m in members if not m.get("seen"))
+        newest["thread"] = [
+            {"account": m.get("account"), "folder": m.get("folder"),
+             "uid": m.get("uid"), "subject": m.get("subject"),
+             "fromName": m.get("fromName"), "fromAddr": m.get("fromAddr"),
+             "date": m.get("date"), "seen": m.get("seen")}
+            for m in members[1:]
+        ]
+        out.append(newest)
+    return out
+
+
 def get_message(conn, account, folder, uid):
     row = conn.execute(
         "SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?",
