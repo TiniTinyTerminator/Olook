@@ -79,10 +79,13 @@ has that this client is better off without.
   reading pane's list of earlier messages have not been seen.
 - Sorting and the search refiners were verified through the engine, not
   through the menu and the search box.
-- Sender verification and the standing image permission: the engine chain was
-  verified against real mail — DKIM, SPF and DMARC parsed, and trusting the
-  sender turned seven blocked images into none — but the verified line and the
-  "Always from this sender" button have not been seen on screen.
+- Sender verification and the image policy: the engine chain was verified
+  against real mail — DKIM, SPF and DMARC parsed, and all three policies
+  checked (verified lets seven images through, trusted and never hold them) —
+  but the verified line and the "Always from this sender" button have not been
+  seen on screen.
+- **The image policy has no interface.** `olook images verified | trusted |
+  never` sets it; nothing in the settings pane does.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.

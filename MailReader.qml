@@ -654,15 +654,15 @@ Item {
           }
         }
 
-        // The standing version of the same permission, offered only for a
-        // sender the server could vouch for. Without that the address in the
-        // From line is a claim, and a permission granted to a claim can be
-        // inherited by anyone willing to make it.
+        // The standing version of the same permission. Signed mail already
+        // loads by itself, so what reaches this button is the mail whose
+        // sender the server could not vouch for -- which is exactly the case
+        // where the address in the From line is only a claim. Worth having,
+        // worth knowing: it is a decision about a name, not about a proof.
         ViewToggle {
           label: "󰀓  Always from this sender"
           visible: root.blockedImages > 0 && root.formatted
-            && root.verifiedSender && !root.senderTrusted
-            && root.senderAddress !== ""
+            && !root.senderTrusted && root.senderAddress !== ""
           ink: controlRow.ink
           edge: controlRow.edge
           onTriggered: root.trustSenderRequested(root.senderAddress)

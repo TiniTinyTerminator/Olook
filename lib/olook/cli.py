@@ -535,11 +535,23 @@ def _auto_images(body, summary):
     """
     auth = message.authentication((body or {}).get("headers") or {})
     sender = str((summary or {}).get("fromAddr") or "").strip().lower()
-    allowed = bool(sender) and sender in config.trusted_senders()
+    trusted = bool(sender) and sender in config.trusted_senders()
+    policy = config.image_policy()
+
+    if policy == "never":
+        auto = False
+    elif policy == "trusted":
+        auto = trusted
+    else:
+        # Signed mail, or a sender you named. The list still matters: it is
+        # how a sender whose server says nothing about them gets through.
+        auto = trusted or auth["verified"]
+
     return {
         "authentication": auth,
-        "senderTrusted": allowed,
-        "autoImages": allowed and auth["verified"],
+        "senderTrusted": trusted,
+        "imagePolicy": policy,
+        "autoImages": auto,
     }
 
 
@@ -629,6 +641,17 @@ def cmd_move(args):
     store.delete_messages(conn, account["id"], args.folder, uids)
     emit({"ok": True, "moved": uids, "to": target},
          lambda d: f"Moved {len(d['moved'])} to {d['to']}")
+
+
+def cmd_images(args):
+    """When pictures in a message may load without being asked."""
+    if not args.policy:
+        emit({"ok": True, "policy": config.image_policy(),
+              "choices": list(config.IMAGE_POLICIES)},
+             lambda d: f"{d['policy']}  (of {', '.join(d['choices'])})")
+        return
+    emit({"ok": True, "policy": config.set_image_policy(args.policy)},
+         lambda d: f"Images now load when: {d['policy']}")
 
 
 def cmd_trust(args):
@@ -1285,6 +1308,11 @@ def build_parser():
     p.add_argument("--uid", nargs="+", required=True)
     p.add_argument("--to", required=True, help="folder name or role (archive/junk/…)")
     p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser("images", help="when pictures may load by themselves")
+    p.add_argument("policy", nargs="?", default="",
+                   help="verified | trusted | never")
+    p.set_defaults(func=cmd_images)
 
     p = sub.add_parser("trust", help="senders whose images load by themselves")
     p.add_argument("action", choices=["list", "add", "remove"])
