@@ -19,6 +19,18 @@ Item {
   id: root
 
   property string document: ""
+  // A block of markup rather than a whole page -- a quoted original inside a
+  // reply, say. Wrapped here so the caller does not have to know what a
+  // document needs around it.
+  property string fragment: ""
+  onFragmentChanged: root.document = root.fragment === "" ? "" : (
+    '<!DOCTYPE html><html><head><meta charset="utf-8">'
+    + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
+    + 'img-src file: data:; style-src \'unsafe-inline\'">'
+    + '<style>html,body{margin:0;padding:0;background:#fbfbf9;color:#16181d;'
+    + 'font:14px/1.5 system-ui,sans-serif;height:auto!important}'
+    + 'img{max-width:100%;height:auto}</style></head><body>'
+    + root.fragment + '</body></html>')
   // Local content needs a local origin before it may load the inline images
   // the sanitizer pointed at file:// paths.
   property url baseUrl: "file:///"

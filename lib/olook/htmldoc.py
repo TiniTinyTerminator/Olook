@@ -207,6 +207,38 @@ def _clean_css(text, allow_remote=False):
     return REMOTE_URL.sub("none", text)
 
 
+def to_fragment(source, images=None, allow_remote=True):
+    """Return the message's markup as a block that can sit inside another one.
+
+    Same cleaning as `to_document`, without the document around it: this is
+    for quoting an original inside a reply, where the reply is the document
+    and the original is a passage in it. The message's own stylesheet comes
+    along, because most of what makes mail look like itself is in there.
+
+    Remote images are kept by default. They belong to the message being
+    quoted and are going back to the person who sent them; what matters is
+    that nothing fetches them while the reply is only being written.
+    """
+    text = str(source or "")
+    if not text.strip():
+        return ""
+    if len(text) > MAX_LENGTH:
+        text = text[:MAX_LENGTH]
+
+    parser = _Rewriter(images, allow_remote)
+    try:
+        parser.feed(text)
+        parser.close()
+    except Exception:
+        return ""
+
+    body = "".join(parser.out).strip()
+    if not body:
+        return ""
+    style = _clean_css("\n".join(parser.css), allow_remote)
+    return (f"<style>{style}</style>" if style.strip() else "") + body
+
+
 def to_document(source, images=None, allow_remote=False):
     """Return {"html": <full document>, "blockedImages": n} for `source`.
 

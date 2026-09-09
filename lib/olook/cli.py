@@ -684,10 +684,12 @@ def cmd_draft(args):
 
     original = {"headers": body["headers"]}
     if args.kind == "forward":
-        draft = send.forward_draft(account, original, body["text"])
+        draft = send.forward_draft(account, original, body["text"],
+                                   body_html=body.get("html", ""))
     else:
         draft = send.reply_draft(account, original, body["text"],
-                                 reply_all=(args.kind == "reply-all"))
+                                 reply_all=(args.kind == "reply-all"),
+                                 body_html=body.get("html", ""))
     emit({"ok": True, "draft": draft}, lambda d: json.dumps(d["draft"], indent=2))
 
 

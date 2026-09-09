@@ -37,7 +37,12 @@ Item {
   // The chain being replied to, kept apart from what you are writing so it
   // can be folded away. Rejoined when the message goes out.
   property string quotedText: ""
+  // The same chain as markup, when the message being replied to was HTML.
+  // What goes out, and what the fold shows when the shell can render it.
+  property string quotedHtml: ""
   property bool quoteExpanded: false
+  readonly property bool quotedIsHtml: root.quotedHtml !== ""
+    && Qt.application.arguments.length > 0
   // plain | markdown | html — how the body is written, and therefore what
   // goes on the wire: plain text alone, or text plus an HTML alternative.
   property string format: "plain"
@@ -73,6 +78,7 @@ Item {
     subjectText = String(source.subject || "")
     bodyText = String(source.body || "")
     quotedText = String(source.quoted || "")
+    quotedHtml = String(source.quotedHtml || "")
     quoteExpanded = false
     format = String(source.format || "plain")
     attachments = (source.attachments || []).slice()
@@ -120,6 +126,7 @@ Item {
 
   onToTextChanged: root.touch()
   onCcTextChanged: root.touch()
+  onBccTextChanged: root.touch()
   onSubjectTextChanged: root.touch()
   onBodyTextChanged: root.touch()
   onFormatChanged: root.touch()
@@ -303,9 +310,12 @@ Item {
       cc: splitAddresses(ccText),
       bcc: splitAddresses(bccText),
       subject: subjectText,
-      // What you wrote, then the chain. The engine only knows about a body.
-      body: root.quotedText === ""
-        ? bodyText : bodyText.replace(/\s+$/, "") + "\n\n" + root.quotedText,
+      // What was written and the chain stay apart all the way to the engine:
+      // it renders the reply as it was typed and the original as the markup
+      // it arrived in, and joins them once per alternative.
+      body: bodyText,
+      quoted: root.quotedText,
+      quotedHtml: root.quotedHtml,
       format: root.format,
       attachments: root.attachments.slice(),
       inReplyTo: source.inReplyTo || "",
@@ -808,7 +818,7 @@ Item {
           // someone else's text is a worse place to start. Still there, still
           // editable once opened, and still sent either way.
           Rectangle {
-            visible: root.quotedText !== ""
+            visible: root.quotedText !== "" || root.quotedHtml !== ""
             width: Style.space(46)
             height: Style.space(22)
             radius: ui.radius
@@ -841,9 +851,24 @@ Item {
             }
           }
 
+          // The original as it arrived. Read-only when it is HTML: the reply
+          // is what you are writing, and a quoted page is not something this
+          // editor can offer to change. Its remote images stay unfetched
+          // while the reply is only being written; they still travel with it.
+          Loader {
+            id: quotedView
+            visible: root.quotedIsHtml && root.quoteExpanded
+            active: visible
+            width: parent.width
+            height: item ? item.contentHeight : 0
+            source: "MailHtmlView.qml"
+            onLoaded: item.fragment = Qt.binding(function () { return root.quotedHtml })
+          }
+
           TextEdit {
             id: quoteField
             visible: root.quotedText !== "" && root.quoteExpanded
+              && !root.quotedIsHtml
             width: parent.width
             text: root.quotedText
             onTextChanged: root.quotedText = text

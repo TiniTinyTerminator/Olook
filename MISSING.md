@@ -40,8 +40,6 @@ has that this client is better off without.
 
 ## Composing
 
-- **Attachments by drag and drop.** There is a paperclip; a file dragged onto
-  the window does nothing.
 - **Formatting controls.** Markdown and HTML are format choices with no
   toolbar behind them.
 - **Signature editing per account.** The field exists in the account record;
@@ -76,5 +74,8 @@ has that this client is better off without.
   The reverse direction was measured; this one was interrupted.
 - The Bcc field and recipient completion: the code loads without error, but
   neither has been exercised on screen.
+- The HTML quote inside the composer: the fragment renders correctly on its
+  own and the built message carries it, but the fold itself has not been
+  opened on screen.
 - The reader popout's action buttons — reply, archive, delete, flag — are
   wired but only the window's opening and rendering were tested.

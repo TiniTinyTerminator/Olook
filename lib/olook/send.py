@@ -13,7 +13,7 @@ import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
-from . import htmltext, keyring, mailbox, markdown, oauth
+from . import htmldoc, htmltext, keyring, mailbox, markdown, oauth
 
 
 class SendError(Exception):
@@ -48,23 +48,52 @@ def build(account, draft):
     if signature and signature not in body:
         body = f"{body}\n\n-- \n{signature}"
 
+    # The chain being replied to travels separately from what was written, so
+    # each can be rendered the way it should be: the reply as it was typed,
+    # the original as the markup it arrived in.
+    quoted_text = str(draft.get("quoted") or "")
+    quoted_html = str(draft.get("quotedHtml") or "")
+    plain = body + (f"\n\n{quoted_text}" if quoted_text else "")
+
     # How the body was written decides what goes on the wire: plain text on
     # its own, or text plus an HTML alternative for clients that render it.
     fmt = str(draft.get("format") or "plain").lower()
     if fmt == "markdown":
-        msg.set_content(body)
-        msg.add_alternative(markdown.document(markdown.to_html(body)), subtype="html")
+        written_html = markdown.to_html(body)
     elif fmt == "html":
-        msg.set_content(htmltext.to_text(body) or body)
-        msg.add_alternative(_html_document(body), subtype="html")
+        written_html = body
     else:
-        msg.set_content(body)
-        if draft.get("html"):
-            msg.add_alternative(str(draft["html"]), subtype="html")
+        written_html = _paragraphs(body)
+
+    msg.set_content(plain if fmt != "html" else (htmltext.to_text(plain) or plain))
+
+    if quoted_html:
+        # An HTML alternative even for a plain-text reply: the quoted original
+        # is HTML, and dropping it back to "> " lines would undo the point.
+        msg.add_alternative(markdown.document(written_html + "<br>" + quoted_html),
+                            subtype="html")
+    elif fmt == "markdown":
+        msg.add_alternative(markdown.document(written_html), subtype="html")
+    elif fmt == "html":
+        msg.add_alternative(_html_document(body), subtype="html")
+    elif draft.get("html"):
+        msg.add_alternative(str(draft["html"]), subtype="html")
 
     for path in draft.get("attachments") or []:
         _attach(msg, path)
     return msg
+
+
+def _paragraphs(text):
+    """Plain typing as HTML: blank lines part paragraphs, single ones break."""
+    blocks = [block for block in str(text or "").split("\n\n")]
+    out = []
+    for block in blocks:
+        if not block.strip():
+            continue
+        out.append("<p>" + "<br>".join(html_escape(line)
+                                       for line in block.splitlines()) + "</p>")
+    return "".join(out)
 
 
 def _html_document(body):
@@ -207,8 +236,14 @@ def _remove_draft(session, uid):
     session.expunge([uid])
 
 
-def reply_draft(account, original, body_text, reply_all=False):
-    """Prefill a reply from a fetched message's headers and body."""
+def reply_draft(account, original, body_text, reply_all=False, body_html=""):
+    """Prefill a reply from a fetched message's headers and body.
+
+    When the original was HTML, the quoted block keeps it. A mail that
+    arrived as a designed page should be quoted as one, the way Outlook
+    quotes it -- flattening it to "> " lines throws away the table it was
+    laid out in and every colour it chose.
+    """
     headers = original.get("headers", {})
     to_field = headers.get("Reply-To") or headers.get("From", "")
     to = [a["address"] for a in mailbox.split_addresses(to_field)]
@@ -237,13 +272,35 @@ def reply_draft(account, original, body_text, reply_all=False):
         # on. They are joined again when the message is sent.
         "body": "",
         "quoted": f"On {date}, {sender} wrote:\n{quoted}",
+        "quotedHtml": _quoted_html(f"On {date}, {sender} wrote:", body_html),
         "inReplyTo": headers.get("Message-ID", ""),
         "references": " ".join(filter(None, [headers.get("References", ""),
                                              headers.get("Message-ID", "")])).strip(),
     }
 
 
-def forward_draft(account, original, body_text):
+def _quoted_html(intro, body_html, headers=None):
+    """The original as an HTML block, under the line that says whose it is."""
+    fragment = htmldoc.to_fragment(body_html)
+    if not fragment:
+        return ""
+    lines = [f"<p>{html_escape(intro)}</p>"]
+    for name in ("From", "Date", "Subject", "To"):
+        value = (headers or {}).get(name, "")
+        if value:
+            lines.append(f"<div>{html_escape(name)}: {html_escape(str(value))}</div>")
+    # The bar down the left is how every client marks quoted mail.
+    return ("".join(lines)
+            + '<blockquote style="margin:0 0 0 0.8em;padding-left:0.8em;'
+              'border-left:2px solid #c8ccd4">' + fragment + "</blockquote>")
+
+
+def html_escape(value):
+    return (str(value).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def forward_draft(account, original, body_text, body_html=""):
     headers = original.get("headers", {})
     subject = headers.get("Subject", "")
     if not subject.lower().startswith("fwd:"):
@@ -256,5 +313,8 @@ def forward_draft(account, original, body_text):
         f"To: {headers.get('To', '')}",
         "", str(body_text or ""),
     ]
+    intro = "---------- Forwarded message ----------"
     return {"to": [], "cc": [], "subject": subject, "body": "",
-            "quoted": "\n".join(lines), "inReplyTo": "", "references": ""}
+            "quoted": "\n".join(lines),
+            "quotedHtml": _quoted_html(intro, body_html, headers),
+            "inReplyTo": "", "references": ""}
