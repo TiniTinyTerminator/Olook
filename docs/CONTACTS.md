@@ -109,7 +109,7 @@ Mail is untouched by any of this and keeps working as it does now.
 5. Give them to Olook, and sign in:
 
    ```
-   olook set --account ACCOUNT \
+   olook set ACCOUNT \
      --contacts-client-id  YOUR_CLIENT_ID \
      --contacts-client-secret YOUR_CLIENT_SECRET \
      --contacts-scopes "contacts calendar"
@@ -161,7 +161,7 @@ again when contacts go quiet. It is a weekly annoyance, not a broken feature.
 ## Undoing it
 
 ```
-olook set --account ACCOUNT --contacts-client-id "" --contacts-client-secret ""
+olook set ACCOUNT --contacts-client-id "" --contacts-client-secret ""
 ```
 
 The address book already fetched stays in the cache until the next sync; the
