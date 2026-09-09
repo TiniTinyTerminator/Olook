@@ -14,10 +14,11 @@ Item {
 
   property var settings: ({})
 
-  // The plugin directory ships the engine next to the QML, so the same
-  // checkout works whether it was installed by `omarchy plugin add`, symlinked
-  // from a working copy, or copied in by hand.
-  readonly property string cliPath: Qt.resolvedUrl("bin/olook").toString().replace(/^file:\/\//, "")
+  // The engine sits at the root of the plugin and the QML in ui/ beside it,
+  // so the same checkout works whether it was installed by `omarchy plugin
+  // add`, symlinked from a working copy, or copied in by hand. Resolved
+  // relative to this file, which is why it climbs out of ui/ first.
+  readonly property string cliPath: Qt.resolvedUrl("../bin/olook").toString().replace(/^file:\/\//, "")
 
   property var accounts: []
   property string accountId: ""

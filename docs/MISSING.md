@@ -24,7 +24,7 @@ has that this client is better off without.
   Contacts is built, but Olook speaks to Gmail as Thunderbird, whose
   application is approved for mail and refuses to be asked for anything else.
   Contacts therefore run on a separate grant with your own client id; see
-  CONTACTS.md, which is about five minutes of clicking. Microsoft's equivalent
+  docs/CONTACTS.md, which is about five minutes of clicking. Microsoft's equivalent
   — Graph /me/contacts — is not written.
 
 ## Mail handling

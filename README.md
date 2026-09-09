@@ -85,7 +85,7 @@ alone.
 **If you edit the plugin**, re-run `./install.sh` — it copies the changed files
 and asks the shell to rescan. The bar widget picks the change up immediately.
 
-The window does **not**: Quickshell compiles `MailWindow.qml` and everything it
+The window does **not**: Quickshell compiles `ui/MailWindow.qml` and everything it
 pulls in once, and keeps it for the life of the shell process, so `rescanPlugins`,
 toggling the plugin off and on, and `shell reloadConfig` all leave the old window
 running. After changing anything the window draws, `omarchy restart shell`, or you
@@ -151,7 +151,7 @@ Microsoft needs the delegated permissions `IMAP.AccessAsUser.All` and
 Note that Thunderbird's application is approved for mail and refuses to be
 asked for anything else — ask it for contacts or a calendar and Google blocks
 the sign-in outright. Those run on a separate application of your own; see
-[CONTACTS.md](CONTACTS.md), which is about five minutes of clicking and does
+[CONTACTS.md](docs/CONTACTS.md), which is about five minutes of clicking and does
 not disturb how mail signs in.
 
 ## Using it
@@ -317,9 +317,10 @@ cache, and the QML calls it for everything. That is why the panel paints
 instantly: opening a folder is a local query, not a round trip.
 
 ```
-Panel.qml / MailWindow.qml   QML surfaces (bar widget, window)
+ui/Panel.qml
+ui/MailWindow.qml            QML surfaces (bar widget, window)
         │
-   Service.qml               spawns the engine, parses its JSON
+   ui/Service.qml            spawns the engine, parses its JSON
         │
    bin/olook  ──►  lib/olook/
                      providers.py   autodiscovery (built-ins, MX, ISPDB)

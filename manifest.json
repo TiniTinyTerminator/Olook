@@ -12,8 +12,8 @@
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "barWidget": "Panel.qml",
-    "overlay": "MailWindow.qml"
+    "barWidget": "ui/Panel.qml",
+    "overlay": "ui/MailWindow.qml"
   },
   "barWidget": {
     "displayName": "Olook",

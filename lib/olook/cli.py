@@ -188,7 +188,7 @@ def cmd_set(args):
         account["smtp"]["starttls"] = args.smtp_port != 465
         changed.append("smtp.port")
     # Your own OAuth application, which is the only way to ask Google for
-    # anything beyond mail. See CONTACTS.md.
+    # anything beyond mail. See docs/CONTACTS.md.
     if args.client_id is not None:
         account.setdefault("oauth", {})["client_id"] = args.client_id
         changed.append("oauth.client_id")
@@ -363,7 +363,7 @@ def cmd_sync(args):
 
 
 # The virtual folder that merges every account's inbox. Matches ALL_FOLDER in
-# Model.js; no server has a folder by this name and nothing is moved into it.
+# ui/Model.js; no server has a folder by this name and nothing is moved into it.
 ALL_FOLDER = "__all__"
 
 

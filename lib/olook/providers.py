@@ -33,7 +33,7 @@ TIMEOUT = 6
 # for mail: asking it for anything else -- contacts, calendar -- makes Google
 # refuse the sign-in outright, and there is no way to extend somebody else's
 # app. Reading the address book therefore needs a client of your own; see
-# CONTACTS.md.
+# docs/CONTACTS.md.
 GOOGLE_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU"
 

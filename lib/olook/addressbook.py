@@ -53,7 +53,7 @@ def grant(account):
     if not creds.get("client_id"):
         raise AddressBookError(
             "This account has no contacts application configured. "
-            "See CONTACTS.md — it takes about five minutes.")
+            "See docs/CONTACTS.md — it takes about five minutes.")
     return {
         "id": account["id"] + "#contacts",
         "email": account.get("email", ""),
