@@ -202,6 +202,10 @@ def cmd_set(args):
         account.setdefault("contactsOauth", {})["client_secret"] = \
             args.contacts_client_secret
         changed.append("contactsOauth.client_secret")
+    if args.contacts_scopes is not None:
+        account.setdefault("contactsOauth", {})["scopes"] = \
+            providers.expand_scope(args.contacts_scopes)
+        changed.append("contactsOauth.scopes")
 
     saved = config.upsert(account)
     emit({"ok": True, "account": saved, "changed": changed},
@@ -1291,6 +1295,9 @@ def build_parser():
     p.add_argument("--contacts-client-id",
                    help="an OAuth application of your own, for contacts only")
     p.add_argument("--contacts-client-secret")
+    p.add_argument("--contacts-scopes",
+                   help="what your application may do: contacts, "
+                        "contacts.readonly, calendar, calendar.readonly")
     p.add_argument("--signature")
     p.add_argument("--signature-stdin", action="store_true",
                    help="read the signature from stdin")

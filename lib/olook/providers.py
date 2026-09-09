@@ -38,8 +38,28 @@ GOOGLE_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleuse
 GOOGLE_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU"
 
 # Added only for an account carrying its own client id, because only such an
-# app can be granted it.
+# app can be granted it. All four are "sensitive" in Google's grading rather
+# than "restricted", which is what lets your own application be published
+# without the security assessment a Gmail scope would demand -- reading and
+# writing alike.
 GOOGLE_CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
+
+GOOGLE_SCOPE_SHORTHAND = {
+    "contacts": "https://www.googleapis.com/auth/contacts",
+    "contacts.readonly": "https://www.googleapis.com/auth/contacts.readonly",
+    "calendar": "https://www.googleapis.com/auth/calendar",
+    "calendar.readonly": "https://www.googleapis.com/auth/calendar.readonly",
+}
+
+
+def expand_scope(value):
+    """Turn "contacts calendar" into the URLs Google wants, or pass URLs on."""
+    out = []
+    for part in str(value or "").replace(",", " ").split():
+        full = GOOGLE_SCOPE_SHORTHAND.get(part, part)
+        if full not in out:
+            out.append(full)
+    return out
 
 
 def scope_for(account):

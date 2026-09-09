@@ -25,10 +25,14 @@ So one application for everything means signing into your mail every week. The
 split below means signing into mail never: Thunderbird's application is
 already reviewed for mail, and yours carries the rest.
 
-Calendar belongs on your application when there is a calendar to fill. It is
-sensitive rather than restricted, so it can sit beside contacts without
-costing anything — add it to `scopes` in the account's `contactsOauth` and
-sign in once more. No second project.
+Calendar belongs on your application when there is a calendar to fill, and so
+does write access to either. All of them are sensitive rather than restricted,
+so they sit beside contacts without costing anything — `--contacts-scopes`
+sets them, and no second project is ever needed.
+
+Worth knowing before you grant them: Olook cannot write to contacts or the
+calendar yet. Granting the wider scopes now only saves you a second trip
+through the consent screen when it can.
 
 ## Why your own application
 
@@ -65,9 +69,22 @@ Mail is untouched by any of this and keeps working as it does now.
    - **Branding**: an app name, and your own address for support and contact.
    - **Audience**: user type **External**. Under **Test users**, add your own
      Gmail address — an app in testing will not let anyone else near it.
-   - **Data access → Add or remove scopes**: tick
-     `.../auth/contacts.readonly`. Nothing else. If you plan to add the
-     calendar later, `.../auth/calendar.readonly` can go on at the same time.
+   - **Data access → Add or remove scopes**: tick what you want the app to be
+     allowed to do. Reading only:
+
+         .../auth/contacts.readonly
+         .../auth/calendar.readonly
+
+     Reading and writing — for editing a contact or making an appointment
+     from here, once Olook can:
+
+         .../auth/contacts
+         .../auth/calendar
+
+     All four are *sensitive*, not *restricted*, so any of them can be
+     published without an assessment. Ask for the wider pair now if you want
+     them eventually: adding a scope later means going through the consent
+     screen again.
 
 4. **Clients → Create client** (older consoles: **Credentials → Create
    credentials → OAuth client ID**)
@@ -79,10 +96,15 @@ Mail is untouched by any of this and keeps working as it does now.
    ```
    olook set --account someone-gmail.com \
      --contacts-client-id  YOUR_CLIENT_ID \
-     --contacts-client-secret YOUR_CLIENT_SECRET
+     --contacts-client-secret YOUR_CLIENT_SECRET \
+     --contacts-scopes "contacts calendar"
 
    olook contacts-auth --account someone-gmail.com
    ```
+
+   `--contacts-scopes` takes the short names — `contacts`,
+   `contacts.readonly`, `calendar`, `calendar.readonly` — and must match what
+   you ticked in step 3. Left out, it asks to read contacts and nothing more.
 
    A browser opens. You will see "Google hasn't verified this app" — that is
    your own application, unreviewed, which is expected. Continue past it.

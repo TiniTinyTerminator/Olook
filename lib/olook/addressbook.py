@@ -72,18 +72,22 @@ def grant(account):
 def scopes(account):
     """What your own application asks for.
 
-    Contacts today. Calendar will join it when there is a calendar to fill,
-    and both are "sensitive" rather than "restricted" in Google's grading,
-    which is what lets this application be published and stop handing out
-    tokens that expire weekly. Mail is restricted and deliberately stays with
-    Thunderbird's application, which is already reviewed for it.
+    Reading contacts unless the account says otherwise. Writing to contacts
+    or the calendar is a wider grant and has to be asked for deliberately,
+    because a permission granted is a permission that can be used -- and
+    Olook cannot write to either yet, so asking for it today buys nothing but
+    saves a second trip through the consent screen when it can.
+
+    All of them are "sensitive" rather than "restricted" in Google's grading,
+    read and write alike, so none of this costs the security assessment that a
+    Gmail scope would. Mail stays with Thunderbird's application, which is
+    already reviewed for it.
     """
-    extra = credentials(account).get("scopes") or []
-    wanted = [providers.GOOGLE_CONTACTS_SCOPE]
-    for scope in extra:
-        if scope and scope not in wanted:
-            wanted.append(str(scope))
-    return wanted
+    asked = credentials(account).get("scopes")
+    if asked:
+        return providers.expand_scope(" ".join(asked) if isinstance(asked, list)
+                                      else str(asked))
+    return [providers.GOOGLE_CONTACTS_SCOPE]
 
 
 def fetch(account, limit=2000):
