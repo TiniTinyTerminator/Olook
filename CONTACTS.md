@@ -109,12 +109,12 @@ Mail is untouched by any of this and keeps working as it does now.
 5. Give them to Olook, and sign in:
 
    ```
-   olook set --account someone-gmail.com \
+   olook set --account ACCOUNT \
      --contacts-client-id  YOUR_CLIENT_ID \
      --contacts-client-secret YOUR_CLIENT_SECRET \
      --contacts-scopes "contacts calendar"
 
-   olook contacts-auth --account someone-gmail.com
+   olook contacts-auth --account ACCOUNT
    ```
 
    `--contacts-scopes` takes the short names — `contacts`,
