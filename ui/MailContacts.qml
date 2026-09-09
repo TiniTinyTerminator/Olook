@@ -40,6 +40,83 @@ Item {
   signal composeRequested(string address)
   signal mailRequested(string address)
 
+  // The editor. Open on a contact to change it, open on nothing to add one.
+  // The draft is held here rather than in the fields so that closing and
+  // reopening starts clean and a half-typed edit cannot be saved by accident.
+  property bool editing: false
+  property string draftResource: ""
+  property string draftEtag: ""
+  property string draftAccount: ""
+  property string draftName: ""
+  property string draftEmails: ""
+  property string draftPhones: ""
+  property string draftOrganisation: ""
+  property bool confirmingDelete: false
+
+  readonly property bool canEdit: !!(service && service.canEditContacts)
+
+  function startAdd() {
+    root.draftResource = ""
+    root.draftEtag = ""
+    root.draftAccount = ""
+    root.draftName = ""
+    root.draftEmails = ""
+    root.draftPhones = ""
+    root.draftOrganisation = ""
+    root.confirmingDelete = false
+    root.editing = true
+  }
+
+  // Editing someone who is only known from their mail writes them into the
+  // book for the first time, which is the same form with the fields filled in.
+  function startEdit() {
+    var person = root.current
+    if (!person) return
+    root.draftResource = person.resource || ""
+    root.draftEtag = person.etag || ""
+    root.draftAccount = person.bookAccount || ""
+    root.draftName = person.name || ""
+    var addresses = person.bookEmails && person.bookEmails.length
+                    ? person.bookEmails
+                    : (person.address ? [person.address] : [])
+    root.draftEmails = addresses.join(", ")
+    root.draftPhones = (person.phones || []).join(", ")
+    root.draftOrganisation = person.organisation || ""
+    root.confirmingDelete = false
+    root.editing = true
+  }
+
+  function splitList(text) {
+    var parts = String(text || "").split(",")
+    var out = []
+    for (var i = 0; i < parts.length; i++)
+      if (parts[i].trim() !== "") out.push(parts[i].trim())
+    return out
+  }
+
+  function saveDraft() {
+    if (!root.service) return
+    root.service.saveContact(root.draftAccount, root.draftResource, root.draftEtag, {
+      "name": root.draftName,
+      "emails": root.splitList(root.draftEmails),
+      "phones": root.splitList(root.draftPhones),
+      "organisation": root.draftOrganisation
+    }, function (saved) {
+      root.editing = false
+      if (saved && saved.emails && saved.emails.length)
+        root.selected = saved.emails[0]
+    })
+  }
+
+  function deleteCurrent() {
+    if (!root.service || !root.current || !root.current.resource) return
+    root.service.removeContact(root.current.bookAccount, root.current.resource,
+                               function () {
+      root.confirmingDelete = false
+      root.selected = ""
+    })
+  }
+
   readonly property var people: service ? service.contacts : []
   readonly property var current: {
     for (var i = 0; i < root.people.length; i++)
@@ -52,6 +129,10 @@ Item {
 
   onWidthChanged: root.pinList()
   Component.onCompleted: root.pinList()
+  onSelectedChanged: {
+    root.editing = false
+    root.confirmingDelete = false
+  }
 
   function pinList() {
     if (root.listPinned || root.width <= 0)
@@ -83,7 +164,9 @@ Item {
         spacing: Style.space(6)
 
         Rectangle {
-          width: parent.width - syncButton.width - Style.space(6)
+          width: parent.width - syncButton.width
+                 - (addButton.visible ? addButton.width + Style.space(6) : 0)
+                 - Style.space(6)
           height: Style.space(32)
           radius: ui.radius
           color: ui.surface
@@ -115,6 +198,39 @@ Item {
               font.family: ui.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
+          }
+        }
+
+        Rectangle {
+          id: addButton
+          visible: root.canEdit
+          width: Style.space(32)
+          height: Style.space(32)
+          radius: ui.radius
+          color: addHover.containsMouse ? ui.hover : "transparent"
+          border.width: 1
+          border.color: ui.border
+
+          Text {
+            anchors.centerIn: parent
+            text: "󰐕"
+            color: ui.dim
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.iconSmall
+          }
+
+          MouseArea {
+            id: addHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.startAdd()
+          }
+
+          PanelToolTip {
+            visible: addHover.containsMouse
+            text: "Add a contact"
+            fontFamily: ui.fontFamily
           }
         }
 
@@ -265,7 +381,7 @@ Item {
 
       MailPlaceholder {
         anchors.fill: parent
-        visible: root.current === null
+        visible: root.current === null && !root.editing
         ui: root.ui
         glyph: "󰀓"
         title: root.people.length === 0 ? "No people yet" : "Nobody selected"
@@ -275,7 +391,7 @@ Item {
       }
 
       Column {
-        visible: root.current !== null
+        visible: root.current !== null && !root.editing
         anchors.fill: parent
         anchors.margins: Style.space(24)
         spacing: Style.space(16)
@@ -338,9 +454,28 @@ Item {
             label: "󰍉  Their mail"
             onTriggered: if (root.current) root.mailRequested(root.current.address)
           }
+
+          // Someone known only from their mail has no book entry yet, so the
+          // same form adds them rather than changing them.
+          ActionChip {
+            visible: root.canEdit
+            label: root.current && root.current.inAddressBook
+                   ? "󰏫  Edit" : "󰐕  Add to contacts"
+            onTriggered: root.startEdit()
+          }
+
+          ActionChip {
+            visible: !!(root.canEdit && root.current && root.current.inAddressBook)
+            urgent: root.confirmingDelete
+            label: root.confirmingDelete ? "󰩹  Really delete?" : "󰩹  Delete"
+            onTriggered: {
+              if (root.confirmingDelete) root.deleteCurrent()
+              else root.confirmingDelete = true
+            }
+          }
         }
 
-        Rectangle { width: parent.width; height: 1; color: ui.border }
+        Rectangle { width: parent.width; height: ui.hairline; color: ui.border }
 
         Column {
           width: parent.width
@@ -380,6 +515,143 @@ Item {
           }
         }
       }
+
+      // ------------------------------------------------------- the editor
+      Column {
+        id: editorPane
+        visible: root.editing
+        anchors.fill: parent
+        anchors.margins: Style.space(24)
+        spacing: Style.space(14)
+
+        onVisibleChanged: if (visible) {
+          nameField.text = root.draftName
+          emailField.text = root.draftEmails
+          phoneField.text = root.draftPhones
+          orgField.text = root.draftOrganisation
+          nameField.focusInput()
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          text: root.draftResource === "" ? "New contact" : "Edit contact"
+          color: ui.foreground
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.title
+        }
+
+        EditField {
+          id: nameField
+          width: parent.width
+          label: "Name"
+          placeholder: "Ada Lovelace"
+          onEdited: function (value) { root.draftName = value }
+        }
+
+        EditField {
+          id: emailField
+          width: parent.width
+          label: "Email"
+          placeholder: "ada@example.com, ada@work.com"
+          onEdited: function (value) { root.draftEmails = value }
+        }
+
+        EditField {
+          id: phoneField
+          width: parent.width
+          label: "Phone"
+          placeholder: "+31 6 12345678"
+          onEdited: function (value) { root.draftPhones = value }
+        }
+
+        EditField {
+          id: orgField
+          width: parent.width
+          label: "Organisation"
+          placeholder: "Analytical Engines Ltd"
+          onEdited: function (value) { root.draftOrganisation = value }
+        }
+
+        Text {
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.Wrap
+          text: "Separate several addresses or numbers with commas."
+          color: ui.faint
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Row {
+          spacing: Style.space(8)
+
+          ActionChip {
+            label: "󰆓  Save"
+            onTriggered: root.saveDraft()
+          }
+
+          ActionChip {
+            label: "Cancel"
+            onTriggered: root.editing = false
+          }
+        }
+      }
+    }
+  }
+
+  // A labelled single-line field. The text is pushed back out through
+  // `edited` rather than bound both ways, so the draft on the root stays the
+  // one copy that Save reads.
+  component EditField: Column {
+    id: field
+    property string label: ""
+    property string placeholder: ""
+    property alias text: fieldInput.text
+    signal edited(string value)
+
+    function focusInput() { fieldInput.forceActiveFocus() }
+
+    spacing: Style.space(5)
+
+    Text {
+      textFormat: Text.PlainText
+      text: field.label
+      color: ui.dim
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    Rectangle {
+      width: parent.width
+      height: Style.space(32)
+      radius: ui.radius
+      color: ui.surface
+      border.width: 1
+      border.color: fieldInput.activeFocus ? ui.accent : ui.border
+
+      TextInput {
+        id: fieldInput
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(10)
+        anchors.rightMargin: Style.space(10)
+        verticalAlignment: TextInput.AlignVCenter
+        color: ui.foreground
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        selectionColor: Util.alpha(ui.accent, 0.35)
+        selectByMouse: true
+        clip: true
+        onTextChanged: field.edited(text)
+
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          visible: fieldInput.text === ""
+          text: field.placeholder
+          color: ui.faint
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+      }
     }
   }
 
@@ -410,21 +682,23 @@ Item {
   component ActionChip: Rectangle {
     id: chip
     property string label: ""
+    property bool urgent: false
     signal triggered()
 
     width: chipText.implicitWidth + Style.space(22)
     height: Style.space(30)
     radius: ui.radius
-    color: chipHover.containsMouse ? ui.hover : "transparent"
+    color: chip.urgent ? Util.alpha(ui.urgent, chipHover.containsMouse ? 0.28 : 0.18)
+                       : (chipHover.containsMouse ? ui.hover : "transparent")
     border.width: 1
-    border.color: ui.border
+    border.color: chip.urgent ? Util.alpha(ui.urgent, 0.55) : ui.border
 
     Text {
       id: chipText
       textFormat: Text.PlainText
       anchors.centerIn: parent
       text: chip.label
-      color: ui.foreground
+      color: chip.urgent ? ui.urgent : ui.foreground
       font.family: ui.fontFamily
       font.pixelSize: Style.font.bodySmall
     }

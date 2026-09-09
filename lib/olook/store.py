@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS address_book (
   phones    TEXT DEFAULT '[]',
   organisation TEXT DEFAULT '',
   photo     TEXT DEFAULT '',
+  etag      TEXT DEFAULT '',
   PRIMARY KEY (account, resource)
 );
 
@@ -111,6 +112,9 @@ def connect():
 # EXISTS does nothing for a table that already exists, so a cache made before
 # these were thought of needs them put on by hand.
 LATER_COLUMNS = {
+    "address_book": [
+        ("etag", "TEXT DEFAULT ''"),
+    ],
     "messages": [
         ("refs", "TEXT DEFAULT ''"),
         ("in_reply_to", "TEXT DEFAULT ''"),
@@ -412,6 +416,12 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
             entry["phones"] = person["phones"]
             entry["organisation"] = person["organisation"]
             entry["inAddressBook"] = True
+            # Which row in which account's book this came from, so an edit
+            # knows what it is editing and an edit knows its etag.
+            entry["resource"] = person["resource"]
+            entry["etag"] = person["etag"]
+            entry["bookAccount"] = person["account"]
+            entry["bookEmails"] = person["emails"]
         if not addresses and person["name"]:
             # A contact with a number and no address still belongs here.
             key = "book:" + person["name"].lower()
@@ -422,6 +432,10 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
                 "phones": person["phones"],
                 "organisation": person["organisation"],
                 "inAddressBook": True,
+                "resource": person["resource"],
+                "etag": person["etag"],
+                "bookAccount": person["account"],
+                "bookEmails": person["emails"],
             })
 
     found = list(people.values())
@@ -429,6 +443,10 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
         entry.setdefault("phones", [])
         entry.setdefault("organisation", "")
         entry.setdefault("inAddressBook", False)
+        entry.setdefault("resource", "")
+        entry.setdefault("etag", "")
+        entry.setdefault("bookAccount", "")
+        entry.setdefault("bookEmails", [])
     if query:
         needle = query.strip().lower()
         found = [p for p in found
@@ -552,13 +570,55 @@ def replace_address_book(conn, account, people):
     conn.execute("DELETE FROM address_book WHERE account = ?", (account,))
     conn.executemany(
         "INSERT OR REPLACE INTO address_book "
-        "(account, resource, name, emails, phones, organisation, photo) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(account, resource, name, emails, phones, organisation, photo, etag) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [(account, p.get("resource", ""), p.get("name", ""),
           json.dumps(p.get("emails") or []), json.dumps(p.get("phones") or []),
-          p.get("organisation", ""), p.get("photo", ""))
+          p.get("organisation", ""), p.get("photo", ""), p.get("etag", ""))
          for p in people])
     conn.commit()
+
+
+def save_contact(conn, account, person):
+    """One contact, in place. Used after the provider has accepted an edit."""
+    conn.execute(
+        "INSERT OR REPLACE INTO address_book "
+        "(account, resource, name, emails, phones, organisation, photo, etag) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (account, person.get("resource", ""), person.get("name", ""),
+         json.dumps(person.get("emails") or []),
+         json.dumps(person.get("phones") or []),
+         person.get("organisation", ""), person.get("photo", ""),
+         person.get("etag", "")))
+    conn.commit()
+
+
+def forget_contact(conn, account, resource):
+    """Drop one contact from the cached book."""
+    conn.execute("DELETE FROM address_book WHERE account = ? AND resource = ?",
+                 (account, resource))
+    conn.commit()
+
+
+def contact(conn, account, resource):
+    """One cached contact, or None. The etag on it is what an edit needs."""
+    row = conn.execute(
+        "SELECT * FROM address_book WHERE account = ? AND resource = ?",
+        (account, resource)).fetchone()
+    return _address_book_row(row) if row else None
+
+
+def _address_book_row(row):
+    return {
+        "account": row["account"],
+        "resource": row["resource"],
+        "name": row["name"],
+        "emails": json.loads(row["emails"] or "[]"),
+        "phones": json.loads(row["phones"] or "[]"),
+        "organisation": row["organisation"],
+        "photo": row["photo"],
+        "etag": (row["etag"] if "etag" in row.keys() else "") or "",
+    }
 
 
 def address_book(conn, accounts=None):
@@ -567,15 +627,7 @@ def address_book(conn, accounts=None):
     if accounts:
         sql += " WHERE account IN (%s)" % ",".join("?" * len(accounts))
         params.extend(accounts)
-    out = []
-    for row in conn.execute(sql, params):
-        out.append({
-            "account": row["account"], "name": row["name"],
-            "emails": json.loads(row["emails"] or "[]"),
-            "phones": json.loads(row["phones"] or "[]"),
-            "organisation": row["organisation"], "photo": row["photo"],
-        })
-    return out
+    return [_address_book_row(row) for row in conn.execute(sql, params)]
 
 
 def set_keywords(conn, account, folder, uids, add=(), remove=()):

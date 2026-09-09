@@ -141,6 +141,7 @@ def _flatten(person):
               for p in (person.get("phoneNumbers") or []) if p.get("value")]
     return {
         "resource": str(person.get("resourceName") or ""),
+        "etag": str(person.get("etag") or ""),
         "name": _first(names, "displayName"),
         "emails": emails,
         "phones": phones,
@@ -153,3 +154,107 @@ def save(conn, account_id, people):
     """Replace this account's address book with what was just fetched."""
     store.replace_address_book(conn, account_id, people)
     return len(people)
+
+
+# ------------------------------------------------------------------ writing
+
+API_URL = "https://people.googleapis.com/v1/"
+
+# The fields an edit is allowed to touch. Google wants this spelled out on
+# every update, and anything left off it is wiped from the contact, so it has
+# to match exactly what _person builds below.
+WRITABLE = "names,emailAddresses,phoneNumbers,organizations"
+
+
+def _person(contact):
+    """A flat contact as the shape the People API expects back."""
+    name = str(contact.get("name") or "").strip()
+    person = {}
+    if name:
+        # unstructuredName lets Google do the splitting, which it does better
+        # than a guess at where a family name starts -- "van der Berg" is one
+        # surname and "Maria de Jong" is not three given names.
+        person["names"] = [{"unstructuredName": name}]
+    emails = [a for a in (str(e or "").strip() for e in contact.get("emails") or []) if a]
+    if emails:
+        person["emailAddresses"] = [{"value": a} for a in emails]
+    phones = [p for p in (str(n or "").strip() for n in contact.get("phones") or []) if p]
+    if phones:
+        person["phoneNumbers"] = [{"value": p} for p in phones]
+    organisation = str(contact.get("organisation") or "").strip()
+    if organisation:
+        person["organizations"] = [{"name": organisation}]
+    return person
+
+
+def _call(account, method, url, body=None):
+    token = oauth.access_token(grant(account))
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    request = urllib.request.Request(url, data=data, method=method, headers={
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw.strip() else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail)["error"]["message"]
+        except (ValueError, KeyError, TypeError):
+            detail = detail[:200]
+        if exc.code in (401, 403):
+            raise AddressBookError(
+                "Your contacts application may only read, not write. Ask for "
+                "the wider scope and sign in again: olook set "
+                + str(account.get("id", "")) + " --contacts-scopes contacts, "
+                "then olook contacts-auth. (" + detail + ")") from exc
+        if exc.code == 400 and "etag" in detail.lower():
+            raise AddressBookError(
+                "This contact changed somewhere else since it was last "
+                "fetched. Refresh the list and try again.") from exc
+        raise AddressBookError(f"Contacts request failed: {exc.code} {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise AddressBookError(f"Cannot reach Google: {exc.reason}") from exc
+
+
+def create(account, contact):
+    """Add a contact to the account's address book, and return it as saved."""
+    person = _person(contact)
+    if not person:
+        raise AddressBookError("A contact needs at least a name.")
+    url = API_URL + "people:createContact?" + urllib.parse.urlencode(
+        {"personFields": FIELDS})
+    return _flatten(_call(account, "POST", url, person))
+
+
+def update(account, resource, etag, contact):
+    """Change a contact that is already there.
+
+    The etag is Google's guard against two edits crossing: hand back the one
+    that came with the copy being edited, and the write is refused if the
+    contact moved on in the meantime.
+    """
+    if not resource:
+        raise AddressBookError("That contact has no address-book entry to edit.")
+    if not etag:
+        raise AddressBookError(
+            "This contact was cached before edits were possible. "
+            "Refresh the list and try again.")
+    person = _person(contact)
+    person["etag"] = etag
+    # resource is already "people/<id>", which is the path Google wants.
+    url = (API_URL + resource + ":updateContact?"
+           + urllib.parse.urlencode({"updatePersonFields": WRITABLE,
+                                     "personFields": FIELDS}))
+    return _flatten(_call(account, "PATCH", url, person))
+
+
+def remove(account, resource):
+    """Delete a contact from the account's address book."""
+    if not resource:
+        raise AddressBookError("That contact has no address-book entry to delete.")
+    url = API_URL + resource + ":deleteContact"
+    _call(account, "DELETE", url)
+    return resource

@@ -579,6 +579,71 @@ Item {
     }, "contacts")
   }
 
+  // The account whose address book new contacts go into. Only accounts with
+  // an application of their own behind them can be written to, so a client
+  // with none offers no editing at all rather than failing at the last step.
+  readonly property var bookAccounts: {
+    var out = []
+    for (var i = 0; i < root.accounts.length; i++)
+      if (root.accounts[i].addressBook) out.push(root.accounts[i])
+    return out
+  }
+
+  readonly property bool canEditContacts: root.bookAccounts.length > 0
+
+  // Add a contact, or change one already in the book. `resource` empty means
+  // a new one. Emails and phones are whole lists: what is passed replaces
+  // what was there, which is how the People API treats them too.
+  function saveContact(account, resource, etag, contact, done) {
+    var target = account || (root.bookAccounts.length ? root.bookAccounts[0].id : "")
+    if (!target) {
+      root.error = "No account here can keep contacts."
+      root.actionFailed(root.error)
+      return
+    }
+    var args = ["contact-save", "--account", String(target)]
+    if (resource) args = args.concat(["--resource", String(resource)])
+    if (etag) args = args.concat(["--etag", String(etag)])
+    args = args.concat(["--name", String(contact.name || "")])
+    args = args.concat(["--organisation", String(contact.organisation || "")])
+    var emails = contact.emails || []
+    for (var i = 0; i < emails.length; i++)
+      if (String(emails[i]).trim() !== "") args = args.concat(["--email", String(emails[i]).trim()])
+    var phones = contact.phones || []
+    for (var j = 0; j < phones.length; j++)
+      if (String(phones[j]).trim() !== "") args = args.concat(["--phone", String(phones[j]).trim()])
+
+    root.contactsSyncing = true
+    run(args, function (ok, payload, stderrText) {
+      root.contactsSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not save that contact")
+        return
+      }
+      root.notice = resource ? "Contact saved" : "Contact added"
+      noticeTimer.restart()
+      root.loadContacts("")
+      if (done) done(payload && payload.contact)
+    }, "contacts")
+  }
+
+  function removeContact(account, resource, done) {
+    if (!resource) return
+    root.contactsSyncing = true
+    run(["contact-remove", "--account", String(account),
+         "--resource", String(resource)], function (ok, payload, stderrText) {
+      root.contactsSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not delete that contact")
+        return
+      }
+      root.notice = "Contact deleted"
+      noticeTimer.restart()
+      root.loadContacts("")
+      if (done) done()
+    }, "contacts")
+  }
+
   // When pictures in a message may load without being asked:
   // verified | trusted | never. Kept by the engine so the terminal and the
   // client cannot disagree about it.

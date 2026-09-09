@@ -89,6 +89,10 @@ def cmd_accounts(args):
                                or keyring.get_secret(account["id"], "refresh_token")
                                or keyring.get_secret(account["id"], "password")),
             "demo": bool(account.get("demo")),
+            # Whether the People tab may add to and edit this account's book,
+            # which needs an application of your own behind it.
+            "addressBook": bool(addressbook.supports(account)
+                                and addressbook.configured(account)),
         })
     emit({"ok": True, "accounts": out},
          lambda d: "\n".join(
@@ -502,6 +506,52 @@ def cmd_contacts(args):
              f"{(c['name'] or c['address'])[:28]:28}  {c['address'][:34]:34}  "
              f"{c['messages']:4d}"
              for c in d["contacts"]) or "No contacts yet. Run: olook sync")
+
+
+def cmd_contact_save(args):
+    """Add a contact, or change one that is already in the book."""
+    account = config.account(args.account)
+    if not addressbook.supports(account) or not addressbook.configured(account):
+        raise CliError("That account has no address book to write to.")
+
+    conn = store.connect()
+    contact = {
+        "name": args.name or "",
+        "emails": args.email or [],
+        "phones": args.phone or [],
+        "organisation": args.organisation or "",
+    }
+
+    if args.resource:
+        # Edits are whole-record: whatever is passed replaces what is there,
+        # so fill the gaps from the cached copy rather than wiping a phone
+        # number because this edit only touched the name.
+        cached = store.contact(conn, account["id"], args.resource) or {}
+        for key in ("name", "organisation"):
+            if getattr(args, key) is None:
+                contact[key] = cached.get(key, "")
+        if args.email is None:
+            contact["emails"] = cached.get("emails") or []
+        if args.phone is None:
+            contact["phones"] = cached.get("phones") or []
+        etag = args.etag or cached.get("etag", "")
+        person = addressbook.update(account, args.resource, etag, contact)
+    else:
+        person = addressbook.create(account, contact)
+
+    store.save_contact(conn, account["id"], person)
+    emit({"ok": True, "contact": person},
+         lambda d: "Saved " + (d["contact"]["name"] or d["contact"]["resource"]))
+
+
+def cmd_contact_remove(args):
+    """Take a contact out of the account's address book."""
+    account = config.account(args.account)
+    if not addressbook.supports(account) or not addressbook.configured(account):
+        raise CliError("That account has no address book to write to.")
+    addressbook.remove(account, args.resource)
+    store.forget_contact(store.connect(), account["id"], args.resource)
+    emit({"ok": True, "resource": args.resource}, lambda d: "Deleted.")
 
 
 def cmd_body(args):
@@ -1358,6 +1408,26 @@ def build_parser():
     p.add_argument("--sync", action="store_true",
                    help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
+
+    p = sub.add_parser("contact-save",
+                       help="add a contact, or change one already in the book")
+    p.add_argument("--account")
+    p.add_argument("--resource", default="",
+                   help="the contact to change; left out, a new one is added")
+    p.add_argument("--etag", default="",
+                   help="the copy being edited; taken from the cache if absent")
+    p.add_argument("--name")
+    p.add_argument("--email", action="append",
+                   help="repeat for more than one address")
+    p.add_argument("--phone", action="append",
+                   help="repeat for more than one number")
+    p.add_argument("--organisation")
+    p.set_defaults(func=cmd_contact_save)
+
+    p = sub.add_parser("contact-remove", help="delete a contact from the book")
+    p.add_argument("--account")
+    p.add_argument("--resource", required=True)
+    p.set_defaults(func=cmd_contact_remove)
 
     p = sub.add_parser("body", help="fetch one message body")
     p.add_argument("--account"), p.add_argument("--folder", default="INBOX")
