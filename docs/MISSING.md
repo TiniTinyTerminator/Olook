@@ -20,12 +20,17 @@ has that this client is better off without.
   markdown as the source of truth and decorates it, which is a project rather
   than a change.
 
-- **The address book needs an application of your own.** Reading Google
-  Contacts is built, but Olook speaks to Gmail as Thunderbird, whose
+- **The address book needs an application of your own.** Reading and editing
+  Google Contacts is built, but Olook speaks to Gmail as Thunderbird, whose
   application is approved for mail and refuses to be asked for anything else.
   Contacts therefore run on a separate grant with your own client id; see
   docs/CONTACTS.md, which is about five minutes of clicking. Microsoft's equivalent
   — Graph /me/contacts — is not written.
+
+- **Editing a contact needs the wider scope.** Adding, changing and deleting
+  go through the People API, which takes `contacts` rather than
+  `contacts.readonly`. An account granted only the narrow one shows no editing
+  at all, which is honest but silent about why.
 
 ## Mail handling
 
@@ -95,9 +100,9 @@ has that this client is better off without.
   checked (verified lets seven images through, trusted and never hold them) —
   but the verified line and the "Always from this sender" button have not been
   seen on screen.
-- The address book itself: the request, the refusal and the message it puts on
-  screen were all verified, but no contact has been fetched, because that
-  needs the sign-in above. The merge was exercised against an empty book only.
+The address book is no longer among these: 500 contacts came down from Google,
+and a contact was created, renamed and deleted against the live account, with
+the local cache following each step.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.
