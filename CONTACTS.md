@@ -53,7 +53,22 @@ Mail is untouched by any of this and keeps working as it does now.
 
 1. Open <https://console.cloud.google.com/> and make a project. Any name.
 
-2. Enable the **Google People API**, most reliably by going straight to
+2. Enable the APIs your scopes belong to. The consent screen only offers
+   scopes for APIs that are on, so this comes first.
+
+   | API | enable it? | why |
+   |---|---|---|
+   | **Google People API** | yes | the contacts this reads |
+   | **Google Calendar API** | only with a calendar scope | needed for the scope to appear, and for the calls when they exist |
+   | **Gmail API** | **no** | mail never touches it — see below |
+
+   Gmail is the surprising one. Olook reads and sends over IMAP and SMTP,
+   authenticating with XOAUTH2; it makes no Gmail REST calls at all, so the
+   Gmail API has nothing to do with any of this. Mail also runs on
+   Thunderbird's application rather than yours, so nothing you enable in this
+   project affects it either way.
+
+   Enable the People API most reliably by going straight to
    <https://console.cloud.google.com/apis/library/people.googleapis.com> and
    pressing Enable.
 
