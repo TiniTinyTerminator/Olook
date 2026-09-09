@@ -5,6 +5,31 @@ your phone syncs — real names, phone numbers, and people you have never
 emailed — Google needs an application of your own. This is about five minutes,
 done once per Google account.
 
+## Can one application do mail, calendar and contacts?
+
+It can, and you should not. Google grades scopes, and mail is graded harder
+than the rest:
+
+| scope | grade | an unverified app can publish it |
+|---|---|---|
+| `mail.google.com` | restricted | no — needs a paid third-party security assessment |
+| `contacts.readonly` | sensitive | yes, with a warning screen |
+| `calendar.readonly` | sensitive | yes, with a warning screen |
+
+An application left unpublished — Google calls it Testing — hands out refresh
+tokens that expire after seven days. Publishing stops that, and an application
+asking for mail cannot be published without an assessment nobody is going to
+buy for a personal mail client.
+
+So one application for everything means signing into your mail every week. The
+split below means signing into mail never: Thunderbird's application is
+already reviewed for mail, and yours carries the rest.
+
+Calendar belongs on your application when there is a calendar to fill. It is
+sensitive rather than restricted, so it can sit beside contacts without
+costing anything — add it to `scopes` in the account's `contactsOauth` and
+sign in once more. No second project.
+
 ## Why your own application
 
 Olook talks to Gmail as Thunderbird. Open-source mail clients generally do:
@@ -15,7 +40,8 @@ sign-in outright if it is asked for anything else. That is the "app is
 blocked" screen — nothing on this machine can fix it, because the application
 belongs to Thunderbird.
 
-So contacts get their own application: yours, asking for one thing.
+So contacts get their own application: yours, asking for the things
+Thunderbird's cannot.
 
 Mail is untouched by any of this and keeps working as it does now.
 

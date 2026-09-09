@@ -63,10 +63,27 @@ def grant(account):
             "flavor": "google",
             "client_id": creds["client_id"],
             "client_secret": creds.get("client_secret", ""),
-            "scope": providers.GOOGLE_CONTACTS_SCOPE,
+            "scope": " ".join(scopes(account)),
             "exact": True,
         },
     }
+
+
+def scopes(account):
+    """What your own application asks for.
+
+    Contacts today. Calendar will join it when there is a calendar to fill,
+    and both are "sensitive" rather than "restricted" in Google's grading,
+    which is what lets this application be published and stop handing out
+    tokens that expire weekly. Mail is restricted and deliberately stays with
+    Thunderbird's application, which is already reviewed for it.
+    """
+    extra = credentials(account).get("scopes") or []
+    wanted = [providers.GOOGLE_CONTACTS_SCOPE]
+    for scope in extra:
+        if scope and scope not in wanted:
+            wanted.append(str(scope))
+    return wanted
 
 
 def fetch(account, limit=2000):
