@@ -388,6 +388,16 @@ Item {
 
   readonly property bool viewingAll: Model.isAllFolder(root.folder)
 
+  // date | sender | subject | size | unread
+  property string sortMode: "date"
+
+  function setSort(mode) {
+    if (!mode || mode === root.sortMode) return
+    root.sortMode = mode
+    root.selected = null
+    loadMessages()
+  }
+
   function loadMessages() {
     if (!root.accountId) return
     root.loading = true
@@ -397,6 +407,7 @@ Item {
       ? ["list", "--all-accounts", "--limit", String(root.listLimit)]
       : accountArgs(["list", "--folder", root.folder,
                      "--limit", String(root.listLimit)])
+    args = args.concat(["--sort", root.sortMode])
     if (root.filter === "unread") args.push("--unread")
     if (root.filter === "flagged") args.push("--flagged")
     if (root.query) args = args.concat(["--query", root.query])

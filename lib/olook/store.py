@@ -132,8 +132,24 @@ def upsert_messages(conn, rows):
     return len(rows)
 
 
+# What "sorted" can mean, and the SQL behind each. Date, newest first, is the
+# only thing a mail client can sensibly default to; the rest are for finding
+# something half remembered.
+ORDERINGS = {
+    "date": "date DESC, uid DESC",
+    "sender": "LOWER(COALESCE(NULLIF(from_name, ''), from_addr)) ASC, date DESC",
+    "subject": "LOWER(subject) ASC, date DESC",
+    "size": "size DESC, date DESC",
+    "unread": "seen ASC, date DESC",
+}
+
+
+def ordering(name):
+    return ORDERINGS.get(str(name or "date"), ORDERINGS["date"])
+
+
 def list_messages(conn, account, folder=None, limit=100, offset=0,
-                  unread_only=False, flagged_only=False, query=""):
+                  unread_only=False, flagged_only=False, query="", sort="date"):
     where = ["account = ?"]
     params = [account]
     if folder:
@@ -148,13 +164,13 @@ def list_messages(conn, account, folder=None, limit=100, offset=0,
         like = f"%{query}%"
         params.extend([like, like, like, like])
     sql = (f"SELECT * FROM messages WHERE {' AND '.join(where)} "
-           f"ORDER BY date DESC, uid DESC LIMIT ? OFFSET ?")
+           f"ORDER BY {ordering(sort)} LIMIT ? OFFSET ?")
     params.extend([int(limit), int(offset)])
     return [row_to_message(row) for row in conn.execute(sql, params)]
 
 
 def list_across(conn, pairs, limit=100, offset=0, unread_only=False,
-                flagged_only=False, query=""):
+                flagged_only=False, query="", sort="date"):
     """List messages from several (account, folder) mailboxes at once.
 
     One query rather than one per account, so the merged list is sorted by
@@ -176,7 +192,7 @@ def list_across(conn, pairs, limit=100, offset=0, unread_only=False,
         like = f"%{query}%"
         params.extend([like, like, like, like])
     sql = (f"SELECT * FROM messages WHERE {' AND '.join(where)} "
-           f"ORDER BY date DESC, uid DESC LIMIT ? OFFSET ?")
+           f"ORDER BY {ordering(sort)} LIMIT ? OFFSET ?")
     params.extend([int(limit), int(offset)])
     return [row_to_message(row) for row in conn.execute(sql, params)]
 

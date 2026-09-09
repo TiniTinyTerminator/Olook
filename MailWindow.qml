@@ -69,7 +69,11 @@ Item {
   readonly property bool stacked: window.width < Style.space(780)
   readonly property bool readerBelow: root.readingPanePref === "bottom" && !root.stacked
 
-  readonly property var rows: Model.withGroupHeaders(mail.messages, new Date())
+  // "Yesterday", "This week" and so on describe a list in date order. Sorted
+  // by sender or subject they would be labels over nothing.
+  readonly property var rows: mail.sortMode === "date"
+    ? Model.withGroupHeaders(mail.messages, new Date())
+    : (mail.messages || [])
   // The reading pane gives way to the sign-in card when there is no account,
   // or the current one lost its authorization.
   readonly property bool needsSignIn: mail.ready
@@ -435,6 +439,19 @@ Item {
       { id: "reader-bottom", label: "Bottom", kind: "radio",
         checked: root.readingPanePref === "bottom", enabled: !root.stacked },
       { kind: "separator" },
+      { kind: "header", label: "Sort by" },
+      { id: "sort-date", label: "Date", kind: "radio",
+        checked: mail.sortMode === "date" },
+      { id: "sort-sender", label: "Sender", kind: "radio",
+        checked: mail.sortMode === "sender" },
+      { id: "sort-subject", label: "Subject", kind: "radio",
+        checked: mail.sortMode === "subject" },
+      { id: "sort-size", label: "Size", kind: "radio",
+        checked: mail.sortMode === "size" },
+      { id: "sort-unread", label: "Unread first", kind: "radio",
+        checked: mail.sortMode === "unread" },
+      { kind: "separator" },
+
       { kind: "header", label: "Message body" },
       { id: "body-formatted", label: "Formatted", kind: "radio",
         checked: readerPane.formatted, enabled: readerPane.hasRich },
@@ -482,6 +499,12 @@ Item {
     case "select-all": root.selectAllRows(); return
     case "mark-all-read": mail.markVisibleRead(); root.clearSelection(); return
     case "undo": mail.undoLast(); return
+
+    case "sort-date": mail.setSort("date"); return
+    case "sort-sender": mail.setSort("sender"); return
+    case "sort-subject": mail.setSort("subject"); return
+    case "sort-size": mail.setSort("size"); return
+    case "sort-unread": mail.setSort("unread"); return
 
     case "folders-auto": root.folderPanePref = "auto"; return
     case "folders-expanded": root.folderPanePref = "expanded"; return

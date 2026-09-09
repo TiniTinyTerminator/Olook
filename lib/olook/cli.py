@@ -359,7 +359,8 @@ def cmd_list(args):
         folder = _role_folder(conn, account, folder)
     messages = store.list_messages(
         conn, account["id"], folder=folder, limit=args.limit, offset=args.offset,
-        unread_only=args.unread, flagged_only=args.flagged, query=args.query or "")
+        unread_only=args.unread, flagged_only=args.flagged,
+        query=args.query or "", sort=args.sort)
     emit({"ok": True, "account": account["id"], "folder": folder or "",
           "messages": messages, "count": len(messages)},
          lambda d: "\n".join(
@@ -383,7 +384,8 @@ def cmd_list_all(args, conn):
         pairs.append((entry["id"], _inbox_folder(conn, entry)))
     messages = store.list_across(
         conn, pairs, limit=args.limit, offset=args.offset,
-        unread_only=args.unread, flagged_only=args.flagged, query=args.query or "")
+        unread_only=args.unread, flagged_only=args.flagged,
+        query=args.query or "", sort=args.sort)
     emit({"ok": True, "account": "", "folder": ALL_FOLDER,
           "messages": messages, "count": len(messages)},
          lambda d: "\n".join(
@@ -1041,6 +1043,8 @@ def build_parser():
     p.add_argument("--query", default="")
     p.add_argument("--all-accounts", action="store_true",
                    help="every account's inbox in one list")
+    p.add_argument("--sort", default="date",
+                   choices=["date", "sender", "subject", "size", "unread"])
     p.set_defaults(func=cmd_list)
 
     p = sub.add_parser("contacts", help="people from your cached mail")
