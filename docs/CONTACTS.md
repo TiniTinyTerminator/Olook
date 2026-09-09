@@ -138,6 +138,26 @@ an application only you will ever use — but the tokens stop expiring.
 Verification is only needed to remove the warning screen for strangers, which
 is not a thing you need.
 
+### If it asks for a domain
+
+Two different screens ask, and only one of them is worth answering.
+
+**Branding** has an *App domain* block — home page, privacy policy, terms —
+and an *Authorized domains* list underneath it. All of it is optional, and the
+list is only required once you have filled in one of the links above it. Leave
+the four fields empty. A Desktop client redirects to `localhost`, so there is
+no domain for Google to authorize in the first place.
+
+**Verification** genuinely wants one: a site you own, carrying a privacy
+policy, proven through Search Console. If publishing refuses to go through
+without it, the cheapest real domain is the one the repository already has —
+turn on GitHub Pages and `<user>.github.io` is a top private domain Google
+accepts, verifiable by dropping the HTML file Search Console hands you into
+the published folder.
+
+Or skip the whole thing: leave the app in Testing and run `olook contacts-auth`
+again when contacts go quiet. It is a weekly annoyance, not a broken feature.
+
 ## Undoing it
 
 ```

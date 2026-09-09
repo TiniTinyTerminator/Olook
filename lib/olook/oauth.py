@@ -150,9 +150,14 @@ def access_token(account, force_refresh=False):
     if status != 200 or "access_token" not in payload:
         detail = payload.get("error_description") or payload.get("error") or "unknown error"
         if payload.get("error") in ("invalid_grant", "invalid_request"):
-            keyring.clear_secret(account_id, "refresh_token")
+            # The token is left where it is. Google answers invalid_grant for a
+            # revoked token, but also for a scope the client is not approved for
+            # and for an app its own policy has blocked — cases the token would
+            # survive once the configuration is put back. Signing in again
+            # overwrites it, so keeping a dead token costs nothing and throwing
+            # away a live one costs a sign-in.
             raise OAuthError(
-                f"Authorization for {account['email']} expired ({detail}). "
+                f"Authorization for {account['email']} was refused ({detail}). "
                 f"Run: olook auth {account_id}")
         raise OAuthError(f"Token refresh failed: {detail}")
 
