@@ -15,8 +15,8 @@ import subprocess
 import sys
 import time
 
-from . import (config, htmldoc, htmlrich, htmltext, keyring, mailbox, message, oauth,
-               providers, send, store)
+from . import (config, htmldoc, htmlrich, htmltext, keyring, mailbox, markdown,
+               message, oauth, providers, send, store)
 
 JSON_OUT = False
 
@@ -410,6 +410,18 @@ def _role_folder(conn, account, role):
         if entry["special"] == role or (role == "archive" and entry["special"] == "all"):
             return entry["name"]
     return (account.get("folders") or {}).get(role, role)
+
+
+def cmd_markdown(args):
+    """Render markdown to HTML, the same way sending it would.
+
+    The composer's preview calls this rather than rendering it itself, so
+    what is shown while writing is what actually goes out. A preview with its
+    own opinion of markdown would be worse than none.
+    """
+    source = sys.stdin.read()
+    emit({"ok": True, "html": markdown.to_html(source)},
+         lambda d: d["html"])
 
 
 def cmd_contacts(args):
@@ -1052,6 +1064,9 @@ def build_parser():
     p.add_argument("--conversations", action="store_true",
                    help="one row per conversation, newest of each")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("markdown", help="render markdown from stdin to HTML")
+    p.set_defaults(func=cmd_markdown)
 
     p = sub.add_parser("contacts", help="people from your cached mail")
     p.add_argument("--account")

@@ -7,12 +7,18 @@ has that this client is better off without.
 
 ## Asked for, not yet built
 
-- **Markdown live preview in the composer.** The composer can already *send*
-  markdown — `send.build` renders it to an HTML alternative — but you type raw
-  syntax and see raw syntax. What was asked for is Obsidian's behaviour: the
-  editor itself renders, and the syntax reveals itself when the cursor enters
-  the span. That is an editor problem rather than a styling one, and it is the
-  largest single item on this list.
+- **Markdown renders in place, the way Obsidian does it.** There is a live
+  preview under the editor now, rendered by the engine that sends the mail so
+  it cannot disagree with what arrives. What is still missing is rendering in
+  the editor itself, with the syntax revealing at the cursor.
+
+  Qt's own `TextEdit.MarkdownText` looked like the answer and is not: it
+  round-trips through a rich text document, so a monospace editor font comes
+  back as code spans -- `## Standup` returned as ``## `Standup` `` -- and
+  emphasis typed after the fact is dropped entirely. It would quietly corrupt
+  what you wrote. Doing this properly means a custom editor that keeps the
+  markdown as the source of truth and decorates it, which is a project rather
+  than a change.
 
 - **Contacts from Google.** The People tab is built from mail on disk. Reading
   the real address book — the same one the phone syncs — needs
@@ -37,8 +43,6 @@ has that this client is better off without.
 
 - **Formatting controls.** Markdown and HTML are format choices with no
   toolbar behind them.
-- **Signature editing per account.** The field exists in the account record;
-  nothing in the interface writes it.
 - **Send later**, and **recall** — the second only works between Exchange
   mailboxes anyway.
 

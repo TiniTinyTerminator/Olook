@@ -546,6 +546,15 @@ Item {
     }, "contacts")
   }
 
+  // Markdown as the engine renders it, which is the point: a preview with its
+  // own opinion of markdown would show something other than what is sent.
+  function renderMarkdown(source, handler) {
+    runWithInput(["markdown"], String(source || ""),
+                 function (ok, payload) {
+                   if (handler) handler(ok && payload ? String(payload.html || "") : "")
+                 }, "markdown")
+  }
+
   // The account record a message belongs to. Rows carry an account id; the
   // reader and the reply need the whole account behind it.
   function accountFor(accountId) {

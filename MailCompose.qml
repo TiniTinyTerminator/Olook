@@ -43,6 +43,23 @@ Item {
   property bool quoteExpanded: false
   readonly property bool quotedIsHtml: root.quotedHtml !== ""
     && Qt.application.arguments.length > 0
+  // What the markdown will look like when it arrives, rendered by the engine
+  // that will send it rather than by a second opinion living here.
+  property string previewHtml: ""
+  readonly property bool showPreview: root.format === "markdown"
+    && Qt.application.arguments.length > 0 && root.bodyText.trim() !== ""
+
+  Timer {
+    id: previewTimer
+    interval: 400
+    onTriggered: {
+      if (!root.service || root.format !== "markdown") return
+      root.service.renderMarkdown(root.bodyText, function (html) {
+        root.previewHtml = html
+      })
+    }
+  }
+
   // plain | markdown | html — how the body is written, and therefore what
   // goes on the wire: plain text alone, or text plus an HTML alternative.
   property string format: "plain"
@@ -128,8 +145,14 @@ Item {
   onCcTextChanged: root.touch()
   onBccTextChanged: root.touch()
   onSubjectTextChanged: root.touch()
-  onBodyTextChanged: root.touch()
-  onFormatChanged: root.touch()
+  onBodyTextChanged: {
+    root.touch()
+    if (root.format === "markdown") previewTimer.restart()
+  }
+  onFormatChanged: {
+    root.touch()
+    if (root.format === "markdown") previewTimer.restart()
+  }
   onAttachmentsChanged: root.touch()
 
   Timer {
@@ -848,6 +871,40 @@ Item {
               text: root.quoteExpanded ? "Hide the quoted message"
                                        : "Show the quoted message"
               fontFamily: ui.fontFamily
+            }
+          }
+
+          // The preview. Below what is being written rather than beside it:
+          // the composer is often half a window wide, and a column split in
+          // two is two columns too narrow to write in.
+          Column {
+            width: parent.width
+            spacing: Style.space(6)
+            visible: root.showPreview
+
+            Rectangle {
+              width: parent.width
+              height: 1
+              color: ui.border
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Preview"
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Loader {
+              id: previewView
+              width: parent.width
+              height: item ? item.contentHeight : 0
+              active: root.showPreview
+              source: "MailHtmlView.qml"
+              onLoaded: item.fragment = Qt.binding(function () {
+                return root.previewHtml
+              })
             }
           }
 
