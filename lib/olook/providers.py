@@ -46,7 +46,10 @@ GMAIL = {
     },
     "oauth": {"flavor": "google", "client_id": GOOGLE_CLIENT_ID,
               "client_secret": GOOGLE_CLIENT_SECRET,
-              "scope": "https://mail.google.com/"},
+              # Contacts as well as mail: the People tab reads the address
+              # book the phone syncs, and read-only is all it ever wants.
+              "scope": ("https://mail.google.com/ "
+                        "https://www.googleapis.com/auth/contacts.readonly")},
 }
 
 MICROSOFT_CONSUMER = {

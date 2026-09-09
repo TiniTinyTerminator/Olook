@@ -20,11 +20,11 @@ has that this client is better off without.
   markdown as the source of truth and decorates it, which is a project rather
   than a change.
 
-- **Contacts from Google.** The People tab is built from mail on disk. Reading
-  the real address book — the same one the phone syncs — needs
-  `contacts.readonly` added to the OAuth scope, which forces re-authorising
-  every Google account, plus a People API fetch, somewhere to keep it, and
-  merge rules so one person is not two rows.
+- **The address book needs one sign-in before it works.** Reading Google
+  Contacts is built, but the scope it needs is new, and a token issued before
+  it cannot be upgraded. Until each Google account is signed in again the
+  fetch is refused, and says so. Microsoft's equivalent — Graph /me/contacts —
+  is not written.
 
 ## Mail handling
 
@@ -88,6 +88,9 @@ has that this client is better off without.
   checked (verified lets seven images through, trusted and never hold them) —
   but the verified line and the "Always from this sender" button have not been
   seen on screen.
+- The address book itself: the request, the refusal and the message it puts on
+  screen were all verified, but no contact has been fetched, because that
+  needs the sign-in above. The merge was exercised against an empty book only.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.

@@ -534,6 +534,36 @@ Item {
   property var contacts: []
   property bool contactsLoading: false
 
+  property bool contactsSyncing: false
+
+  // Pull the address book down, then show what came of it.
+  function syncContacts(done) {
+    root.contactsSyncing = true
+    run(["contacts", "--sync"], function (ok, payload, stderrText) {
+      root.contactsSyncing = false
+      var trouble = ""
+      var results = (payload && payload.results) || []
+      for (var i = 0; i < results.length; i++)
+        if (!results[i].ok) trouble = String(results[i].error || "")
+      if (!ok || trouble !== "") {
+        root.error = trouble !== "" ? trouble
+          : String((payload && payload.error) || stderrText
+                   || "Could not read the address book")
+        root.actionFailed(root.error)
+      } else if (results.length === 0) {
+        root.notice = "No account here keeps an address book"
+        noticeTimer.restart()
+      } else {
+        var total = 0
+        for (var j = 0; j < results.length; j++) total += Number(results[j].contacts || 0)
+        root.notice = total + " contacts from your accounts"
+        noticeTimer.restart()
+      }
+      root.loadContacts("")
+      if (done) done()
+    }, "contacts")
+  }
+
   function loadContacts(text) {
     root.contactsLoading = true
     var args = ["contacts", "--limit", "500"]

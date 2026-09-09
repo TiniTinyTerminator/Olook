@@ -78,8 +78,12 @@ Item {
         anchors.margins: Style.space(12)
         spacing: Style.space(10)
 
+        Row {
+        width: parent.width
+        spacing: Style.space(6)
+
         Rectangle {
-          width: parent.width
+          width: parent.width - syncButton.width - Style.space(6)
           height: Style.space(32)
           radius: ui.radius
           color: ui.surface
@@ -114,8 +118,45 @@ Item {
           }
         }
 
+        // The address book the phone syncs. Fetched on request rather than
+        // on a timer: it changes rarely, and asking costs a round trip to
+        // the provider.
+        Rectangle {
+          id: syncButton
+          width: Style.space(32)
+          height: Style.space(32)
+          radius: ui.radius
+          color: syncHover.containsMouse ? ui.hover : "transparent"
+          border.width: 1
+          border.color: ui.border
+
+          Text {
+            anchors.centerIn: parent
+            text: root.service && root.service.contactsSyncing ? "󰔟" : "󰑐"
+            color: ui.dim
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.iconSmall
+          }
+
+          MouseArea {
+            id: syncHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: if (root.service) root.service.syncContacts(null)
+          }
+
+          PanelToolTip {
+            visible: syncHover.containsMouse
+            text: "Fetch contacts from your accounts"
+            fontFamily: ui.fontFamily
+          }
+        }
+        }
+
         ListView {
           id: peopleList
+
           width: parent.width
           height: parent.height - y
           clip: true
@@ -306,6 +347,17 @@ Item {
           spacing: Style.space(8)
 
           DetailLine {
+            label: root.current && root.current.phones.length > 1
+              ? "Phone numbers" : "Phone"
+            visible: !!(root.current && root.current.phones.length > 0)
+            value: root.current ? root.current.phones.join("   ") : ""
+          }
+          DetailLine {
+            label: "Organisation"
+            visible: !!(root.current && root.current.organisation !== "")
+            value: root.current ? root.current.organisation : ""
+          }
+          DetailLine {
             label: "Messages"
             value: root.current ? String(root.current.messages) : ""
           }
@@ -335,6 +387,7 @@ Item {
     property string label: ""
     property string value: ""
     spacing: Style.space(10)
+    height: visible ? implicitHeight : 0
 
     Text {
       textFormat: Text.PlainText

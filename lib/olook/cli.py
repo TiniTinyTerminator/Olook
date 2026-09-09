@@ -15,8 +15,8 @@ import subprocess
 import sys
 import time
 
-from . import (config, htmldoc, htmlrich, htmltext, keyring, mailbox, markdown,
-               message, oauth, providers, rules, send, store)
+from . import (addressbook, config, htmldoc, htmlrich, htmltext, keyring,
+               mailbox, markdown, message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
 
@@ -424,9 +424,38 @@ def cmd_markdown(args):
          lambda d: d["html"])
 
 
+def cmd_contacts_sync(args, conn):
+    """Pull each account's address book down, where it has one."""
+    results = []
+    for entry in config.accounts():
+        if not entry.get("enabled") or entry.get("demo"):
+            continue
+        if not addressbook.supports(entry):
+            continue
+        if args.account and entry["id"] != config.account(args.account)["id"]:
+            continue
+        try:
+            people = addressbook.fetch(entry)
+        except addressbook.AddressBookError as exc:
+            results.append({"account": entry["id"], "ok": False, "error": str(exc)})
+            continue
+        addressbook.save(conn, entry["id"], people)
+        results.append({"account": entry["id"], "ok": True, "contacts": len(people)})
+
+    emit({"ok": any(r["ok"] for r in results) or not results,
+          "results": results},
+         lambda d: "\n".join(
+             f"{r['account']}: " + (f"{r['contacts']} contacts"
+                                    if r["ok"] else r["error"])
+             for r in d["results"]) or "No account here keeps an address book.")
+
+
 def cmd_contacts(args):
-    """Everyone the cached mail has been to or from."""
+    """Everyone the cached mail has been to or from, and the address book."""
     conn = store.connect()
+    if args.sync:
+        cmd_contacts_sync(args, conn)
+        return
     accounts = None
     if args.account:
         accounts = [config.account(args.account)["id"]]
@@ -1278,6 +1307,8 @@ def build_parser():
     p.add_argument("--account")
     p.add_argument("--query", default="")
     p.add_argument("--limit", type=int, default=500)
+    p.add_argument("--sync", action="store_true",
+                   help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
 
     p = sub.add_parser("body", help="fetch one message body")

@@ -72,6 +72,17 @@ CREATE TABLE IF NOT EXISTS bodies (
   PRIMARY KEY (account, folder, uid)
 );
 
+CREATE TABLE IF NOT EXISTS address_book (
+  account   TEXT NOT NULL,
+  resource  TEXT NOT NULL,
+  name      TEXT DEFAULT '',
+  emails    TEXT DEFAULT '[]',
+  phones    TEXT DEFAULT '[]',
+  organisation TEXT DEFAULT '',
+  photo     TEXT DEFAULT '',
+  PRIMARY KEY (account, resource)
+);
+
 CREATE TABLE IF NOT EXISTS state (
   key   TEXT PRIMARY KEY,
   value TEXT
@@ -384,12 +395,49 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
             for address in listed(row[field]):
                 note("", address, row["date"], row["account"], outgoing)
 
+    # The address book comes in on top: a real name beats a From line, a
+    # phone number has no other source, and someone you have a number for but
+    # have never written to belongs in the list even with no mail behind them.
+    for person in address_book(conn, accounts):
+        addresses = [a for a in person["emails"] if a]
+        for address in addresses:
+            entry = people.get(address)
+            if entry is None:
+                entry = people[address] = {
+                    "address": address, "name": "", "messages": 0,
+                    "received": 0, "sent": 0, "lastSeen": 0, "accounts": [],
+                }
+            if person["name"]:
+                entry["name"] = person["name"]
+            entry["phones"] = person["phones"]
+            entry["organisation"] = person["organisation"]
+            entry["inAddressBook"] = True
+        if not addresses and person["name"]:
+            # A contact with a number and no address still belongs here.
+            key = "book:" + person["name"].lower()
+            people.setdefault(key, {
+                "address": "", "name": person["name"], "messages": 0,
+                "received": 0, "sent": 0, "lastSeen": 0,
+                "accounts": [person["account"]],
+                "phones": person["phones"],
+                "organisation": person["organisation"],
+                "inAddressBook": True,
+            })
+
     found = list(people.values())
+    for entry in found:
+        entry.setdefault("phones", [])
+        entry.setdefault("organisation", "")
+        entry.setdefault("inAddressBook", False)
     if query:
         needle = query.strip().lower()
         found = [p for p in found
-                 if needle in p["address"] or needle in p["name"].lower()]
-    found.sort(key=lambda p: (-p["messages"], -p["lastSeen"]))
+                 if needle in p["address"] or needle in p["name"].lower()
+                 or any(needle in phone for phone in p["phones"])]
+    # Correspondents first, then the rest of the book by name: someone you
+    # write to weekly should not be below someone whose number you once saved.
+    found.sort(key=lambda p: (-p["messages"], -p["lastSeen"],
+                              p["name"].lower() or p["address"]))
     return found[:int(limit)]
 
 
@@ -497,6 +545,37 @@ def get_message(conn, account, folder, uid):
         "SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?",
         (account, folder, int(uid))).fetchone()
     return row_to_message(row) if row else None
+
+
+def replace_address_book(conn, account, people):
+    """One account's contacts, wholesale. A book is a snapshot, not a log."""
+    conn.execute("DELETE FROM address_book WHERE account = ?", (account,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO address_book "
+        "(account, resource, name, emails, phones, organisation, photo) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(account, p.get("resource", ""), p.get("name", ""),
+          json.dumps(p.get("emails") or []), json.dumps(p.get("phones") or []),
+          p.get("organisation", ""), p.get("photo", ""))
+         for p in people])
+    conn.commit()
+
+
+def address_book(conn, accounts=None):
+    sql = "SELECT * FROM address_book"
+    params = []
+    if accounts:
+        sql += " WHERE account IN (%s)" % ",".join("?" * len(accounts))
+        params.extend(accounts)
+    out = []
+    for row in conn.execute(sql, params):
+        out.append({
+            "account": row["account"], "name": row["name"],
+            "emails": json.loads(row["emails"] or "[]"),
+            "phones": json.loads(row["phones"] or "[]"),
+            "organisation": row["organisation"], "photo": row["photo"],
+        })
+    return out
 
 
 def set_keywords(conn, account, folder, uids, add=(), remove=()):
