@@ -9,6 +9,7 @@ rather than silently mismatched against new messages.
 """
 
 import json
+import re
 import sqlite3
 import time
 
@@ -148,6 +149,71 @@ def ordering(name):
     return ORDERINGS.get(str(name or "date"), ORDERINGS["date"])
 
 
+# Search terms that mean something more particular than "these words appear
+# somewhere". Outlook has a panel of refiners; the same work is done here by
+# typing, which costs no screen and is faster once known.
+TERM = re.compile(r"""(\w+):("[^"]*"|\S*)""")
+
+
+def parse_query(text):
+    """Split a search box into its terms and whatever is left as free text.
+
+    Understood: from:, to:, subject:, has:attachment, is:unread, is:read,
+    is:flagged. Anything else is left in the free text, so a colon in an
+    ordinary search is not quietly eaten.
+    """
+    filters = {"from": [], "to": [], "subject": [],
+               "unread": None, "flagged": None, "attachment": None}
+    rest = []
+    position = 0
+    for match in TERM.finditer(str(text or "")):
+        field = match.group(1).lower()
+        value = match.group(2).strip('"')
+        claimed = True
+        if field in ("from", "to", "subject") and value:
+            filters[field].append(value)
+        elif field == "is" and value.lower() in ("unread", "read"):
+            filters["unread"] = value.lower() == "unread"
+        elif field == "is" and value.lower() == "flagged":
+            filters["flagged"] = True
+        elif field == "has" and value.lower() in ("attachment", "attachments"):
+            filters["attachment"] = True
+        else:
+            claimed = False
+        if claimed:
+            rest.append(text[position:match.start()])
+            position = match.end()
+    rest.append(text[position:])
+    return " ".join(" ".join(rest).split()), filters
+
+
+def query_clauses(text):
+    """Turn a search box into SQL conditions and their parameters."""
+    free, filters = parse_query(text)
+    where, params = [], []
+
+    def like(column, values):
+        for value in values:
+            where.append(f"{column} LIKE ?")
+            params.append(f"%{value}%")
+
+    like("(from_name || ' ' || from_addr)", filters["from"])
+    like("to_addrs", filters["to"])
+    like("subject", filters["subject"])
+    if filters["unread"] is not None:
+        where.append("seen = ?")
+        params.append(0 if filters["unread"] else 1)
+    if filters["flagged"]:
+        where.append("flagged = 1")
+    if filters["attachment"]:
+        where.append("attachments > 0")
+    if free:
+        where.append("(subject LIKE ? OR from_name LIKE ? OR from_addr LIKE ? "
+                     "OR preview LIKE ?)")
+        params.extend([f"%{free}%"] * 4)
+    return where, params
+
+
 def list_messages(conn, account, folder=None, limit=100, offset=0,
                   unread_only=False, flagged_only=False, query="", sort="date"):
     where = ["account = ?"]
@@ -160,9 +226,9 @@ def list_messages(conn, account, folder=None, limit=100, offset=0,
     if flagged_only:
         where.append("flagged = 1")
     if query:
-        where.append("(subject LIKE ? OR from_name LIKE ? OR from_addr LIKE ? OR preview LIKE ?)")
-        like = f"%{query}%"
-        params.extend([like, like, like, like])
+        extra_where, extra_params = query_clauses(query)
+        where.extend(extra_where)
+        params.extend(extra_params)
     sql = (f"SELECT * FROM messages WHERE {' AND '.join(where)} "
            f"ORDER BY {ordering(sort)} LIMIT ? OFFSET ?")
     params.extend([int(limit), int(offset)])
@@ -188,9 +254,9 @@ def list_across(conn, pairs, limit=100, offset=0, unread_only=False,
     if flagged_only:
         where.append("flagged = 1")
     if query:
-        where.append("(subject LIKE ? OR from_name LIKE ? OR from_addr LIKE ? OR preview LIKE ?)")
-        like = f"%{query}%"
-        params.extend([like, like, like, like])
+        extra_where, extra_params = query_clauses(query)
+        where.extend(extra_where)
+        params.extend(extra_params)
     sql = (f"SELECT * FROM messages WHERE {' AND '.join(where)} "
            f"ORDER BY {ordering(sort)} LIMIT ? OFFSET ?")
     params.extend([int(limit), int(offset)])

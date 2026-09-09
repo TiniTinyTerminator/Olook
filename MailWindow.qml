@@ -863,7 +863,10 @@ Item {
               Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: searchField.text === ""
-                text: "Search mail"
+                // The refiners are only useful if they are discoverable, and
+                // the placeholder is the only place to say so without
+                // spending a panel on it the way Outlook does.
+                text: "Search mail — try from:, subject:, is:unread, has:attachment"
                 color: ui.faint
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.body

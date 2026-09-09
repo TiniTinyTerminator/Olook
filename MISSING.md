@@ -22,20 +22,12 @@ has that this client is better off without.
 
 ## Mail handling
 
-- **Multi-select.** One message at a time is selectable. Ctrl and Shift
-  clicking a range, then archiving or deleting or marking the lot, is how a
-  three-hundred-message inbox actually gets dealt with.
-- **Mark all as read**, per folder. Trivial to add, missed immediately.
-- **Undo.** Outlook undoes a move or a delete. Every message that goes to the
-  wrong folder here has to be found again by hand.
+- **Date range in search.** `from:`, `to:`, `subject:`, `is:unread`,
+  `is:read`, `is:flagged` and `has:attachment` all work; `before:` and
+  `after:` do not.
 - **Conversation grouping.** Replies are separate rows. Outlook threads them,
   and for anything with more than two messages it is the difference between
   reading a conversation and reassembling one.
-- **Move to folder from the reading pane.** The engine has `moveTo`; only
-  Archive and Delete are wired to buttons.
-- **Sort.** Always newest first. No by-sender, by-subject, by-size.
-- **Search refiners.** Search is one box over subject, sender and preview.
-  No `from:`, no unread-only, no date range, no attachment filter.
 - **Empty Deleted Items / Junk.**
 
 ## Composing
@@ -72,6 +64,10 @@ has that this client is better off without.
 
 - Dragging the message-list edge, to confirm the folder tree holds its width.
   The reverse direction was measured; this one was interrupted.
+- Multi-select, the bulk action strip, the move picker and undo: the engine
+  side of each was tested, and the Message-ID search undo depends on was
+  checked against the real mailbox, but none of the four has been clicked
+  through on screen.
 - The Bcc field and recipient completion: the code loads without error, but
   neither has been exercised on screen.
 - The HTML quote inside the composer: the fragment renders correctly on its
