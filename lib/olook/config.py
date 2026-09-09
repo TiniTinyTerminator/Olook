@@ -26,6 +26,9 @@ CACHE_DIR = _xdg("XDG_CACHE_HOME", ".cache") / APP
 CONFIG_PATH = CONFIG_DIR / "accounts.json"
 DB_PATH = STATE_DIR / "mail.db"
 ATTACHMENT_DIR = CACHE_DIR / "attachments"
+# Messages written while the machine could not reach a server. They wait here
+# rather than being lost with the window they were typed in.
+OUTBOX_DIR = STATE_DIR / "outbox"
 
 DEFAULT_FOLDERS = {
     "inbox": "INBOX",
@@ -42,7 +45,7 @@ class ConfigError(Exception):
 
 
 def ensure_dirs():
-    for path in (CONFIG_DIR, STATE_DIR, ATTACHMENT_DIR):
+    for path in (CONFIG_DIR, STATE_DIR, ATTACHMENT_DIR, OUTBOX_DIR):
         path.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(CONFIG_DIR, 0o700)

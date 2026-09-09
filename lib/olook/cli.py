@@ -686,8 +686,75 @@ def cmd_send(args):
     else:
         with open(args.draft, "r", encoding="utf-8") as handle:
             draft = json.load(handle)
-    result = send.send(account, draft, save_to_sent=not args.no_save)
-    emit({"ok": True, **result}, lambda d: f"Sent to {', '.join(d['recipients'])}")
+    try:
+        result = send.send(account, draft, save_to_sent=not args.no_save)
+    except send.SendError as exc:
+        # A server that cannot be reached is a message that has not been sent
+        # yet; a server that refuses it is a message that will never go. Only
+        # the first is worth keeping to try again.
+        if not args.queue or not _looks_unreachable(exc):
+            raise
+        path = _queue_message(account["id"], draft)
+        emit({"ok": True, "queued": True, "path": str(path),
+              "reason": str(exc)},
+             lambda d: "No connection — kept in the outbox to send later.")
+        return
+    emit({"ok": True, "queued": False, **result},
+         lambda d: f"Sent to {', '.join(d['recipients'])}")
+
+
+def _looks_unreachable(error):
+    text = str(error).lower()
+    return ("cannot reach" in text or "temporary failure" in text
+            or "name or service not known" in text or "network" in text
+            or "timed out" in text)
+
+
+def _queue_message(account_id, draft):
+    config.ensure_dirs()
+    stamp = f"{int(time.time() * 1000)}-{account_id}"
+    path = config.OUTBOX_DIR / f"{_safe(stamp)}.json"
+    path.write_text(json.dumps({"account": account_id, "draft": draft}),
+                    encoding="utf-8")
+    return path
+
+
+def cmd_outbox(args):
+    """What is waiting to go out, and a nudge to try again."""
+    config.ensure_dirs()
+    waiting = sorted(config.OUTBOX_DIR.glob("*.json"))
+    if not args.flush:
+        items = []
+        for path in waiting:
+            try:
+                held = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            items.append({"path": str(path), "account": held.get("account", ""),
+                          "subject": (held.get("draft") or {}).get("subject", "")})
+        emit({"ok": True, "waiting": len(items), "messages": items},
+             lambda d: f"{d['waiting']} waiting to send")
+        return
+
+    sent, failed = [], []
+    for path in waiting:
+        try:
+            held = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            path.unlink(missing_ok=True)
+            continue
+        try:
+            account = config.account(held.get("account"))
+            send.send(account, held.get("draft") or {})
+        except Exception as exc:
+            # Still no connection, or an account that has since gone: leave it.
+            failed.append({"path": str(path), "error": str(exc)})
+            continue
+        path.unlink(missing_ok=True)
+        sent.append(str(path))
+    emit({"ok": True, "sent": len(sent), "failed": len(failed),
+          "errors": failed},
+         lambda d: f"Sent {d['sent']}, {d['failed']} still waiting")
 
 
 def cmd_draft_save(args):
@@ -1065,6 +1132,10 @@ def build_parser():
                    help="one row per conversation, newest of each")
     p.set_defaults(func=cmd_list)
 
+    p = sub.add_parser("outbox", help="messages waiting for a connection")
+    p.add_argument("--flush", action="store_true", help="try sending them now")
+    p.set_defaults(func=cmd_outbox)
+
     p = sub.add_parser("markdown", help="render markdown from stdin to HTML")
     p.set_defaults(func=cmd_markdown)
 
@@ -1127,6 +1198,8 @@ def build_parser():
     p.add_argument("--account")
     p.add_argument("--draft", default="-", help="draft JSON file, or - for stdin")
     p.add_argument("--no-save", action="store_true", help="skip the Sent copy")
+    p.add_argument("--queue", action="store_true",
+                   help="keep it in the outbox if the server cannot be reached")
     p.set_defaults(func=cmd_send)
 
     p = sub.add_parser("draft-save", help="store a JSON draft in Drafts")

@@ -1215,8 +1215,16 @@ Item {
               if (mail.syncing) return "Checking for new mail…"
               if (!mail.configured) return "No account configured"
               var total = mail.messages.length
+              // A message waiting on a connection is worth saying every time
+              // it is true, not only in the moment it failed to go.
+              var waiting = mail.outboxWaiting > 0
+                ? ",  " + mail.outboxWaiting
+                  + (mail.outboxWaiting === 1 ? " waiting to send"
+                                              : " waiting to send")
+                : ""
               return total + (total === 1 ? " message" : " messages")
                 + (mail.unread > 0 ? ",  " + mail.unread + " unread" : "")
+                + waiting
             }
             color: mail.error !== "" ? ui.urgent : ui.dim
             font.family: ui.fontFamily

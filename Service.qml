@@ -452,6 +452,8 @@ Item {
       return
     }
     root.syncing = true
+    // A connection good enough to sync is good enough to send.
+    root.flushOutbox()
     var args = accountArgs(["sync", "--folder", root.folder, "--limit", "300"])
     if (full) args.push("--full")
     run(args, function (ok, payload, stderrText) {
@@ -909,13 +911,41 @@ Item {
 
   // `accountId` lets a popped-out compose window keep sending as the account
   // it was started from, whatever the main window is showing by then.
+  // Messages written while nothing could be reached. They wait rather than
+  // being lost with the window they were typed in.
+  property int outboxWaiting: 0
+
+  function refreshOutbox() {
+    run(["outbox"], function (ok, payload) {
+      root.outboxWaiting = ok && payload ? Number(payload.waiting || 0) : 0
+    }, "outbox")
+  }
+
+  function flushOutbox() {
+    if (root.outboxWaiting === 0) return
+    run(["outbox", "--flush"], function (ok, payload) {
+      if (ok && payload && payload.sent > 0) {
+        root.notice = payload.sent === 1 ? "Sent the message that was waiting"
+                                         : "Sent " + payload.sent + " waiting messages"
+        noticeTimer.restart()
+      }
+      root.refreshOutbox()
+    }, "outbox")
+  }
+
   function send(draft, handler, accountId) {
     root.busy = true
     runWithInput(["send", "--account", String(accountId || root.accountId),
-                  "--draft", "-"],
+                  "--draft", "-", "--queue"],
                  JSON.stringify(draft), function (ok, payload, stderrText) {
       root.busy = false
-      if (ok) {
+      if (ok && payload && payload.queued) {
+        // Not sent, but not lost either: it goes out with the next sync.
+        root.notice = "No connection — kept to send later"
+        noticeTimer.restart()
+        root.refreshOutbox()
+        root.sent()
+      } else if (ok) {
         root.notice = "Message sent"
         noticeTimer.restart()
         root.sent()
@@ -1274,5 +1304,8 @@ Item {
     onTriggered: root.sync(false)
   }
 
-  Component.onCompleted: refreshStatus(true)
+  Component.onCompleted: {
+    refreshStatus(true)
+    refreshOutbox()
+  }
 }

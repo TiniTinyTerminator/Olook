@@ -55,7 +55,6 @@ has that this client is better off without.
   "from this sender, into that folder" — would carry most of the value.
 - **Notifications** beyond the bar badge: a desktop notification per message
   with actions on it.
-- **Offline queue.** Sending with no connection fails rather than waiting.
 
 ## Deliberately not worth having
 
