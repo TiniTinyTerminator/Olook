@@ -189,6 +189,30 @@ Item {
               : rowItem.current ? ui.selected
               : (rowHover.containsMouse ? ui.hover : "transparent")
 
+            // Category dots. Colour only: the names are in the picker, and a
+            // row is not the place to repeat them.
+            Row {
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(14)
+              anchors.bottom: parent.bottom
+              anchors.bottomMargin: Style.space(9)
+              spacing: Style.space(3)
+              visible: !!(rowItem.modelData
+                          && (rowItem.modelData.categories || []).length > 0)
+
+              Repeater {
+                model: rowItem.modelData ? (rowItem.modelData.categories || []) : []
+
+                Rectangle {
+                  required property var modelData
+                  width: Style.space(7)
+                  height: width
+                  radius: width / 2
+                  color: Model.categoryColor(modelData) || ui.dim
+                }
+              }
+            }
+
             // How many messages the conversation holds, when the list is
             // grouped. Outlook puts the number on the row; so does this.
             Rectangle {

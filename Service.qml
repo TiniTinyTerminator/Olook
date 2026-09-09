@@ -684,6 +684,17 @@ Item {
     }
   }
 
+  // A category on every message given, or off every message given.
+  function setCategoryMany(entries, name, remove) {
+    if (!name) return
+    root.runOnEach(entries, function (group) {
+      var args = ["category", "--folder", group.folder, "--uid"]
+        .concat(group.uids).concat(["--name", name])
+      if (remove) args.push("--remove")
+      return args
+    }, "Could not change the category")
+  }
+
   function setFlagMany(entries, flagName) {
     for (var i = 0; i < entries.length; i++)
       markLocalFlag(entries[i], flagName)

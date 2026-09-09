@@ -101,6 +101,27 @@ function fileSize(bytes) {
 // it remembers the account it actually came from.
 var ALL_FOLDER = "__all__"
 
+// Outlook ships colour categories named after their colours and expects you
+// to rename them. These are named for what people actually sort mail into, so
+// they are useful before being renamed rather than after. They are IMAP
+// keywords underneath, which on Gmail means they show up as labels on the
+// phone too.
+var CATEGORIES = [
+  { name: "Work", color: "#4a83d6" },
+  { name: "Personal", color: "#4caf7d" },
+  { name: "Finance", color: "#d6a24a" },
+  { name: "Travel", color: "#9a6ad6" },
+  { name: "Follow up", color: "#d66a6a" },
+  { name: "Later", color: "#7d8595" }
+]
+
+function categoryColor(name) {
+  for (var i = 0; i < CATEGORIES.length; i++)
+    if (CATEGORIES[i].name.toLowerCase() === String(name || "").toLowerCase())
+      return CATEGORIES[i].color
+  return ""
+}
+
 function isAllFolder(name) {
   return String(name || "") === ALL_FOLDER
 }

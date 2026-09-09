@@ -227,6 +227,29 @@ Item {
   // because a selection made in All mail can span accounts, and "archive"
   // resolves per account where a folder name would only exist on one of them.
   property bool movePickerOpen: false
+  property bool categoryPickerOpen: false
+
+  // Which categories the selection already carries, so the picker can take
+  // one off as readily as it puts one on.
+  function selectionHasCategory(name) {
+    var picked = root.selectionOrCurrent()
+    if (picked.length === 0) return false
+    for (var i = 0; i < picked.length; i++) {
+      var on = picked[i].categories || []
+      var found = false
+      for (var j = 0; j < on.length; j++)
+        if (String(on[j]).toLowerCase() === name.toLowerCase()) found = true
+      if (!found) return false
+    }
+    return true
+  }
+
+  function toggleCategory(name) {
+    var picked = root.selectionOrCurrent()
+    if (picked.length === 0) return
+    mail.setCategoryMany(picked, name, root.selectionHasCategory(name))
+    root.categoryPickerOpen = false
+  }
   // Emptying a folder cannot be undone, so it is asked about first. The only
   // destructive thing in the client that gets a question.
   property bool confirmEmpty: false
@@ -546,6 +569,9 @@ Item {
       { id: "unread", glyph: "󰇮", shortcut: "u", enabled: root.hasMessage,
         label: root.current && root.current.seen ? "Mark unread" : "Mark read" },
       { kind: "separator" },
+      { id: "categorise", label: "Categories…", glyph: "󰓹",
+        enabled: root.hasMessage || root.selection.length > 0 },
+      { kind: "separator" },
       { id: "empty-folder", label: "Empty this folder…", glyph: "󰩹",
         enabled: mail.canEmptyFolder },
       { kind: "separator" },
@@ -573,6 +599,7 @@ Item {
     case "refresh": mail.sync(false); return
     case "close": root.close(); return
 
+    case "categorise": root.categoryPickerOpen = true; return
     case "empty-folder": root.confirmEmpty = true; return
     case "move": root.movePickerOpen = true; return
     case "select-all": root.selectAllRows(); return
@@ -608,7 +635,8 @@ Item {
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) {
-      if (root.confirmEmpty) root.confirmEmpty = false
+      if (root.categoryPickerOpen) root.categoryPickerOpen = false
+      else if (root.confirmEmpty) root.confirmEmpty = false
       else if (root.movePickerOpen) root.movePickerOpen = false
       else if (root.showShortcuts) root.showShortcuts = false
       else if (menuBar.menuOpen) menuBar.close()
@@ -1363,6 +1391,109 @@ Item {
               ConfirmButton {
                 label: "Keep them"
                 onTriggered: root.confirmEmpty = false
+              }
+            }
+          }
+        }
+      }
+
+      // Categories. The same shape as the move picker, and for the same
+      // reason: it is opened from the menu and from a selection, neither of
+      // which has a button to hang a dropdown from.
+      Item {
+        anchors.fill: parent
+        visible: root.categoryPickerOpen
+        z: 215
+
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.categoryPickerOpen = false
+        }
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: Style.space(300)
+          height: categoryColumn.implicitHeight + Style.space(52)
+          radius: ui.radius
+          color: ui.surface
+          border.width: 1
+          border.color: ui.border
+
+          Text {
+            id: categoryTitle
+            textFormat: Text.PlainText
+            anchors.top: parent.top
+            anchors.topMargin: Style.space(14)
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(16)
+            text: root.selection.length > 1
+              ? "Categories for " + root.selection.length + " messages"
+              : "Categories"
+            color: ui.foreground
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.subtitle
+          }
+
+          Column {
+            id: categoryColumn
+            anchors.top: categoryTitle.bottom
+            anchors.topMargin: Style.space(10)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: Style.space(8)
+
+            Repeater {
+              model: Model.CATEGORIES
+
+              Rectangle {
+                required property var modelData
+                width: categoryColumn.width
+                height: Style.space(30)
+                radius: ui.radius
+                color: categoryHover.containsMouse ? ui.hover : "transparent"
+
+                Row {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(10)
+
+                  Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Style.space(10)
+                    height: width
+                    radius: width / 2
+                    color: modelData.color
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.name
+                    color: ui.foreground
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                }
+
+                Text {
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: root.selectionHasCategory(modelData.name)
+                  text: "󰄬"
+                  color: ui.accent
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.iconSmall
+                }
+
+                MouseArea {
+                  id: categoryHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.toggleCategory(modelData.name)
+                }
               }
             }
           }

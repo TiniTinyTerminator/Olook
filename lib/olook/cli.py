@@ -602,6 +602,31 @@ def cmd_move(args):
          lambda d: f"Moved {len(d['moved'])} to {d['to']}")
 
 
+def cmd_category(args):
+    """Put a category on messages, or take one off.
+
+    Categories are IMAP keywords: ordinary flags that are not one of the five
+    the protocol defines. Most servers keep them; Gmail shows them as labels,
+    which means a category set here appears on the phone as well.
+    """
+    account = config.account(args.account)
+    conn = store.connect()
+    uids = [int(u) for u in args.uid]
+    name = args.name.strip()
+    if not name:
+        raise CliError("A category needs a name.")
+    if not account.get("demo"):
+        with mailbox.Session(account) as session:
+            session.select(args.folder, readonly=False)
+            session.store_flags(uids, [name], add=not args.remove)
+    store.set_keywords(conn, account["id"], args.folder, uids,
+                       add=() if args.remove else (name,),
+                       remove=(name,) if args.remove else ())
+    emit({"ok": True, "uids": uids, "category": name, "removed": args.remove},
+         lambda d: ("Removed " if d["removed"] else "Added ")
+                   + f"{d['category']} on {len(d['uids'])} message(s)")
+
+
 def cmd_unmove(args):
     """Put messages back where they came from, found by Message-ID.
 
@@ -1173,6 +1198,13 @@ def build_parser():
     p.add_argument("--uid", nargs="+", required=True)
     p.add_argument("--to", required=True, help="folder name or role (archive/junk/…)")
     p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser("category", help="add or remove a category (IMAP keyword)")
+    p.add_argument("--account"), p.add_argument("--folder", default="INBOX")
+    p.add_argument("--uid", nargs="+", required=True)
+    p.add_argument("--name", required=True)
+    p.add_argument("--remove", action="store_true")
+    p.set_defaults(func=cmd_category)
 
     p = sub.add_parser("unmove", help="put moved messages back, by Message-ID")
     p.add_argument("--account")

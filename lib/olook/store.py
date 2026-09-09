@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS messages (
   message_id TEXT DEFAULT '',
   refs       TEXT DEFAULT '',
   in_reply_to TEXT DEFAULT '',
+  keywords   TEXT DEFAULT '',
   subject    TEXT DEFAULT '',
   from_name  TEXT DEFAULT '',
   from_addr  TEXT DEFAULT '',
@@ -78,9 +79,9 @@ CREATE TABLE IF NOT EXISTS state (
 """
 
 MESSAGE_COLUMNS = (
-    "account, folder, uid, message_id, refs, in_reply_to, subject, from_name, "
-    "from_addr, to_addrs, cc_addrs, reply_to, date, size, seen, flagged, "
-    "answered, draft, attachments, preview"
+    "account, folder, uid, message_id, refs, in_reply_to, keywords, subject, "
+    "from_name, from_addr, to_addrs, cc_addrs, reply_to, date, size, seen, "
+    "flagged, answered, draft, attachments, preview"
 )
 
 
@@ -102,6 +103,7 @@ LATER_COLUMNS = {
     "messages": [
         ("refs", "TEXT DEFAULT ''"),
         ("in_reply_to", "TEXT DEFAULT ''"),
+        ("keywords", "TEXT DEFAULT ''"),
     ],
 }
 
@@ -123,6 +125,7 @@ def row_to_message(row):
         "messageId": row["message_id"],
         "references": row["refs"] if "refs" in row.keys() else "",
         "inReplyTo": row["in_reply_to"] if "in_reply_to" in row.keys() else "",
+        "categories": (row["keywords"] if "keywords" in row.keys() else "").split(),
         "subject": row["subject"] or "(no subject)",
         "fromName": row["from_name"],
         "fromAddr": row["from_addr"],
@@ -144,12 +147,12 @@ def upsert_messages(conn, rows):
     """rows: list of dicts using the physical column names."""
     if not rows:
         return 0
-    placeholders = ", ".join(["?"] * 20)
+    placeholders = ", ".join(["?"] * 21)
     conn.executemany(
         f"INSERT OR REPLACE INTO messages ({MESSAGE_COLUMNS}) VALUES ({placeholders})",
         [(
             r["account"], r["folder"], r["uid"], r.get("message_id", ""),
-            r.get("refs", ""), r.get("in_reply_to", ""),
+            r.get("refs", ""), r.get("in_reply_to", ""), r.get("keywords", ""),
             r.get("subject", ""), r.get("from_name", ""), r.get("from_addr", ""),
             json.dumps(r.get("to_addrs", [])), json.dumps(r.get("cc_addrs", [])),
             r.get("reply_to", ""), int(r.get("date", 0)), int(r.get("size", 0)),
@@ -190,7 +193,8 @@ def parse_query(text):
     is:flagged. Anything else is left in the free text, so a colon in an
     ordinary search is not quietly eaten.
     """
-    filters = {"from": [], "to": [], "subject": [], "before": None, "after": None,
+    filters = {"from": [], "to": [], "subject": [], "category": [],
+               "before": None, "after": None,
                "unread": None, "flagged": None, "attachment": None}
     rest = []
     position = 0
@@ -198,7 +202,9 @@ def parse_query(text):
         field = match.group(1).lower()
         value = match.group(2).strip('"')
         claimed = True
-        if field in ("from", "to", "subject") and value:
+        if field in ("category", "label", "tag") and value:
+            filters["category"].append(value)
+        elif field in ("from", "to", "subject") and value:
             filters[field].append(value)
         elif field == "is" and value.lower() in ("unread", "read"):
             filters["unread"] = value.lower() == "unread"
@@ -252,6 +258,7 @@ def query_clauses(text):
     like("(from_name || ' ' || from_addr)", filters["from"])
     like("to_addrs", filters["to"])
     like("subject", filters["subject"])
+    like("keywords", filters["category"])
     if filters["unread"] is not None:
         where.append("seen = ?")
         params.append(0 if filters["unread"] else 1)
@@ -490,6 +497,28 @@ def get_message(conn, account, folder, uid):
         "SELECT * FROM messages WHERE account = ? AND folder = ? AND uid = ?",
         (account, folder, int(uid))).fetchone()
     return row_to_message(row) if row else None
+
+
+def set_keywords(conn, account, folder, uids, add=(), remove=()):
+    """Update the cached keywords for messages the server has just been told."""
+    if not uids:
+        return
+    for uid in uids:
+        row = conn.execute(
+            "SELECT keywords FROM messages WHERE account = ? AND folder = ? AND uid = ?",
+            (account, folder, int(uid))).fetchone()
+        if row is None:
+            continue
+        words = [w for w in (row["keywords"] or "").split()]
+        for word in remove:
+            words = [w for w in words if w.lower() != str(word).lower()]
+        for word in add:
+            if not any(w.lower() == str(word).lower() for w in words):
+                words.append(str(word))
+        conn.execute(
+            "UPDATE messages SET keywords = ? WHERE account = ? AND folder = ? AND uid = ?",
+            (" ".join(sorted(words)), account, folder, int(uid)))
+    conn.commit()
 
 
 def delete_messages(conn, account, folder, uids):

@@ -45,7 +45,6 @@ has that this client is better off without.
 
 - **Calendar.** Still a placeholder. The engine already speaks to accounts
   that carry one.
-- **Categories and colour labels.**
 - **Rules.** Outlook's are a small programming language; something narrower —
   "from this sender, into that folder" — would carry most of the value.
 - **Notifications** beyond the bar badge: a desktop notification per message
@@ -74,6 +73,10 @@ has that this client is better off without.
   reading pane's list of earlier messages have not been seen.
 - Sorting and the search refiners were verified through the engine, not
   through the menu and the search box.
+- Categories: setting, storing, showing and searching were verified on the
+  demo account, which has no server. The IMAP keyword itself -- the STORE that
+  makes the category appear on your phone -- has not been sent, because doing
+  so would leave a label behind in a real account.
 - The markdown preview renders correctly when fed by hand; the debounce that
   drives it while typing has not been watched.
 - Emptying a folder: the confirmation was written but never opened on screen,

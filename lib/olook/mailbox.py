@@ -652,6 +652,12 @@ def header_row(account_id, folder, item):
         "flagged": b"\\flagged" in flags,
         "answered": b"\\answered" in flags,
         "draft": b"\\draft" in flags,
+        # Anything that is not one of IMAP's own flags is a keyword the user
+        # put there. On Gmail these are the labels; elsewhere they are what
+        # categories are made of.
+        "keywords": " ".join(sorted(
+            flag.decode("utf-8", "replace") for flag in flags
+            if not flag.startswith(b"\\"))),
         "attachments": item["attachments"],
         "preview": item.get("preview", ""),
     }
