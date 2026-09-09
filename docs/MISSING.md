@@ -100,9 +100,6 @@ has that this client is better off without.
   checked (verified lets seven images through, trusted and never hold them) —
   but the verified line and the "Always from this sender" button have not been
   seen on screen.
-The address book is no longer among these: 500 contacts came down from Google,
-and a contact was created, renamed and deleted against the live account, with
-the local cache following each step.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.
@@ -124,3 +121,7 @@ the local cache following each step.
   opened on screen.
 - The reader popout's action buttons — reply, archive, delete, flag — are
   wired but only the window's opening and rendering were tested.
+
+The address book is no longer among these: 500 contacts came down from Google,
+and a contact was created, renamed and deleted against the live account, with
+the local cache following each step.
