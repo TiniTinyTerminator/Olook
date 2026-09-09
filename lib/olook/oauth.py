@@ -28,7 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import keyring
+from . import keyring, providers
 
 TIMEOUT = 30
 REFRESH_MARGIN = 120  # refresh this many seconds before actual expiry
@@ -49,7 +49,8 @@ def endpoints(account):
             "auth": "https://accounts.google.com/o/oauth2/v2/auth",
             "token": "https://oauth2.googleapis.com/token",
             "device": "",
-            "scope": oauth.get("scope") or "https://mail.google.com/",
+            # Whose application is asking decides what may be asked for.
+            "scope": providers.scope_for(account),
             "client_id": oauth.get("client_id", ""),
             "client_secret": oauth.get("client_secret", ""),
         }

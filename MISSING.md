@@ -20,11 +20,12 @@ has that this client is better off without.
   markdown as the source of truth and decorates it, which is a project rather
   than a change.
 
-- **The address book needs one sign-in before it works.** Reading Google
-  Contacts is built, but the scope it needs is new, and a token issued before
-  it cannot be upgraded. Until each Google account is signed in again the
-  fetch is refused, and says so. Microsoft's equivalent — Graph /me/contacts —
-  is not written.
+- **The address book needs an application of your own.** Reading Google
+  Contacts is built, but Olook speaks to Gmail as Thunderbird, whose
+  application is approved for mail and refuses to be asked for anything else.
+  Contacts therefore run on a separate grant with your own client id; see
+  CONTACTS.md, which is about five minutes of clicking. Microsoft's equivalent
+  — Graph /me/contacts — is not written.
 
 ## Mail handling
 

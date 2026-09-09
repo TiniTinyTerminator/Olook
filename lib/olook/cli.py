@@ -187,6 +187,21 @@ def cmd_set(args):
         account["smtp"]["ssl"] = args.smtp_port == 465
         account["smtp"]["starttls"] = args.smtp_port != 465
         changed.append("smtp.port")
+    # Your own OAuth application, which is the only way to ask Google for
+    # anything beyond mail. See CONTACTS.md.
+    if args.client_id is not None:
+        account.setdefault("oauth", {})["client_id"] = args.client_id
+        changed.append("oauth.client_id")
+    if args.client_secret is not None:
+        account.setdefault("oauth", {})["client_secret"] = args.client_secret
+        changed.append("oauth.client_secret")
+    if args.contacts_client_id is not None:
+        account.setdefault("contactsOauth", {})["client_id"] = args.contacts_client_id
+        changed.append("contactsOauth.client_id")
+    if args.contacts_client_secret is not None:
+        account.setdefault("contactsOauth", {})["client_secret"] = \
+            args.contacts_client_secret
+        changed.append("contactsOauth.client_secret")
 
     saved = config.upsert(account)
     emit({"ok": True, "account": saved, "changed": changed},
@@ -422,6 +437,21 @@ def cmd_markdown(args):
     source = sys.stdin.read()
     emit({"ok": True, "html": markdown.to_html(source)},
          lambda d: d["html"])
+
+
+def cmd_contacts_auth(args):
+    """Grant the contacts application access, once."""
+    account = config.account(args.account)
+    if not addressbook.supports(account):
+        raise CliError("That account has no address book to read.")
+    grant = addressbook.grant(account)
+
+    def report(event):
+        emit_event(event)
+
+    payload = oauth.authorize(grant, report, flow=args.flow or None)
+    oauth.store_tokens(grant["id"], payload)
+    emit_event({"ok": True, "event": "done", "account": account["id"]})
 
 
 def cmd_contacts_sync(args, conn):
@@ -1256,6 +1286,11 @@ def build_parser():
     p = sub.add_parser("set", help="change settings on an existing account")
     p.add_argument("account")
     p.add_argument("--name"), p.add_argument("--username")
+    p.add_argument("--client-id", help="your own OAuth application")
+    p.add_argument("--client-secret")
+    p.add_argument("--contacts-client-id",
+                   help="an OAuth application of your own, for contacts only")
+    p.add_argument("--contacts-client-secret")
     p.add_argument("--signature")
     p.add_argument("--signature-stdin", action="store_true",
                    help="read the signature from stdin")
@@ -1302,6 +1337,12 @@ def build_parser():
 
     p = sub.add_parser("markdown", help="render markdown from stdin to HTML")
     p.set_defaults(func=cmd_markdown)
+
+    p = sub.add_parser("contacts-auth",
+                       help="let your contacts application read the address book")
+    p.add_argument("--account")
+    p.add_argument("--flow", choices=["loopback", "device"], default="")
+    p.set_defaults(func=cmd_contacts_auth)
 
     p = sub.add_parser("contacts", help="people from your cached mail")
     p.add_argument("--account")

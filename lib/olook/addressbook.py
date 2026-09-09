@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import oauth, store
+from . import oauth, providers, store
 
 PEOPLE_URL = "https://people.googleapis.com/v1/people/me/connections"
 FIELDS = "names,emailAddresses,phoneNumbers,organizations,photos"
@@ -32,12 +32,49 @@ def supports(account):
             and not account.get("demo"))
 
 
+def credentials(account):
+    return account.get("contactsOauth") or {}
+
+
+def configured(account):
+    return bool(credentials(account).get("client_id"))
+
+
+def grant(account):
+    """A stand-in account for the contacts grant.
+
+    Mail speaks to Google as Thunderbird, whose application is approved for
+    mail and refuses to be asked for anything else. Contacts therefore needs
+    an application of your own, and gets its own grant: a different client, a
+    single scope, and tokens kept under their own name so neither can disturb
+    the other.
+    """
+    creds = credentials(account)
+    if not creds.get("client_id"):
+        raise AddressBookError(
+            "This account has no contacts application configured. "
+            "See CONTACTS.md — it takes about five minutes.")
+    return {
+        "id": account["id"] + "#contacts",
+        "email": account.get("email", ""),
+        "provider": "gmail",
+        "auth": "oauth2",
+        "oauth": {
+            "flavor": "google",
+            "client_id": creds["client_id"],
+            "client_secret": creds.get("client_secret", ""),
+            "scope": providers.GOOGLE_CONTACTS_SCOPE,
+            "exact": True,
+        },
+    }
+
+
 def fetch(account, limit=2000):
     """Every contact the account can see, as flat records."""
     if not supports(account):
         raise AddressBookError("Only Google accounts carry an address book here.")
 
-    token = oauth.access_token(account)
+    token = oauth.access_token(grant(account))
     people, page = [], ""
     while len(people) < limit:
         query = {"personFields": FIELDS, "pageSize": "200"}
@@ -53,8 +90,9 @@ def fetch(account, limit=2000):
             detail = exc.read().decode("utf-8", "replace")[:200]
             if exc.code in (401, 403):
                 raise AddressBookError(
-                    "The account has not been given permission to read "
-                    "contacts. Sign in again to grant it.") from exc
+                    "The contacts application has not been granted access. "
+                    "Run: olook contacts-auth --account "
+                    + str(account.get("id", ""))) from exc
             raise AddressBookError(f"Contacts request failed: {exc.code} {detail}") from exc
         except urllib.error.URLError as exc:
             raise AddressBookError(f"Cannot reach Google: {exc.reason}") from exc

@@ -28,8 +28,38 @@ TIMEOUT = 6
 # out for desktop clients, which cannot keep a secret; they identify the app,
 # they do not authorize it — the user's own consent does. Override per account
 # with oauth.client_id / oauth.client_secret to use your own registration.
+# Thunderbird's registered application, which is what open-source mail
+# clients generally use to speak to Gmail. It is approved for mail and only
+# for mail: asking it for anything else -- contacts, calendar -- makes Google
+# refuse the sign-in outright, and there is no way to extend somebody else's
+# app. Reading the address book therefore needs a client of your own; see
+# CONTACTS.md.
 GOOGLE_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1hgqj.apps.googleusercontent.com"
 GOOGLE_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU"
+
+# Added only for an account carrying its own client id, because only such an
+# app can be granted it.
+GOOGLE_CONTACTS_SCOPE = "https://www.googleapis.com/auth/contacts.readonly"
+
+
+def scope_for(account):
+    """The scopes to ask for, given whose application is doing the asking."""
+    oauth = account.get("oauth") or {}
+    scope = str(oauth.get("scope") or "https://mail.google.com/")
+    # A grant that knows exactly what it wants -- the contacts one -- says so,
+    # and nothing is added to or taken from it.
+    if oauth.get("exact"):
+        return scope
+    if account.get("provider") != "gmail":
+        return scope
+    own = str(oauth.get("client_id") or "") not in ("", GOOGLE_CLIENT_ID)
+    wanted = [part for part in scope.split() if part != GOOGLE_CONTACTS_SCOPE]
+    if own:
+        wanted.append(GOOGLE_CONTACTS_SCOPE)
+    # Rebuilt rather than appended to, because an account saved while the
+    # shared app briefly asked for contacts still has that in its config, and
+    # sending it again is what Google refuses.
+    return " ".join(wanted)
 MICROSOFT_CLIENT_ID = "9e5f94bc-e8a4-4e73-b8be-63364c29d753"
 
 GMAIL = {
@@ -46,10 +76,7 @@ GMAIL = {
     },
     "oauth": {"flavor": "google", "client_id": GOOGLE_CLIENT_ID,
               "client_secret": GOOGLE_CLIENT_SECRET,
-              # Contacts as well as mail: the People tab reads the address
-              # book the phone syncs, and read-only is all it ever wants.
-              "scope": ("https://mail.google.com/ "
-                        "https://www.googleapis.com/auth/contacts.readonly")},
+              "scope": "https://mail.google.com/"},
 }
 
 MICROSOFT_CONSUMER = {
