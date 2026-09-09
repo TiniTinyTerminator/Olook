@@ -49,7 +49,16 @@ Mail is untouched by any of this and keeps working as it does now.
 
 1. Open <https://console.cloud.google.com/> and make a project. Any name.
 
-2. **APIs & Services → Library**, search for **People API**, enable it.
+2. Enable the **Google People API**, most reliably by going straight to
+   <https://console.cloud.google.com/apis/library/people.googleapis.com> and
+   pressing Enable.
+
+   Searching the library for "People API" can come up empty, because it is
+   listed with the "Google" in front. The **Contacts API** you will find
+   instead is the old GData one, shut down in 2021, and is not what this
+   talks to — the endpoint here is `people.googleapis.com`. Without the right
+   one enabled, the scope will not appear in the consent screen's list and
+   every request comes back 403.
 
 3. Open **Google Auth Platform** (older consoles call this **APIs &
    Services → OAuth consent screen**; it is the same thing under four tabs).
