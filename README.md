@@ -148,6 +148,12 @@ a desktop/native app with Google or Microsoft and put the id in
 Microsoft needs the delegated permissions `IMAP.AccessAsUser.All` and
 `SMTP.Send`; Google needs the `https://mail.google.com/` scope.
 
+Note that Thunderbird's application is approved for mail and refuses to be
+asked for anything else — ask it for contacts or a calendar and Google blocks
+the sign-in outright. Those run on a separate application of your own; see
+[CONTACTS.md](CONTACTS.md), which is about five minutes of clicking and does
+not disturb how mail signs in.
+
 ## Using it
 
 Click the envelope in the bar for the panel, or open the full window from the
