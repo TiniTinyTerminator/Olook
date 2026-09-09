@@ -28,13 +28,9 @@ has that this client is better off without.
 
 ## Mail handling
 
-- **Date range in search.** `from:`, `to:`, `subject:`, `is:unread`,
-  `is:read`, `is:flagged` and `has:attachment` all work; `before:` and
-  `after:` do not.
-- **Conversation grouping is by subject, not by References.** Two unrelated
-  messages that happen to share a subject will be threaded together, and a
-  reply whose subject was edited will not be. The cache does not keep
-  References; adding it is a schema change and a resync.
+- **Threading needs a resync to take effect on old mail.** References are
+  kept from now on; messages already in the cache have none until the folder
+  is fetched again, and fall back to matching on subject until then.
 - **Conversations do not expand in the list.** The row is the newest message
   and the reading pane lists the rest; Outlook expands the row itself.
 

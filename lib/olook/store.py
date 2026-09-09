@@ -8,6 +8,7 @@ UIDVALIDITY is honored: when a server resets it, the folder's rows are dropped
 rather than silently mismatched against new messages.
 """
 
+import datetime
 import json
 import re
 import sqlite3
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS messages (
   folder     TEXT NOT NULL,
   uid        INTEGER NOT NULL,
   message_id TEXT DEFAULT '',
+  refs       TEXT DEFAULT '',
+  in_reply_to TEXT DEFAULT '',
   subject    TEXT DEFAULT '',
   from_name  TEXT DEFAULT '',
   from_addr  TEXT DEFAULT '',
@@ -75,8 +78,9 @@ CREATE TABLE IF NOT EXISTS state (
 """
 
 MESSAGE_COLUMNS = (
-    "account, folder, uid, message_id, subject, from_name, from_addr, to_addrs, "
-    "cc_addrs, reply_to, date, size, seen, flagged, answered, draft, attachments, preview"
+    "account, folder, uid, message_id, refs, in_reply_to, subject, from_name, "
+    "from_addr, to_addrs, cc_addrs, reply_to, date, size, seen, flagged, "
+    "answered, draft, attachments, preview"
 )
 
 
@@ -87,7 +91,28 @@ def connect():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    _add_missing_columns(conn)
     return conn
+
+
+# Columns added after the first version of the schema. CREATE TABLE IF NOT
+# EXISTS does nothing for a table that already exists, so a cache made before
+# these were thought of needs them put on by hand.
+LATER_COLUMNS = {
+    "messages": [
+        ("refs", "TEXT DEFAULT ''"),
+        ("in_reply_to", "TEXT DEFAULT ''"),
+    ],
+}
+
+
+def _add_missing_columns(conn):
+    for table, columns in LATER_COLUMNS.items():
+        have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+    conn.commit()
 
 
 def row_to_message(row):
@@ -96,6 +121,8 @@ def row_to_message(row):
         "folder": row["folder"],
         "uid": row["uid"],
         "messageId": row["message_id"],
+        "references": row["refs"] if "refs" in row.keys() else "",
+        "inReplyTo": row["in_reply_to"] if "in_reply_to" in row.keys() else "",
         "subject": row["subject"] or "(no subject)",
         "fromName": row["from_name"],
         "fromAddr": row["from_addr"],
@@ -117,11 +144,12 @@ def upsert_messages(conn, rows):
     """rows: list of dicts using the physical column names."""
     if not rows:
         return 0
-    placeholders = ", ".join(["?"] * 18)
+    placeholders = ", ".join(["?"] * 20)
     conn.executemany(
         f"INSERT OR REPLACE INTO messages ({MESSAGE_COLUMNS}) VALUES ({placeholders})",
         [(
             r["account"], r["folder"], r["uid"], r.get("message_id", ""),
+            r.get("refs", ""), r.get("in_reply_to", ""),
             r.get("subject", ""), r.get("from_name", ""), r.get("from_addr", ""),
             json.dumps(r.get("to_addrs", [])), json.dumps(r.get("cc_addrs", [])),
             r.get("reply_to", ""), int(r.get("date", 0)), int(r.get("size", 0)),
@@ -162,7 +190,7 @@ def parse_query(text):
     is:flagged. Anything else is left in the free text, so a colon in an
     ordinary search is not quietly eaten.
     """
-    filters = {"from": [], "to": [], "subject": [],
+    filters = {"from": [], "to": [], "subject": [], "before": None, "after": None,
                "unread": None, "flagged": None, "attachment": None}
     rest = []
     position = 0
@@ -178,6 +206,12 @@ def parse_query(text):
             filters["flagged"] = True
         elif field == "has" and value.lower() in ("attachment", "attachments"):
             filters["attachment"] = True
+        elif field in ("before", "after", "since", "until"):
+            when = _as_epoch(value)
+            if when is None:
+                claimed = False
+            else:
+                filters["after" if field in ("after", "since") else "before"] = when
         else:
             claimed = False
         if claimed:
@@ -185,6 +219,24 @@ def parse_query(text):
             position = match.end()
     rest.append(text[position:])
     return " ".join(" ".join(rest).split()), filters
+
+
+def _as_epoch(value):
+    """A date in a search box: 2026-09-01, or 7d / 2w / 3m back from now."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    relative = re.fullmatch(r"(\d+)([dwmy])", text, re.IGNORECASE)
+    if relative:
+        span = int(relative.group(1))
+        days = {"d": 1, "w": 7, "m": 30, "y": 365}[relative.group(2).lower()]
+        return int(time.time()) - span * days * 86400
+    for shape in ("%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return int(datetime.datetime.strptime(text, shape).timestamp())
+        except ValueError:
+            continue
+    return None
 
 
 def query_clauses(text):
@@ -207,6 +259,12 @@ def query_clauses(text):
         where.append("flagged = 1")
     if filters["attachment"]:
         where.append("attachments > 0")
+    if filters["after"] is not None:
+        where.append("date >= ?")
+        params.append(filters["after"])
+    if filters["before"] is not None:
+        where.append("date <= ?")
+        params.append(filters["before"])
     if free:
         where.append("(subject LIKE ? OR from_name LIKE ? OR from_addr LIKE ? "
                      "OR preview LIKE ?)")
@@ -333,20 +391,56 @@ REPLY_PREFIX = re.compile(r"^\s*((re|fwd|fw|aw|antw|sv|vs|rif)\s*(\[\d+\])?\s*:\
                           re.IGNORECASE)
 
 
-def conversation_key(message):
-    """What makes two messages the same conversation.
+def subject_key(message):
+    """The fallback: subject with the reply prefixes stripped.
 
-    Subject with the reply prefixes stripped. Not References, which would be
-    stricter and better, but which the cache does not keep -- and which plenty
-    of senders break anyway by starting a fresh message with an old subject.
-    A message with no subject is its own conversation rather than joining a
-    pile of every other blank one.
+    Used only for messages that carry no threading headers at all. A message
+    with no subject either is its own conversation rather than joining a pile
+    of every other blank one.
     """
     subject = REPLY_PREFIX.sub("", str(message.get("subject") or "")).strip().lower()
     if not subject:
         return "uid:%s:%s:%s" % (message.get("account"), message.get("folder"),
                                  message.get("uid"))
-    return subject
+    return "subject:" + subject
+
+
+def message_ids(message):
+    """Every id this message ties itself to, its own included."""
+    ids = []
+    own = str(message.get("messageId") or "").strip()
+    if own:
+        ids.append(own)
+    parent = str(message.get("inReplyTo") or "").strip()
+    if parent:
+        ids.append(parent)
+    ids.extend(str(message.get("references") or "").split())
+    return ids
+
+
+class _Threads:
+    """Union-find over message ids.
+
+    A reply names the message it answers and usually the whole chain behind
+    it; the first message of a thread names nothing and is named by everyone
+    after it. Neither is enough on its own, so ids that appear together are
+    merged and the thread is whatever ends up in the same set.
+    """
+
+    def __init__(self):
+        self.parent = {}
+
+    def find(self, key):
+        self.parent.setdefault(key, key)
+        while self.parent[key] != key:
+            self.parent[key] = self.parent[self.parent[key]]
+            key = self.parent[key]
+        return key
+
+    def union(self, left, right):
+        a, b = self.find(left), self.find(right)
+        if a != b:
+            self.parent[a] = b
 
 
 def as_conversations(messages):
@@ -355,10 +449,19 @@ def as_conversations(messages):
     The row is the newest message of the thread, carrying the count and the
     others' uids so the reading pane can offer them.
     """
+    sets = _Threads()
+    for message in messages:
+        ids = message_ids(message)
+        if not ids:
+            continue
+        for other in ids[1:]:
+            sets.union(ids[0], other)
+
     threads = {}
     order = []
     for message in messages:
-        key = conversation_key(message)
+        ids = message_ids(message)
+        key = sets.find(ids[0]) if ids else subject_key(message)
         if key not in threads:
             threads[key] = []
             order.append(key)

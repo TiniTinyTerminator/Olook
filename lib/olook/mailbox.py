@@ -442,7 +442,8 @@ class Session:
                 "preview": "",
             }
 
-        fields = "(UID BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE MESSAGE-ID REPLY-TO LIST-ID)])"
+        fields = ("(UID BODY.PEEK[HEADER.FIELDS (FROM TO CC SUBJECT DATE "
+                  "MESSAGE-ID REPLY-TO LIST-ID REFERENCES IN-REPLY-TO)])")
         data = self._ok(self.imap.uid("FETCH", ranges, fields),
                         "Could not read message headers")
         for group in _group_fetch(data):
@@ -634,6 +635,11 @@ def header_row(account_id, folder, item):
         "folder": folder,
         "uid": item["uid"],
         "message_id": get("Message-ID"),
+        # What this message is a reply to, and the chain behind it. Threading
+        # on these is the difference between a conversation and a group of
+        # messages that happen to share a subject.
+        "refs": " ".join(str(get("References") or "").split()),
+        "in_reply_to": str(get("In-Reply-To") or "").strip(),
         "subject": get("Subject"),
         "from_name": sender["name"],
         "from_addr": sender["address"],
