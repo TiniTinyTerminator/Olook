@@ -67,10 +67,15 @@ has that this client is better off without.
 
 - Dragging the message-list edge, to confirm the folder tree holds its width.
   The reverse direction was measured; this one was interrupted.
-- Multi-select, the bulk action strip, the move picker and undo: the engine
-  side of each was tested, and the Message-ID search undo depends on was
-  checked against the real mailbox, but none of the four has been clicked
-  through on screen.
+- Undo: the engine side works and the Message-ID search it stands on was
+  checked against the real mailbox, but no message has actually been moved and
+  put back — that would mean shuffling real mail to find out.
+- Conversation grouping was verified in the engine (40 messages collapsing to
+  34 conversations on the real account) and the list renders with it on, but
+  the demo account has no repeated subjects, so the count badge and the
+  reading pane's list of earlier messages have not been seen.
+- Sorting and the search refiners were verified through the engine, not
+  through the menu and the search box.
 - The Bcc field and recipient completion: the code loads without error, but
   neither has been exercised on screen.
 - The HTML quote inside the composer: the fragment renders correctly on its
