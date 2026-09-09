@@ -584,6 +584,31 @@ def cmd_move(args):
          lambda d: f"Moved {len(d['moved'])} to {d['to']}")
 
 
+def cmd_unmove(args):
+    """Put messages back where they came from, found by Message-ID.
+
+    A move is a copy followed by a delete, so the uid we knew is gone the
+    moment the message lands somewhere else. The id it carries is the only
+    handle that survives the trip, which is what makes undo possible at all.
+    """
+    account = config.account(args.account)
+    if account.get("demo"):
+        raise CliError("The demo account has no server to put anything back on.")
+    restored = []
+    missing = []
+    with mailbox.Session(account) as session:
+        session.select(args.folder, readonly=False)
+        for message_id in args.message_id:
+            found = session.search_uids(f'HEADER Message-ID "{message_id}"')
+            if not found:
+                missing.append(message_id)
+                continue
+            session.move(found, args.to)
+            restored.extend(found)
+    emit({"ok": True, "restored": restored, "missing": missing, "to": args.to},
+         lambda d: f"Put {len(d['restored'])} back in {d['to']}")
+
+
 def cmd_delete(args):
     account = config.account(args.account)
     conn = store.connect()
@@ -1052,6 +1077,13 @@ def build_parser():
     p.add_argument("--uid", nargs="+", required=True)
     p.add_argument("--to", required=True, help="folder name or role (archive/junk/…)")
     p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser("unmove", help="put moved messages back, by Message-ID")
+    p.add_argument("--account")
+    p.add_argument("--folder", required=True, help="where they are now")
+    p.add_argument("--to", required=True, help="where they should go back to")
+    p.add_argument("--message-id", nargs="+", required=True)
+    p.set_defaults(func=cmd_unmove)
 
     p = sub.add_parser("delete", help="move messages to trash (or purge)")
     p.add_argument("--account"), p.add_argument("--folder", default="INBOX")

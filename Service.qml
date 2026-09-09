@@ -557,6 +557,152 @@ Item {
     }, "body")
   }
 
+  // -------------------------------------------------------------- undo
+  //
+  // One step, which is the one that matters: the move or delete just made.
+  // Held as Message-IDs rather than uids, because a move is a copy and a
+  // delete -- the uid we knew is gone the moment the message lands elsewhere,
+  // and the id it carries is the only handle that survives.
+  property var lastAction: null
+  readonly property bool canUndo: !!root.lastAction
+  readonly property string undoLabel: root.lastAction ? root.lastAction.label : ""
+
+  function rememberMove(entries, destination, label) {
+    var groups = []
+    for (var i = 0; i < entries.length; i++) {
+      var entry = entries[i]
+      if (!entry || !entry.messageId) continue
+      var found = null
+      for (var j = 0; j < groups.length; j++)
+        if (groups[j].account === entry.account && groups[j].from === entry.folder)
+          found = groups[j]
+      if (!found) {
+        found = { account: entry.account, from: entry.folder,
+                  to: destination, ids: [] }
+        groups.push(found)
+      }
+      found.ids.push(entry.messageId)
+    }
+    root.lastAction = groups.length > 0
+      ? { label: label, groups: groups } : null
+  }
+
+  function undoLast() {
+    var action = root.lastAction
+    if (!action) return
+    root.lastAction = null
+    root.busy = true
+    var left = action.groups.length
+    for (var i = 0; i < action.groups.length; i++) {
+      var group = action.groups[i]
+      var args = accountArgs(["unmove", "--folder", group.to,
+                              "--to", group.from, "--message-id"]
+                             .concat(group.ids), group.account)
+      run(args, function (ok, payload, stderrText) {
+        if (!ok) reportFailure(payload, stderrText, "Could not undo that")
+        if (--left === 0) {
+          root.busy = false
+          root.loadMessages()
+          root.refreshStatus()
+        }
+      }, "unmove")
+    }
+  }
+
+  // ------------------------------------------------------------ in bulk
+  //
+  // The engine takes several uids at a time, so a hundred messages is one
+  // call per mailbox rather than a hundred calls. Rows are grouped because a
+  // selection made in the All folder can span accounts.
+  function groupByMailbox(entries) {
+    var groups = []
+    for (var i = 0; i < (entries || []).length; i++) {
+      var entry = entries[i]
+      if (!entry) continue
+      var found = null
+      for (var j = 0; j < groups.length; j++)
+        if (groups[j].account === entry.account && groups[j].folder === entry.folder)
+          found = groups[j]
+      if (!found) {
+        found = { account: entry.account, folder: entry.folder, uids: [] }
+        groups.push(found)
+      }
+      found.uids.push(String(entry.uid))
+    }
+    return groups
+  }
+
+  function runOnEach(entries, build, failure, done) {
+    var groups = root.groupByMailbox(entries)
+    if (groups.length === 0) return
+    root.busy = true
+    var left = groups.length
+    for (var i = 0; i < groups.length; i++) {
+      var group = groups[i]
+      var args = accountArgs(build(group), group.account)
+      run(args, function (ok, payload, stderrText) {
+        if (!ok) reportFailure(payload, stderrText, failure)
+        else if (done) done(payload || {})
+        if (--left === 0) {
+          root.busy = false
+          root.loadMessages()
+          root.refreshStatus()
+        }
+      }, "bulk")
+    }
+  }
+
+  function setFlagMany(entries, flagName) {
+    for (var i = 0; i < entries.length; i++)
+      markLocalFlag(entries[i], flagName)
+    root.runOnEach(entries, function (group) {
+      return ["flag", "--folder", group.folder, "--uid"].concat(group.uids)
+             .concat(["--set", flagName])
+    }, "Could not update those messages")
+  }
+
+  function moveMany(entries, target) {
+    var kept = entries.slice()
+    for (var i = 0; i < entries.length; i++) dropLocal(entries[i])
+    root.runOnEach(entries, function (group) {
+      return ["move", "--folder", group.folder, "--uid"].concat(group.uids)
+             .concat(["--to", target])
+    }, "Could not move those messages", function (payload) {
+      root.rememberMove(kept, String(payload.to || target),
+                        kept.length === 1 ? "move" : "moving " + kept.length)
+    })
+  }
+
+  function removeMany(entries) {
+    var kept = entries.slice()
+    for (var i = 0; i < entries.length; i++) dropLocal(entries[i])
+    root.runOnEach(entries, function (group) {
+      return ["delete", "--folder", group.folder, "--uid"].concat(group.uids)
+    }, "Could not delete those messages", function (payload) {
+      var to = String(payload.to || "")
+      // A purge has nowhere to put anything back from.
+      if (to !== "" && to !== "(expunged)")
+        root.rememberMove(kept, to,
+                          kept.length === 1 ? "delete" : "deleting " + kept.length)
+    })
+  }
+
+  // Everything unread in what is on screen. Outlook offers it on the folder;
+  // offering it on the list means it also works in the All folder, which is
+  // not a folder any server could be asked about.
+  function markVisibleRead() {
+    var unread = []
+    for (var i = 0; i < root.messages.length; i++)
+      if (root.messages[i].seen !== true) unread.push(root.messages[i])
+    if (unread.length === 0) return
+    root.setFlagMany(unread, "seen")
+  }
+
+  function markLocalFlag(entry, flagName) {
+    if (flagName === "seen") markLocalSeen(entry, true)
+    else if (flagName === "unseen") markLocalSeen(entry, false)
+  }
+
   function markLocalSeen(entry, seen) {
     var next = []
     for (var i = 0; i < root.messages.length; i++) {

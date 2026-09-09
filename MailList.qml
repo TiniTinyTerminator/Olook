@@ -20,7 +20,15 @@ Item {
   property bool edge: true
 
   signal rowChosen(int index)
+  signal rowToggled(int index)
+  signal rowRanged(int index)
+  signal selectionCleared()
+  signal bulkRequested(string action)
   signal filterChosen(string mode)
+
+  // Keys of the rows currently ticked, as "account|folder|uid". Keys rather
+  // than indices because the list reorders under a sync.
+  property var selectedKeys: []
 
   readonly property string filter: service ? service.filter : "all"
 
@@ -52,27 +60,61 @@ Item {
     spacing: 0
 
     // -------------------------------------------------------- filter tabs
+    //
+    // The same strip does two jobs. With nothing ticked it filters; with a
+    // selection it acts on it, because that is where the eye already is and
+    // it costs no height.
     Item {
       id: tabs
       width: parent.width
       height: Style.space(38)
+
+      readonly property bool picking: root.selectedKeys.length > 0
 
       Row {
         anchors.left: parent.left
         anchors.leftMargin: Style.space(12)
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(4)
+        visible: !tabs.picking
 
         FilterTab { label: "All"; mode: "all" }
         FilterTab { label: "Unread"; mode: "unread" }
         FilterTab { label: "Flagged"; mode: "flagged" }
       }
 
+      Row {
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(12)
+        anchors.right: parent.right
+        anchors.rightMargin: Style.space(12)
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(6)
+        visible: tabs.picking
+
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.selectedKeys.length + " selected"
+          color: ui.accent
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+
+        BulkButton { glyph: "󰀼"; hint: "Archive"; action: "archive" }
+        BulkButton { glyph: "󰆴"; hint: "Delete"; action: "delete" }
+        BulkButton { glyph: "󰇮"; hint: "Mark read"; action: "read" }
+        BulkButton { glyph: "󰛑"; hint: "Mark unread"; action: "unread" }
+        BulkButton { glyph: "󰈻"; hint: "Flag"; action: "flag" }
+        BulkButton { glyph: "󰅖"; hint: "Clear selection"; action: "clear" }
+      }
+
       Text {
         textFormat: Text.PlainText
         // The folder pane and the status bar both say where you are; in a
         // narrow list this is the label that can go.
-        visible: root.width >= Style.space(300)
+        visible: !tabs.picking && root.width >= Style.space(300)
         anchors.right: parent.right
         anchors.rightMargin: Style.space(12)
         anchors.verticalCenter: parent.verticalCenter
@@ -111,6 +153,9 @@ Item {
 
           readonly property bool header: modelData && modelData.isHeader === true
           readonly property bool current: !header && root.selectedRow === index
+          readonly property bool picked: !header && modelData
+            && root.selectedKeys.indexOf(modelData.account + "|" + modelData.folder
+                                         + "|" + modelData.uid) >= 0
 
           width: listView.width
           height: header ? Style.space(28) : Style.space(76)
@@ -139,7 +184,8 @@ Item {
             anchors.topMargin: Style.space(1)
             anchors.bottomMargin: Style.space(1)
             radius: ui.radius
-            color: rowItem.current ? ui.selected
+            color: rowItem.picked ? Util.alpha(ui.accent, 0.22)
+              : rowItem.current ? ui.selected
               : (rowHover.containsMouse ? ui.hover : "transparent")
 
             // Unread marker: a bar on the leading edge, like Outlook's.
@@ -265,6 +311,10 @@ Item {
               onClicked: function (mouse) {
                 if (mouse.button === Qt.RightButton) {
                   if (root.service) root.service.toggleRead(rowItem.modelData)
+                } else if (mouse.modifiers & Qt.ControlModifier) {
+                  root.rowToggled(rowItem.index)
+                } else if (mouse.modifiers & Qt.ShiftModifier) {
+                  root.rowRanged(rowItem.index)
                 } else {
                   root.rowChosen(rowItem.index)
                 }
@@ -310,6 +360,43 @@ Item {
           wrapMode: Text.WordWrap
         }
       }
+    }
+  }
+
+  component BulkButton: Rectangle {
+    id: bulk
+    property string glyph: ""
+    property string hint: ""
+    property string action: ""
+
+    width: Style.space(28)
+    height: Style.space(26)
+    radius: ui.radius
+    color: bulkHover.containsMouse ? ui.hover : "transparent"
+
+    Text {
+      anchors.centerIn: parent
+      text: bulk.glyph
+      color: bulkHover.containsMouse ? ui.foreground : ui.dim
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.iconSmall
+    }
+
+    MouseArea {
+      id: bulkHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: {
+        if (bulk.action === "clear") root.selectionCleared()
+        else root.bulkRequested(bulk.action)
+      }
+    }
+
+    PanelToolTip {
+      visible: bulkHover.containsMouse
+      text: bulk.hint
+      fontFamily: ui.fontFamily
     }
   }
 

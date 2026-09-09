@@ -133,6 +133,68 @@ Item {
 
   property int pendingUid: 0
 
+  // ------------------------------------------------------------ selection
+  //
+  // More than one message at a time, because a mailbox is dealt with in
+  // handfuls. Held as the message rows themselves rather than as indices:
+  // the list reorders under a sync, and an index would then point at whatever
+  // had taken that place.
+  property var selection: []
+
+  function rowKey(entry) {
+    return entry ? entry.account + "|" + entry.folder + "|" + entry.uid : ""
+  }
+
+  readonly property var selectionKeys: {
+    var out = []
+    for (var i = 0; i < root.selection.length; i++)
+      out.push(root.rowKey(root.selection[i]))
+    return out
+  }
+
+  function clearSelection() { root.selection = [] }
+
+  function toggleSelection(index) {
+    var entry = root.rows[index]
+    if (!entry || entry.isHeader) return
+    var key = root.rowKey(entry)
+    var next = []
+    var found = false
+    for (var i = 0; i < root.selection.length; i++) {
+      if (root.rowKey(root.selection[i]) === key) found = true
+      else next.push(root.selection[i])
+    }
+    if (!found) next.push(entry)
+    root.selection = next
+    root.selectedRow = index
+  }
+
+  // Everything between the row last landed on and this one, headers skipped.
+  function selectRange(index) {
+    var anchor = root.selectedRow >= 0 ? root.selectedRow : index
+    var low = Math.min(anchor, index)
+    var high = Math.max(anchor, index)
+    var next = []
+    for (var i = low; i <= high; i++) {
+      var entry = root.rows[i]
+      if (entry && !entry.isHeader) next.push(entry)
+    }
+    root.selection = next
+    root.selectedRow = index
+  }
+
+  function selectAllRows() {
+    var next = []
+    for (var i = 0; i < root.rows.length; i++)
+      if (root.rows[i] && !root.rows[i].isHeader) next.push(root.rows[i])
+    root.selection = next
+  }
+
+  function selectionOrCurrent() {
+    if (root.selection.length > 0) return root.selection
+    return mail.selected ? [mail.selected] : []
+  }
+
   // ------------------------------------------------------------ navigation
 
   function firstMessageRow() {
@@ -170,6 +232,9 @@ Item {
   // Clicking a row is a request to read it. Side by side that is already true
   // of selecting it; stacked, it has to move the pane.
   function openRow(index) {
+    // Opening one message is a fresh start: whatever was ticked before was
+    // for an action that has been abandoned.
+    root.clearSelection()
     root.selectRow(index)
     if (mail.inDrafts && root.current) {
       root.openStoredDraft(root.current)
@@ -388,7 +453,16 @@ Item {
       { id: "flag", glyph: "󰈻", shortcut: "s", enabled: root.hasMessage,
         label: root.current && root.current.flagged ? "Remove flag" : "Flag" },
       { id: "unread", glyph: "󰇮", shortcut: "u", enabled: root.hasMessage,
-        label: root.current && root.current.seen ? "Mark unread" : "Mark read" }
+        label: root.current && root.current.seen ? "Mark unread" : "Mark read" },
+      { kind: "separator" },
+      { id: "select-all", label: "Select all", glyph: "󰒆", shortcut: "Ctrl+A",
+        enabled: root.rows.length > 0 },
+      { id: "mark-all-read", label: "Mark everything here as read", glyph: "󰇮",
+        enabled: mail.unread > 0 },
+      { kind: "separator" },
+      { id: "undo", glyph: "󰕌", shortcut: "Ctrl+Z",
+        enabled: mail.canUndo,
+        label: mail.undoLabel === "" ? "Undo" : "Undo " + mail.undoLabel }
     ] },
 
     { title: "Help", items: [
@@ -404,6 +478,10 @@ Item {
     case "settings": root.openSettings(false); return
     case "refresh": mail.sync(false); return
     case "close": root.close(); return
+
+    case "select-all": root.selectAllRows(); return
+    case "mark-all-read": mail.markVisibleRead(); root.clearSelection(); return
+    case "undo": mail.undoLast(); return
 
     case "folders-auto": root.folderPanePref = "auto"; return
     case "folders-expanded": root.folderPanePref = "expanded"; return
@@ -886,6 +964,21 @@ Item {
 
               MailList {
                 id: messageList
+                selectedKeys: root.selectionKeys
+                onRowToggled: function (index) { root.toggleSelection(index) }
+                onRowRanged: function (index) { root.selectRange(index) }
+                onSelectionCleared: root.clearSelection()
+                onBulkRequested: function (action) {
+                  var picked = root.selectionOrCurrent()
+                  if (picked.length === 0) return
+                  if (action === "archive") mail.moveMany(picked, "archive")
+                  else if (action === "delete") mail.removeMany(picked)
+                  else if (action === "read") mail.setFlagMany(picked, "seen")
+                  else if (action === "unread") mail.setFlagMany(picked, "unseen")
+                  else if (action === "flag") mail.setFlagMany(picked, "flagged")
+                  else if (action === "all-read") mail.markVisibleRead()
+                  root.clearSelection()
+                }
                 x: 0
                 y: 0
                 width: mainArea.listW
