@@ -16,7 +16,7 @@ import sys
 import time
 
 from . import (config, htmldoc, htmlrich, htmltext, keyring, mailbox, markdown,
-               message, oauth, providers, send, store)
+               message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
 
@@ -600,6 +600,52 @@ def cmd_move(args):
     store.delete_messages(conn, account["id"], args.folder, uids)
     emit({"ok": True, "moved": uids, "to": target},
          lambda d: f"Moved {len(d['moved'])} to {d['to']}")
+
+
+def cmd_rule(args):
+    """List, add and remove the rules that run over newly synced mail."""
+    doc = config.load()
+    current = list(doc.get("rules") or [])
+
+    if args.action == "list":
+        emit({"ok": True, "rules": [
+                {"index": i, "rule": r, "says": rules.describe(r)}
+                for i, r in enumerate(current)]},
+             lambda d: "\n".join(f"{r['index']}: {r['says']}" for r in d["rules"])
+                       or "No rules yet.")
+        return
+
+    if args.action == "remove":
+        if args.index is None or not 0 <= args.index < len(current):
+            raise CliError("Which rule? Run: olook rule list")
+        dropped = current.pop(args.index)
+        doc["rules"] = current
+        config.save(doc)
+        emit({"ok": True, "removed": rules.describe(dropped)},
+             lambda d: f"Removed: {d['removed']}")
+        return
+
+    when = {name: value for name, value in
+            (("from", args.sender), ("to", args.to), ("subject", args.subject))
+            if value}
+    then = {}
+    if args.move:
+        then["move"] = args.move
+    if args.category:
+        then["category"] = args.category
+    if args.read:
+        then["read"] = True
+    if not when:
+        raise CliError("A rule needs something to match on.")
+    if not then:
+        raise CliError("A rule needs something to do.")
+
+    rule = {"when": when, "then": then}
+    current.append(rule)
+    doc["rules"] = current
+    config.save(doc)
+    emit({"ok": True, "added": rules.describe(rule)},
+         lambda d: f"Added: {d['added']}")
 
 
 def cmd_category(args):
@@ -1198,6 +1244,17 @@ def build_parser():
     p.add_argument("--uid", nargs="+", required=True)
     p.add_argument("--to", required=True, help="folder name or role (archive/junk/…)")
     p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser("rule", help="what to do with mail as it arrives")
+    p.add_argument("action", choices=["list", "add", "remove"])
+    p.add_argument("--index", type=int, help="which rule, for remove")
+    p.add_argument("--from", dest="sender", help="match the sender")
+    p.add_argument("--to", help="match a recipient")
+    p.add_argument("--subject", help="match the subject")
+    p.add_argument("--move", help="move it to this folder or role")
+    p.add_argument("--category", help="put this category on it")
+    p.add_argument("--read", action="store_true", help="mark it read")
+    p.set_defaults(func=cmd_rule)
 
     p = sub.add_parser("category", help="add or remove a category (IMAP keyword)")
     p.add_argument("--account"), p.add_argument("--folder", default="INBOX")

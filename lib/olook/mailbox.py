@@ -18,7 +18,7 @@ import ssl
 import time
 from email.header import decode_header, make_header
 
-from . import htmltext, keyring, oauth, store
+from . import config, htmltext, keyring, oauth, rules, store
 
 imaplib._MAXLINE = 10_000_000  # some servers send very long BODYSTRUCTURE lines
 
@@ -688,10 +688,22 @@ def sync_folder(session, conn, folder, limit=200, full=False):
 
     fresh = [uid for uid in server_uids if uid not in cached]
     added = 0
+    arrived = []
     for chunk in _chunks(fresh, 100):
         rows = [header_row(account_id, folder, item)
                 for item in session.fetch_headers(chunk)]
         added += store.upsert_messages(conn, rows)
+        arrived.extend(rows)
+
+    # Rules run over what this sync brought in, never over mail that was
+    # already sitting there: a rule written today should not reorganise a
+    # mailbox behind your back.
+    applied = []
+    if arrived:
+        wanted = rules.load(config.load())
+        if wanted:
+            applied = rules.apply(conn, session, account_id, folder,
+                                  arrived, wanted)
 
     # Flags change on messages we already have; refresh them for the window.
     existing = [uid for uid in server_uids if uid in cached]
@@ -711,7 +723,8 @@ def sync_folder(session, conn, folder, limit=200, full=False):
         "unseen": info["unseen"],
     }])
     return {"folder": folder, "added": added, "removed": len(gone),
-            "total": info["total"], "unseen": info["unseen"]}
+            "total": info["total"], "unseen": info["unseen"],
+            "rulesApplied": applied}
 
 
 def _chunks(items, size):

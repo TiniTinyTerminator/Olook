@@ -45,8 +45,8 @@ has that this client is better off without.
 
 - **Calendar.** Still a placeholder. The engine already speaks to accounts
   that carry one.
-- **Rules.** Outlook's are a small programming language; something narrower —
-  "from this sender, into that folder" — would carry most of the value.
+- **Rules have no interface.** They work, and are managed with `olook rule
+  add / list / remove`; nothing in the client shows or edits them.
 - **Notifications** beyond the bar badge: a desktop notification per message
   with actions on it.
 
@@ -73,6 +73,9 @@ has that this client is better off without.
   reading pane's list of earlier messages have not been seen.
 - Sorting and the search refiners were verified through the engine, not
   through the menu and the search box.
+- Rules: matching, adding, listing and removing were verified, and a real sync
+  runs the new path cleanly. No rule has actually been left in place to fire on
+  arriving mail, which would mean moving real messages to find out.
 - Categories: setting, storing, showing and searching were verified on the
   demo account, which has no server. The IMAP keyword itself -- the STORE that
   makes the category appear on your phone -- has not been sent, because doing
