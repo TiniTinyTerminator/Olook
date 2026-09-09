@@ -719,6 +719,36 @@ Item {
     })
   }
 
+  // Empty the folder on screen, permanently. Only ever offered for Deleted
+  // Items and Junk: everywhere else "empty" is a euphemism for a mistake.
+  readonly property bool canEmptyFolder: {
+    var folder = root.currentFolder
+    var role = folder ? String(folder.special || "") : ""
+    return (role === "trash" || role === "junk") && root.messages.length > 0
+  }
+
+  function emptyFolder() {
+    if (!root.canEmptyFolder) return
+    var uids = []
+    for (var i = 0; i < root.messages.length; i++)
+      uids.push(String(root.messages[i].uid))
+    if (uids.length === 0) return
+    root.busy = true
+    var args = accountArgs(["delete", "--folder", root.folder, "--purge",
+                            "--uid"].concat(uids))
+    run(args, function (ok, payload, stderrText) {
+      root.busy = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not empty the folder")
+        return
+      }
+      root.notice = "Folder emptied"
+      noticeTimer.restart()
+      root.loadMessages()
+      root.refreshStatus()
+    }, "purge")
+  }
+
   // Everything unread in what is on screen. Outlook offers it on the folder;
   // offering it on the list means it also works in the All folder, which is
   // not a folder any server could be asked about.

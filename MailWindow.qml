@@ -145,6 +145,40 @@ Item {
   // had taken that place.
   property var selection: []
 
+  component ConfirmButton: Rectangle {
+    id: confirmButton
+    property string label: ""
+    property bool urgent: false
+    signal triggered()
+
+    width: confirmLabel.implicitWidth + Style.space(24)
+    height: Style.space(30)
+    radius: ui.radius
+    color: confirmHover.containsMouse
+      ? (confirmButton.urgent ? Util.alpha(ui.urgent, 0.22) : ui.hover)
+      : "transparent"
+    border.width: 1
+    border.color: confirmButton.urgent ? Util.alpha(ui.urgent, 0.55) : ui.border
+
+    Text {
+      id: confirmLabel
+      textFormat: Text.PlainText
+      anchors.centerIn: parent
+      text: confirmButton.label
+      color: confirmButton.urgent ? ui.urgent : ui.foreground
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    MouseArea {
+      id: confirmHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: confirmButton.triggered()
+    }
+  }
+
   function rowKey(entry) {
     return entry ? entry.account + "|" + entry.folder + "|" + entry.uid : ""
   }
@@ -193,6 +227,9 @@ Item {
   // because a selection made in All mail can span accounts, and "archive"
   // resolves per account where a folder name would only exist on one of them.
   property bool movePickerOpen: false
+  // Emptying a folder cannot be undone, so it is asked about first. The only
+  // destructive thing in the client that gets a question.
+  property bool confirmEmpty: false
 
   readonly property var moveTargets: {
     var out = [
@@ -509,6 +546,9 @@ Item {
       { id: "unread", glyph: "󰇮", shortcut: "u", enabled: root.hasMessage,
         label: root.current && root.current.seen ? "Mark unread" : "Mark read" },
       { kind: "separator" },
+      { id: "empty-folder", label: "Empty this folder…", glyph: "󰩹",
+        enabled: mail.canEmptyFolder },
+      { kind: "separator" },
       { id: "select-all", label: "Select all", glyph: "󰒆", shortcut: "Ctrl+A",
         enabled: root.rows.length > 0 },
       { id: "mark-all-read", label: "Mark everything here as read", glyph: "󰇮",
@@ -533,6 +573,7 @@ Item {
     case "refresh": mail.sync(false); return
     case "close": root.close(); return
 
+    case "empty-folder": root.confirmEmpty = true; return
     case "move": root.movePickerOpen = true; return
     case "select-all": root.selectAllRows(); return
     case "mark-all-read": mail.markVisibleRead(); root.clearSelection(); return
@@ -567,7 +608,8 @@ Item {
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) {
-      if (root.movePickerOpen) root.movePickerOpen = false
+      if (root.confirmEmpty) root.confirmEmpty = false
+      else if (root.movePickerOpen) root.movePickerOpen = false
       else if (root.showShortcuts) root.showShortcuts = false
       else if (menuBar.menuOpen) menuBar.close()
       else if (root.composing) root.cancelCompose()
@@ -1253,6 +1295,78 @@ Item {
         z: 200
         ui: ui
         onDismissed: root.showShortcuts = false
+      }
+
+      // The one question the client asks. Everything else it does can be
+      // taken back; a purge cannot.
+      Item {
+        anchors.fill: parent
+        visible: root.confirmEmpty
+        z: 220
+
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.confirmEmpty = false
+        }
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: Style.space(360)
+          height: confirmColumn.implicitHeight + Style.space(32)
+          radius: ui.radius
+          color: ui.surface
+          border.width: 1
+          border.color: ui.border
+
+          Column {
+            id: confirmColumn
+            anchors.centerIn: parent
+            width: parent.width - Style.space(32)
+            spacing: Style.space(12)
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Empty " + (mail.currentFolder
+                ? Model.folderLabel(mail.currentFolder) : "this folder") + "?"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.subtitle
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: mail.messages.length === 1
+                ? "One message will be deleted from the server for good."
+                : mail.messages.length
+                  + " messages will be deleted from the server for good."
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Row {
+              spacing: Style.space(8)
+
+              ConfirmButton {
+                label: "Empty it"
+                urgent: true
+                onTriggered: {
+                  root.confirmEmpty = false
+                  mail.emptyFolder()
+                }
+              }
+
+              ConfirmButton {
+                label: "Keep them"
+                onTriggered: root.confirmEmpty = false
+              }
+            }
+          }
+        }
       }
 
       // Move to folder. A short list in the middle rather than a menu hung
