@@ -56,6 +56,12 @@ has that this client is better off without.
 
 - **Calendar.** Still a placeholder. The engine already speaks to accounts
   that carry one.
+
+  When it is built: enumerate `calendarList` rather than assuming `primary`.
+  An account routinely holds several — a personal one, shared ones, birthdays,
+  subscribed holidays — and a client that reads only the default silently
+  hides most of what is in the account. No extra API or scope is needed for
+  this; `calendar` and `calendar.readonly` both cover the list.
 - **Rules have no interface.** They work, and are managed with `olook rule
   add / list / remove`; nothing in the client shows or edits them.
 - **Notifications** beyond the bar badge: a desktop notification per message
