@@ -37,7 +37,6 @@ has that this client is better off without.
   References; adding it is a schema change and a resync.
 - **Conversations do not expand in the list.** The row is the newest message
   and the reading pane lists the rest; Outlook expands the row itself.
-- **Empty Deleted Items / Junk.**
 
 ## Composing
 
@@ -79,6 +78,13 @@ has that this client is better off without.
   reading pane's list of earlier messages have not been seen.
 - Sorting and the search refiners were verified through the engine, not
   through the menu and the search box.
+- The markdown preview renders correctly when fed by hand; the debounce that
+  drives it while typing has not been watched.
+- Emptying a folder: the confirmation was written but never opened on screen,
+  and the purge itself has deliberately not been run on real mail.
+- The outbox was verified end to end against an account pointed at a host that
+  does not resolve. What has not been seen is the status bar carrying the
+  count, or a queued message going out on the next sync.
 - The Bcc field and recipient completion: the code loads without error, but
   neither has been exercised on screen.
 - The HTML quote inside the composer: the fragment renders correctly on its
