@@ -51,13 +51,17 @@ Mail is untouched by any of this and keeps working as it does now.
 
 2. **APIs & Services → Library**, search for **People API**, enable it.
 
-3. **APIs & Services → OAuth consent screen**
-   - User type **External**, then Create.
-   - Fill in the app name and your own address where asked.
-   - **Scopes**: add `.../auth/contacts.readonly`. Nothing else.
-   - **Test users**: add your own Gmail address.
+3. Open **Google Auth Platform** (older consoles call this **APIs &
+   Services → OAuth consent screen**; it is the same thing under four tabs).
+   - **Branding**: an app name, and your own address for support and contact.
+   - **Audience**: user type **External**. Under **Test users**, add your own
+     Gmail address — an app in testing will not let anyone else near it.
+   - **Data access → Add or remove scopes**: tick
+     `.../auth/contacts.readonly`. Nothing else. If you plan to add the
+     calendar later, `.../auth/calendar.readonly` can go on at the same time.
 
-4. **APIs & Services → Credentials → Create credentials → OAuth client ID**
+4. **Clients → Create client** (older consoles: **Credentials → Create
+   credentials → OAuth client ID**)
    - Application type **Desktop app**.
    - Copy the client ID and the client secret.
 
@@ -81,7 +85,7 @@ Mail is untouched by any of this and keeps working as it does now.
 
 An application left in **Testing** hands out refresh tokens that expire after
 seven days, so contacts would stop working weekly. To avoid that, go back to
-the OAuth consent screen and **Publish** the app. It stays unverified — you
+**Audience** and press **Publish app**. It stays unverified — you
 keep the warning screen and a limit of 100 users, both of which are fine for
 an application only you will ever use — but the tokens stop expiring.
 
