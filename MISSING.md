@@ -43,6 +43,12 @@ has that this client is better off without.
 
 ## Elsewhere
 
+- **S/MIME and PGP signatures.** The client reads the server's verdict on who
+  sent a message; it does not read a certificate carried by the message
+  itself. Neither appears in any mail here, which is why it is far down this
+  list rather than off it.
+
+
 - **Calendar.** Still a placeholder. The engine already speaks to accounts
   that carry one.
 - **Rules have no interface.** They work, and are managed with `olook rule
@@ -73,6 +79,10 @@ has that this client is better off without.
   reading pane's list of earlier messages have not been seen.
 - Sorting and the search refiners were verified through the engine, not
   through the menu and the search box.
+- Sender verification and the standing image permission: the engine chain was
+  verified against real mail — DKIM, SPF and DMARC parsed, and trusting the
+  sender turned seven blocked images into none — but the verified line and the
+  "Always from this sender" button have not been seen on screen.
 - Rules: matching, adding, listing and removing were verified, and a real sync
   runs the new path cleanly. No rule has actually been left in place to fire on
   arriving mail, which would mean moving real messages to find out.

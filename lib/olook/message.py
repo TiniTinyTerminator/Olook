@@ -70,11 +70,53 @@ def extract(msg):
         if value:
             headers[name] = mailbox.decode_mime(value)
 
+    # Kept raw: these are machine-written and decoding them as display text
+    # would only damage them.
+    for name in ("Authentication-Results", "DKIM-Signature", "Received-SPF"):
+        value = msg.get(name)
+        if value:
+            headers[name] = str(value)
+
     return {
         "text": _tidy(text),
         "html": html,
         "parts": attachments,
         "headers": headers,
+        "authentication": authentication(headers),
+    }
+
+
+def authentication(headers):
+    """What the receiving server made of the sender's identity.
+
+    DKIM says the message really came from the domain that signed it and has
+    not been altered since. SPF says the machine that handed it over was
+    allowed to. DMARC says the domain in the From line is the one that passed.
+
+    None of it says the sender is honest -- a spammer signs their own mail
+    correctly -- so this is an answer to "who is this", not "is this safe".
+    """
+    line = str(headers.get("Authentication-Results") or "").lower()
+    signed = bool(headers.get("DKIM-Signature"))
+
+    def verdict(name):
+        found = re.search(name + r"=(\w+)", line)
+        return found.group(1) if found else ""
+
+    domain = ""
+    signer = re.search(r"header\.i=@?([\w.-]+)", line) or \
+        re.search(r"header\.d=([\w.-]+)", line)
+    if signer:
+        domain = signer.group(1)
+
+    dkim, dmarc = verdict("dkim"), verdict("dmarc")
+    return {
+        "dkim": dkim, "spf": verdict("spf"), "dmarc": dmarc,
+        "signedBy": domain,
+        "checked": bool(line) or signed,
+        # Enough to say the From line is not a forgery: DKIM alone if the
+        # signing domain is the sender's, DMARC because that is what it tests.
+        "verified": dkim == "pass" or dmarc == "pass",
     }
 
 

@@ -54,6 +54,18 @@ Item {
   // were written for a white background, not the theme's.
   readonly property bool hasRich: !!(body && String(body.rich || "") !== "")
   readonly property int blockedImages: body && body.blockedImages ? body.blockedImages : 0
+  // What the receiving server made of the sender's identity, and whether that
+  // plus your say-so was enough to let the pictures through by itself.
+  readonly property var authentication: body && body.authentication
+    ? body.authentication : null
+  readonly property bool verifiedSender: !!(root.authentication
+                                            && root.authentication.verified)
+  readonly property bool autoImages: !!(body && body.autoImages)
+  readonly property bool senderTrusted: !!(body && body.senderTrusted)
+  readonly property string senderAddress: message && message.fromAddr
+    ? String(message.fromAddr) : ""
+
+  signal trustSenderRequested(string address)
   property bool formatted: true
 
   // The web renderer lays out the stylesheet the message came with, which is
@@ -214,6 +226,37 @@ Item {
               font.family: ui.fontFamily
               font.pixelSize: Style.font.caption
               elide: Text.ElideRight
+            }
+
+            // Who the server says this is really from. Worth saying only when
+            // it was checked: silence would otherwise read as a verdict.
+            Row {
+              width: parent.width
+              spacing: Style.space(5)
+              visible: !!root.authentication && root.authentication.checked
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.verifiedSender ? "󰄴" : "󰀦"
+                color: root.verifiedSender ? ui.accent : ui.urgent
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.iconSmall
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                text: {
+                  if (!root.authentication) return ""
+                  if (!root.verifiedSender) return "Sender could not be verified"
+                  var by = String(root.authentication.signedBy || "")
+                  return by === "" ? "Verified sender" : "Verified as " + by
+                }
+                color: root.verifiedSender ? ui.faint : ui.urgent
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
             }
 
             // Which mailbox this arrived on. Only worth saying when the list
@@ -473,7 +516,9 @@ Item {
               // document is what triggers the load, and a load that starts
               // before the setting is in place renders without the pictures.
               onLoaded: {
-                item.allowRemote = Qt.binding(function () { return root.remoteImages })
+                item.allowRemote = Qt.binding(function () {
+                  return root.remoteImages || root.autoImages
+                })
                 item.document = Qt.binding(function () { return root.webDocument })
               }
 
@@ -607,6 +652,20 @@ Item {
             root.remoteImages = true
             root.showImagesRequested()
           }
+        }
+
+        // The standing version of the same permission, offered only for a
+        // sender the server could vouch for. Without that the address in the
+        // From line is a claim, and a permission granted to a claim can be
+        // inherited by anyone willing to make it.
+        ViewToggle {
+          label: "󰀓  Always from this sender"
+          visible: root.blockedImages > 0 && root.formatted
+            && root.verifiedSender && !root.senderTrusted
+            && root.senderAddress !== ""
+          ink: controlRow.ink
+          edge: controlRow.edge
+          onTriggered: root.trustSenderRequested(root.senderAddress)
         }
       }
     }

@@ -548,6 +548,20 @@ Item {
     }, "contacts")
   }
 
+  // Senders whose pictures load without being asked. Kept by the engine, so
+  // the terminal and the client agree about who is on the list.
+  function trustSender(address, trusted, done) {
+    if (!address) return
+    run(["trust", trusted ? "add" : "remove", String(address)],
+        function (ok, payload, stderrText) {
+          if (!ok) {
+            reportFailure(payload, stderrText, "Could not change that")
+            return
+          }
+          if (done) done()
+        }, "trust")
+  }
+
   // Markdown as the engine renders it, which is the point: a preview with its
   // own opinion of markdown would show something other than what is sent.
   function renderMarkdown(source, handler) {

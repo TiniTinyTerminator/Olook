@@ -125,6 +125,32 @@ def remove(account_id):
     return before != len(doc["accounts"])
 
 
+def trusted_senders(doc=None):
+    """Addresses whose pictures may load without being asked about.
+
+    A list of addresses rather than of domains: trusting "amazon.nl" would
+    trust everyone who can send as it, and the point of the list is that you
+    put people on it one at a time.
+    """
+    doc = doc if doc is not None else load()
+    return {str(a).strip().lower() for a in (doc.get("trustedSenders") or []) if a}
+
+
+def set_trusted(address, trusted=True):
+    doc = load()
+    current = trusted_senders(doc)
+    address = str(address or "").strip().lower()
+    if not address:
+        return sorted(current)
+    if trusted:
+        current.add(address)
+    else:
+        current.discard(address)
+    doc["trustedSenders"] = sorted(current)
+    save(doc)
+    return doc["trustedSenders"]
+
+
 def normalize(entry):
     """Fill in every field the rest of the code expects to be present."""
     email = str(entry.get("email", "")).strip()

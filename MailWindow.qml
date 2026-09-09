@@ -1187,6 +1187,11 @@ Item {
                   onFlagRequested: if (mail.selected) mail.toggleFlagged(mail.selected)
                   onUnreadRequested: if (mail.selected) mail.toggleRead(mail.selected)
                   onShowImagesRequested: mail.loadRemoteImages()
+                  onTrustSenderRequested: function (address) {
+                    mail.trustSender(address, true, function () {
+                      if (mail.selected) mail.openMessage(mail.selected)
+                    })
+                  }
                   onPopOutRequested: if (mail.selected) root.popOutReader(mail.selected, null)
                   onThreadMessageRequested: function (entry) { mail.openMessage(entry) }
                   onAttachmentRequested: function (index) {

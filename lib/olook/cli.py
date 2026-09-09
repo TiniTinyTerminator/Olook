@@ -453,7 +453,8 @@ def cmd_body(args):
         if args.mark_read:
             store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
         summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-        emit({"ok": True, "message": summary, "body": _with_rich(cached, args.remote_images)},
+        emit({"ok": True, "message": summary,
+              "body": _body_payload(cached, summary, args.remote_images)},
              lambda d: d["body"]["text"])
         return
 
@@ -483,7 +484,8 @@ def cmd_body(args):
         _mark_seen(account, conn, folder, [args.uid], True)
 
     summary = store.get_message(conn, account["id"], folder, args.uid) or {}
-    emit({"ok": True, "message": summary, "body": _with_rich(cached, args.remote_images)},
+    emit({"ok": True, "message": summary,
+          "body": _body_payload(cached, summary, args.remote_images)},
          lambda d: f"{d['message'].get('subject','')}\n"
                    f"From: {d['message'].get('fromName','')} <{d['message'].get('fromAddr','')}>\n"
                    f"{'-' * 60}\n{d['body']['text'][:4000]}")
@@ -512,6 +514,33 @@ def _save_inline_images(raw, extracted, account_id, folder, uid):
 
 def _safe(name):
     return "".join(c if c.isalnum() or c in "-_." else "-" for c in str(name))[:40]
+
+
+def _body_payload(body, summary, forced_remote):
+    """The body as the reading pane wants it, trust decided first."""
+    trust = _auto_images(body, summary)
+    rendered = _with_rich(body, forced_remote or trust["autoImages"])
+    rendered.update(trust)
+    return rendered
+
+
+def _auto_images(body, summary):
+    """Whether this message's pictures may load without being asked.
+
+    Two things have to hold: the sender is one you have said yes to, and the
+    message really is from them. DKIM or DMARC passing is what makes the
+    second true, and is the whole reason the list is safe to keep. Without it,
+    anyone could put your bank's address in a From line and inherit the
+    permission you gave your bank.
+    """
+    auth = message.authentication((body or {}).get("headers") or {})
+    sender = str((summary or {}).get("fromAddr") or "").strip().lower()
+    allowed = bool(sender) and sender in config.trusted_senders()
+    return {
+        "authentication": auth,
+        "senderTrusted": allowed,
+        "autoImages": allowed and auth["verified"],
+    }
 
 
 def _with_rich(body, allow_remote=False):
@@ -600,6 +629,18 @@ def cmd_move(args):
     store.delete_messages(conn, account["id"], args.folder, uids)
     emit({"ok": True, "moved": uids, "to": target},
          lambda d: f"Moved {len(d['moved'])} to {d['to']}")
+
+
+def cmd_trust(args):
+    """Senders whose pictures load without being asked about."""
+    if args.action == "list":
+        emit({"ok": True, "senders": sorted(config.trusted_senders())},
+             lambda d: "\n".join(d["senders"]) or "Nobody trusted yet.")
+        return
+    senders = config.set_trusted(args.address, args.action == "add")
+    emit({"ok": True, "senders": senders, "address": args.address},
+         lambda d: ("Trusting " if args.action == "add" else "No longer trusting ")
+                   + d["address"])
 
 
 def cmd_rule(args):
@@ -1244,6 +1285,11 @@ def build_parser():
     p.add_argument("--uid", nargs="+", required=True)
     p.add_argument("--to", required=True, help="folder name or role (archive/junk/…)")
     p.set_defaults(func=cmd_move)
+
+    p = sub.add_parser("trust", help="senders whose images load by themselves")
+    p.add_argument("action", choices=["list", "add", "remove"])
+    p.add_argument("address", nargs="?", default="")
+    p.set_defaults(func=cmd_trust)
 
     p = sub.add_parser("rule", help="what to do with mail as it arrives")
     p.add_argument("action", choices=["list", "add", "remove"])
