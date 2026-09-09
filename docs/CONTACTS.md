@@ -125,7 +125,11 @@ Mail is untouched by any of this and keeps working as it does now.
    your own application, unreviewed, which is expected. Continue past it.
 
 6. In Olook, open **People** and press the refresh button beside the search
-   box.
+   box. The same thing from a terminal, which says how many came back:
+
+   ```
+   olook contacts --sync --account ACCOUNT
+   ```
 
 ## The one catch
 
