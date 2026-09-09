@@ -798,6 +798,24 @@ Item {
     readonly property color selected: Util.alpha(Color.accent, 0.16)
     readonly property string fontFamily: Style.font.menuFamily
     readonly property int radius: Style.cornerRadius
+
+    // The thickness of every divider in the client, in logical pixels.
+    //
+    // A divider asked for one logical pixel is 1.5 device pixels on a
+    // 1.5-scaled display, and the rasteriser resolves that to one physical
+    // row or two depending on where the line happens to land — so the same
+    // rule came out hairline-thin along the menu bar and twice as heavy down
+    // the side of the rail. A span of exactly one device pixel always covers
+    // exactly one pixel centre, whatever the fraction, which is the only
+    // thickness that looks the same everywhere.
+    //
+    // It has to come from the window: Screen.devicePixelRatio reports the
+    // output's integer Wayland scale (2 here), not the fractional scale the
+    // window is actually drawn at.
+    readonly property real hairline: {
+      var ratio = window.devicePixelRatio
+      return (ratio && ratio > 0) ? 1 / ratio : 1
+    }
   }
 
   // A real toplevel window, not a layer-shell overlay: a mail client is
@@ -983,7 +1001,7 @@ Item {
           Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
-            height: 1
+            height: ui.hairline
             color: ui.border
           }
         }
@@ -1150,7 +1168,7 @@ Item {
                 visible: mainArea.topBottom
                 y: mainArea.listH
                 width: mainArea.width
-                height: 1
+                height: ui.hairline
                 color: ui.border
               }
 
@@ -1275,7 +1293,7 @@ Item {
           Rectangle {
             anchors.top: parent.top
             width: parent.width
-            height: 1
+            height: ui.hairline
             color: ui.border
           }
 

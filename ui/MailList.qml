@@ -50,7 +50,7 @@ Item {
   Rectangle {
     visible: root.edge
     anchors.right: parent.right
-    width: 1
+    width: ui.hairline
     height: parent.height
     color: ui.border
   }
@@ -129,7 +129,7 @@ Item {
       Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
-        height: 1
+        height: ui.hairline
         color: ui.border
       }
     }

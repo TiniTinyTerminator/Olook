@@ -120,7 +120,7 @@ Item {
     Rectangle {
       anchors.bottom: parent.bottom
       width: parent.width
-      height: 1
+      height: ui.hairline
       color: ui.border
     }
   }
@@ -297,7 +297,7 @@ Item {
       anchors.leftMargin: Style.space(8)
       anchors.right: parent.right
       anchors.rightMargin: Style.space(8)
-      height: 1
+      height: ui.hairline
       color: ui.border
     }
 

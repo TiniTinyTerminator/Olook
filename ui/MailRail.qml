@@ -29,7 +29,7 @@ Item {
 
   Rectangle {
     anchors.right: parent.right
-    width: 1
+    width: ui.hairline
     height: parent.height
     color: ui.border
   }

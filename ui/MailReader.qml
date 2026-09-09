@@ -359,7 +359,7 @@ Item {
       Rectangle {
         anchors.bottom: parent.bottom
         width: parent.width
-        height: 1
+        height: ui.hairline
         color: ui.border
       }
     }
@@ -747,7 +747,7 @@ Item {
       anchors.left: parent.left
       anchors.top: parent.top
       anchors.bottom: parent.bottom
-      width: 1
+      width: ui.hairline
       color: ui.border
     }
 

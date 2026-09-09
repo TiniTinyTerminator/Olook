@@ -179,7 +179,7 @@ Item {
       }
     }
 
-    Rectangle { width: 1; height: parent.height; color: ui.border }
+    Rectangle { width: ui.hairline; height: parent.height; color: ui.border }
 
     // ------------------------------------------------------------ the page
     Item {
@@ -613,7 +613,7 @@ Item {
         spacing: Style.space(10)
         visible: cardRoot.expanded
 
-        Rectangle { width: parent.width; height: 1; color: ui.border }
+        Rectangle { width: parent.width; height: ui.hairline; color: ui.border }
 
         SettingsField {
           label: "Display name"
@@ -1050,7 +1050,7 @@ Item {
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(4)
       width: parent.width
-      height: 1
+      height: ui.hairline
       color: !!(settingsField.input && settingsField.input.activeFocus)
         ? ui.accent : ui.border
     }

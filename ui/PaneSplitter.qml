@@ -23,7 +23,7 @@ Item {
     // Against the pane's own border rather than beside it, so the edge you
     // already see is the one that lights up.
     anchors.left: parent.left
-    width: 1
+    width: ui.hairline
     height: parent.height
     visible: handle.pressed || handle.containsMouse
     color: ui.accent

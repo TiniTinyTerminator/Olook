@@ -767,7 +767,7 @@ Item {
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(6)
       width: parent.width
-      height: 1
+      height: ui.hairline
       color: !!(setupField.input && setupField.input.activeFocus) ? ui.accent : ui.border
     }
 
