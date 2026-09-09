@@ -470,7 +470,7 @@ Item {
       { id: "reader-bottom", label: "Bottom", kind: "radio",
         checked: root.readingPanePref === "bottom", enabled: !root.stacked },
       { kind: "separator" },
-      { id: "conversations", label: "Group by conversation", kind: "check",
+      { id: "conversations", label: "Conversations", kind: "check",
         checked: mail.conversationMode },
       { kind: "separator" },
 
