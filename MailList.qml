@@ -102,6 +102,7 @@ Item {
           font.bold: true
         }
 
+        BulkButton { glyph: "󰉒"; hint: "Move to folder"; action: "move" }
         BulkButton { glyph: "󰀼"; hint: "Archive"; action: "archive" }
         BulkButton { glyph: "󰆴"; hint: "Delete"; action: "delete" }
         BulkButton { glyph: "󰇮"; hint: "Mark read"; action: "read" }

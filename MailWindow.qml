@@ -187,6 +187,37 @@ Item {
     root.selectedRow = index
   }
 
+  // ------------------------------------------------------- move to folder
+  //
+  // Roles first, then the folders of the account on screen. Roles are offered
+  // because a selection made in All mail can span accounts, and "archive"
+  // resolves per account where a folder name would only exist on one of them.
+  property bool movePickerOpen: false
+
+  readonly property var moveTargets: {
+    var out = [
+      { name: "archive", label: "Archive", glyph: "\u{f003c}" },
+      { name: "junk", label: "Junk Email", glyph: "\u{f0026}" },
+      { name: "trash", label: "Deleted Items", glyph: "\u{f01b4}" }
+    ]
+    var folders = mail.folders || []
+    for (var i = 0; i < folders.length; i++) {
+      var folder = folders[i]
+      if (!folder || folder.special !== "") continue
+      out.push({ name: folder.name, label: Model.folderLabel(folder),
+                 glyph: "\u{f024b}" })
+    }
+    return out
+  }
+
+  function moveSelectionTo(target) {
+    var picked = root.selectionOrCurrent()
+    root.movePickerOpen = false
+    if (picked.length === 0) return
+    mail.moveMany(picked, target)
+    root.clearSelection()
+  }
+
   function selectAllRows() {
     var next = []
     for (var i = 0; i < root.rows.length; i++)
@@ -464,6 +495,8 @@ Item {
       { id: "reply-all", label: "Reply all", glyph: "󰑛", shortcut: "a", enabled: root.hasMessage },
       { id: "forward", label: "Forward", glyph: "󰒭", shortcut: "f", enabled: root.hasMessage },
       { kind: "separator" },
+      { id: "move", label: "Move to folder…", glyph: "󰉒", shortcut: "v",
+        enabled: root.hasMessage || root.selection.length > 0 },
       { id: "archive", label: "Archive", glyph: "󰇠", shortcut: "e", enabled: root.hasMessage },
       { id: "delete", label: "Delete", glyph: "󰩹", shortcut: "Del", enabled: root.hasMessage },
       { kind: "separator" },
@@ -496,6 +529,7 @@ Item {
     case "refresh": mail.sync(false); return
     case "close": root.close(); return
 
+    case "move": root.movePickerOpen = true; return
     case "select-all": root.selectAllRows(); return
     case "mark-all-read": mail.markVisibleRead(); root.clearSelection(); return
     case "undo": mail.undoLast(); return
@@ -528,7 +562,8 @@ Item {
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) {
-      if (root.showShortcuts) root.showShortcuts = false
+      if (root.movePickerOpen) root.movePickerOpen = false
+      else if (root.showShortcuts) root.showShortcuts = false
       else if (menuBar.menuOpen) menuBar.close()
       else if (root.composing) root.cancelCompose()
       // Stacked, the reading pane is covering the list; Escape steps back to
@@ -994,6 +1029,7 @@ Item {
                 onBulkRequested: function (action) {
                   var picked = root.selectionOrCurrent()
                   if (picked.length === 0) return
+                  if (action === "move") { root.movePickerOpen = true; return }
                   if (action === "archive") mail.moveMany(picked, "archive")
                   else if (action === "delete") mail.removeMany(picked)
                   else if (action === "read") mail.setFlagMany(picked, "seen")
@@ -1200,6 +1236,108 @@ Item {
         z: 200
         ui: ui
         onDismissed: root.showShortcuts = false
+      }
+
+      // Move to folder. A short list in the middle rather than a menu hung
+      // off a button: it is opened from the menu, from the keyboard and from
+      // a selection in the list, and those have no single button to hang from.
+      Item {
+        anchors.fill: parent
+        visible: root.movePickerOpen
+        z: 210
+
+        MouseArea {
+          anchors.fill: parent
+          onClicked: root.movePickerOpen = false
+        }
+
+        Rectangle {
+          anchors.centerIn: parent
+          width: Style.space(320)
+          height: Math.min(parent.height - Style.space(80),
+                           targetColumn.implicitHeight + Style.space(52))
+          radius: ui.radius
+          color: ui.surface
+          border.width: 1
+          border.color: ui.border
+
+          Text {
+            id: pickerTitle
+            textFormat: Text.PlainText
+            anchors.top: parent.top
+            anchors.topMargin: Style.space(14)
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(16)
+            text: root.selection.length > 1
+              ? "Move " + root.selection.length + " messages to" : "Move to"
+            color: ui.foreground
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.subtitle
+          }
+
+          Flickable {
+            id: targetFlick
+            anchors.top: pickerTitle.bottom
+            anchors.topMargin: Style.space(10)
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: Style.space(8)
+            contentWidth: width
+            contentHeight: targetColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            Column {
+              id: targetColumn
+              width: targetFlick.width
+
+              Repeater {
+                model: root.moveTargets
+
+                Rectangle {
+                  required property var modelData
+                  width: targetColumn.width
+                  height: Style.space(30)
+                  radius: ui.radius
+                  color: targetHover.containsMouse ? ui.hover : "transparent"
+
+                  Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(8)
+
+                    Text {
+                      text: modelData.glyph
+                      color: ui.dim
+                      font.family: ui.fontFamily
+                      font.pixelSize: Style.font.iconSmall
+                    }
+
+                    Text {
+                      textFormat: Text.PlainText
+                      text: modelData.label
+                      color: ui.foreground
+                      font.family: ui.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+
+                  MouseArea {
+                    id: targetHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.moveSelectionTo(modelData.name)
+                  }
+                }
+              }
+            }
+
+            MomentumScroll { view: targetFlick }
+          }
+        }
       }
     }
   }
