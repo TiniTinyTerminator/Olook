@@ -6,11 +6,13 @@ path for the two providers most people are on.
 
 Two grant types are implemented:
 
-  device code  — Microsoft only. The user reads a short code off the panel and
-                 types it on another screen; nothing has to listen on a port.
-  loopback     — Google, and Microsoft when a tenant's conditional-access
-                 policy blocks device code. Authorization-code + PKCE against
-                 a throwaway http://127.0.0.1:<port> listener.
+  loopback     — the way in for both providers. Authorization-code + PKCE
+                 against a throwaway http://127.0.0.1:<port> listener: the
+                 browser opens, you sign in, and it comes back on its own.
+  device code  — Microsoft's fallback, used when the application is not
+                 allowed to send the browser back to a local port or a tenant
+                 forbids the hop. You read a short code off the panel and type
+                 it on another screen; nothing has to listen on a port.
 
 Refresh tokens live in the keyring; access tokens are cached beside them with
 their expiry and refreshed on demand.
@@ -20,6 +22,7 @@ import base64
 import hashlib
 import http.server
 import json
+import re
 import secrets
 import socket
 import threading
@@ -36,6 +39,16 @@ REFRESH_MARGIN = 120  # refresh this many seconds before actual expiry
 
 class OAuthError(Exception):
     pass
+
+
+def _reauth(account):
+    """How to sign this grant in again, in the user's terms.
+
+    A side grant is a stand-in account with a name of its own, and telling
+    someone to run `olook auth someone@outlook.com#contacts` is telling
+    them about the plumbing.
+    """
+    return account.get("reauth") or ("olook auth " + str(account.get("id", "")))
 
 
 def endpoints(account):
@@ -134,7 +147,7 @@ def access_token(account, force_refresh=False):
     refresh = keyring.get_secret(account_id, "refresh_token")
     if not refresh:
         raise OAuthError(
-            f"No OAuth token for {account['email']}. Run: olook auth {account_id}")
+            f"No OAuth token for {account['email']}. Run: {_reauth(account)}")
 
     config = endpoints(account)
     fields = {
@@ -158,7 +171,7 @@ def access_token(account, force_refresh=False):
             # away a live one costs a sign-in.
             raise OAuthError(
                 f"Authorization for {account['email']} was refused ({detail}). "
-                f"Run: olook auth {account_id}")
+                f"Run: {_reauth(account)}")
         raise OAuthError(f"Token refresh failed: {detail}")
 
     store_tokens(account_id, payload)
@@ -310,7 +323,11 @@ def loopback_flow(account, emit, wait=300):
 
     result = _CodeHandler.result
     if not result:
-        raise OAuthError("Timed out waiting for the browser to come back.")
+        raise OAuthError(
+            "Timed out waiting for the browser to come back. If it showed an "
+            "error instead of a sign-in, this account can be signed in by "
+            "typing a code instead: olook auth "
+            + str(account.get("id", "")) + " --flow device")
     if result.get("state") != state:
         raise OAuthError("Authorization response did not match this request.")
     if "code" not in result:
@@ -349,6 +366,19 @@ def _serve_until(server):
     server.serve_forever(poll_interval=0.2)
 
 
+# What Microsoft says when the application is not allowed to send the browser
+# back to a local port. A tenant can also refuse the whole hop.
+# Only the error code counts. The sign-in page quotes the request back at
+# you, "redirect_uri" and all, so matching on the words alone calls every
+# successful page a refusal.
+REDIRECT_REFUSED = ("AADSTS50011",)
+
+# The preflight below asks for a sign-in page, which is not served to a
+# caller that announces itself as a script.
+BROWSER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                 "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+
+
 def authorize(account, emit, flow=None):
     """Run whichever grant fits the provider, honoring an explicit override."""
     config = endpoints(account)
@@ -356,7 +386,56 @@ def authorize(account, emit, flow=None):
         raise OAuthError(
             "No OAuth client id configured for this account. Set oauth.client_id "
             "in ~/.config/olook/accounts.json.")
-    chosen = flow or ("device" if config["flavor"] == "microsoft" else "loopback")
+
+    chosen = flow or "loopback"
     if chosen == "device":
         return device_flow(account, emit)
+
+    # Signing in through the browser is the better way round when it works,
+    # and it is not this client's place to assume it does: an application may
+    # not be registered for a loopback address, and a tenant may forbid the
+    # hop. Microsoft says so on the page rather than by redirecting, so a
+    # browser sent there would sit on an error while this waited out its
+    # timeout. Asking first costs one request and turns the clearest of those
+    # refusals into a code the user can still type. It is a shortcut, not a
+    # gate: anything it does not recognise falls through to the real attempt,
+    # whose own timeout says how to sign in by code.
+    if not flow and config["flavor"] == "microsoft" and config["device"]:
+        refusal = _redirect_refused(config)
+        if refusal:
+            emit({"event": "fallback", "reason": refusal, "flow": "device"})
+            return device_flow(account, emit)
+
     return loopback_flow(account, emit)
+
+
+def _redirect_refused(config):
+    """Whether the provider will turn a loopback redirect away, and why.
+
+    Any free port stands in for the real one: a registration that allows the
+    loopback address allows it on whichever port the listener lands on.
+    """
+    params = {
+        "client_id": config["client_id"],
+        "response_type": "code",
+        "redirect_uri": "http://127.0.0.1:%d/" % _free_port(),
+        "scope": config["scope"],
+        "state": "preflight",
+        "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        "code_challenge_method": "S256",
+    }
+    url = config["auth"] + "?" + urllib.parse.urlencode(params)
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": BROWSER_AGENT})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            body = response.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError:
+        # Unreachable is not the same as refused; let the real attempt say so.
+        return ""
+    for mark in REDIRECT_REFUSED:
+        if mark.lower() in body.lower():
+            found = re.search(r"AADSTS\d+[^\"<\\]{0,160}", body)
+            return found.group(0) if found else "the provider refused a local redirect"
+    return ""

@@ -56,6 +56,7 @@ def grant(account):
             "See docs/CONTACTS.md — it takes about five minutes.")
     return {
         "id": account["id"] + "#contacts",
+        "reauth": "olook contacts-auth --account " + account["id"],
         "email": account.get("email", ""),
         "provider": "gmail",
         "auth": "oauth2",
