@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import (addressbook, config, htmldoc, htmlrich, htmltext, keyring,
+from . import (addressbook, caldav, config, htmldoc, htmlrich, htmltext, keyring,
                mailbox, markdown, message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
@@ -506,6 +506,116 @@ def cmd_contacts(args):
              f"{(c['name'] or c['address'])[:28]:28}  {c['address'][:34]:34}  "
              f"{c['messages']:4d}"
              for c in d["contacts"]) or "No contacts yet. Run: olook sync")
+
+
+# ------------------------------------------------------------------ calendar
+
+def _calendar_accounts(args):
+    """The accounts with a calendar this command should touch."""
+    wanted = config.account(args.account)["id"] if args.account else ""
+    out = []
+    for entry in config.accounts():
+        if not entry.get("enabled") or entry.get("demo"):
+            continue
+        if wanted and entry["id"] != wanted:
+            continue
+        if caldav.configured(entry):
+            out.append(entry)
+    return out
+
+
+def _day_bounds(text, fallback):
+    """A YYYY-MM-DD on the command line, as the local midnight starting it."""
+    if not text:
+        return fallback
+    try:
+        day = datetime.datetime.strptime(str(text)[:10], "%Y-%m-%d")
+    except ValueError:
+        raise CliError(f"Not a date: {text}. Use YYYY-MM-DD.")
+    return int(day.timestamp())
+
+
+def _window(args):
+    """The range to look at: a month around today unless told otherwise."""
+    today = datetime.datetime.now().replace(hour=0, minute=0, second=0,
+                                            microsecond=0)
+    start = _day_bounds(getattr(args, "start", ""),
+                        int((today - datetime.timedelta(days=7)).timestamp()))
+    end = _day_bounds(getattr(args, "end", ""),
+                      int((today + datetime.timedelta(days=45)).timestamp()))
+    if end <= start:
+        raise CliError("The end of the range is not after its start.")
+    return start, end
+
+
+def cmd_calendars(args):
+    """The calendars on each account, refreshed on request."""
+    conn = store.connect()
+    trouble = []
+    if args.sync:
+        for entry in _calendar_accounts(args):
+            try:
+                store.replace_calendars(conn, entry["id"], caldav.calendars(entry))
+            except caldav.CalendarError as exc:
+                trouble.append({"account": entry["id"], "error": str(exc)})
+
+    if args.hide or args.show:
+        for entry in _calendar_accounts(args):
+            for name in (args.hide or []):
+                store.hide_calendar(conn, entry["id"], name, True)
+            for name in (args.show or []):
+                store.hide_calendar(conn, entry["id"], name, False)
+
+    found = store.calendars(conn, [e["id"] for e in _calendar_accounts(args)] or None)
+    payload = {"ok": not trouble or bool(found), "calendars": found}
+    if trouble:
+        payload["problems"] = trouble
+    emit(payload, lambda d: "\n".join(
+        f"{'  ' if c['hidden'] else '* '}{c['name'][:34]:34} {c['id'][:40]}"
+        for c in d["calendars"]) or "No calendars. Run: olook calendars --sync")
+
+
+def cmd_calendar(args):
+    """What is on the calendar between two dates."""
+    conn = store.connect()
+    start, end = _window(args)
+    accounts = _calendar_accounts(args)
+    trouble = []
+
+    if args.sync:
+        for entry in accounts:
+            try:
+                found = caldav.calendars(entry)
+                store.replace_calendars(conn, entry["id"], found)
+                hidden = {c["id"] for c in store.calendars(conn, [entry["id"]])
+                          if c["hidden"]}
+                gathered = []
+                for calendar in found:
+                    if calendar["id"] in hidden:
+                        continue
+                    gathered.extend(caldav.events(
+                        entry, calendar,
+                        datetime.datetime.fromtimestamp(start),
+                        datetime.datetime.fromtimestamp(end)))
+                store.replace_events(conn, entry["id"], start, end, gathered)
+            except caldav.CalendarError as exc:
+                trouble.append({"account": entry["id"], "error": str(exc)})
+
+    hidden = {c["id"] for c in store.calendars(conn) if c["hidden"]}
+    rows = [e for e in store.events(conn, [e["id"] for e in accounts] or None,
+                                    start, end)
+            if e["calendar"] not in hidden]
+    payload = {"ok": not trouble or bool(rows), "events": rows,
+               "count": len(rows), "start": start, "end": end}
+    if trouble:
+        payload["problems"] = trouble
+        if not rows:
+            payload["error"] = trouble[0]["error"]
+    emit(payload, lambda d: "\n".join(
+        ("%s  %-5s  %s" % (e["day"], "all day" if e["allDay"]
+                           else time.strftime("%H:%M", time.localtime(e["start"])),
+                           e["summary"][:52]))
+        for e in d["events"]) or "Nothing on. Run: olook calendar --sync")
 
 
 def cmd_contact_save(args):
@@ -1408,6 +1518,20 @@ def build_parser():
     p.add_argument("--sync", action="store_true",
                    help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
+
+    p = sub.add_parser("calendars", help="the calendars on your accounts")
+    p.add_argument("--account")
+    p.add_argument("--sync", action="store_true", help="ask the accounts again")
+    p.add_argument("--hide", action="append", help="stop showing one calendar")
+    p.add_argument("--show", action="append", help="show it again")
+    p.set_defaults(func=cmd_calendars)
+
+    p = sub.add_parser("calendar", help="what is on the calendar")
+    p.add_argument("--account")
+    p.add_argument("--sync", action="store_true", help="fetch the range first")
+    p.add_argument("--start", default="", help="YYYY-MM-DD, default a week ago")
+    p.add_argument("--end", default="", help="YYYY-MM-DD, default six weeks out")
+    p.set_defaults(func=cmd_calendar)
 
     p = sub.add_parser("contact-save",
                        help="add a contact, or change one already in the book")

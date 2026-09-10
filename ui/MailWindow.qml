@@ -1271,13 +1271,11 @@ Item {
                   }
                 }
 
-                MailPlaceholder {
+                MailCalendar {
                   anchors.fill: parent
                   visible: root.view === "calendar"
                   ui: ui
-                  glyph: "󰃭"
-                  title: "Calendar"
-                  subtitle: "Your calendar lands here next — the mail engine already speaks to the same accounts."
+                  service: mail
                 }
               }
             }

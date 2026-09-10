@@ -579,6 +579,77 @@ Item {
     }, "contacts")
   }
 
+  // ------------------------------------------------------------- calendar
+
+  property var events: []
+  property var calendars: []
+  property bool calendarLoading: false
+  property bool calendarSyncing: false
+  readonly property bool canReadCalendar: root.bookAccounts.length > 0
+
+  // The window currently held, as YYYY-MM-DD. The engine caches whatever it
+  // has fetched, so moving back to a month already seen paints from disk.
+  property string calendarFrom: ""
+  property string calendarTo: ""
+
+  function loadCalendar(from, to) {
+    root.calendarFrom = String(from || "")
+    root.calendarTo = String(to || "")
+    root.calendarLoading = true
+    var args = ["calendar"]
+    if (root.calendarFrom) args = args.concat(["--start", root.calendarFrom])
+    if (root.calendarTo) args = args.concat(["--end", root.calendarTo])
+    run(args, function (ok, payload, stderrText) {
+      root.calendarLoading = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not read the calendar")
+        return
+      }
+      root.events = (payload && payload.events) || []
+    }, "calendar")
+  }
+
+  function loadCalendars() {
+    run(["calendars"], function (ok, payload) {
+      if (ok && payload) root.calendars = payload.calendars || []
+    }, "calendar")
+  }
+
+  function syncCalendar(done) {
+    root.calendarSyncing = true
+    var args = ["calendar", "--sync"]
+    if (root.calendarFrom) args = args.concat(["--start", root.calendarFrom])
+    if (root.calendarTo) args = args.concat(["--end", root.calendarTo])
+    run(args, function (ok, payload, stderrText) {
+      root.calendarSyncing = false
+      // A refused calendar comes back with the events it already had, so the
+      // trouble is reported without wiping what is on screen.
+      var problems = (payload && payload.problems) || []
+      if (problems.length > 0) {
+        root.error = String(problems[0].error || "Could not read the calendar")
+        root.actionFailed(root.error)
+      } else if (!ok) {
+        reportFailure(payload, stderrText, "Could not read the calendar")
+        return
+      } else {
+        root.notice = ((payload && payload.count) || 0) + " events"
+        noticeTimer.restart()
+      }
+      if (payload && payload.events) root.events = payload.events
+      root.loadCalendars()
+      if (done) done()
+    }, "calendar")
+  }
+
+  function setCalendarHidden(id, hidden) {
+    if (!id) return
+    run(["calendars", hidden ? "--hide" : "--show", String(id)],
+        function (ok, payload) {
+      if (ok && payload) root.calendars = payload.calendars || []
+      root.loadCalendar(root.calendarFrom, root.calendarTo)
+    }, "calendar")
+  }
+
   // The account whose address book new contacts go into. Only accounts with
   // an application of their own behind them can be written to, so a client
   // with none offers no editing at all rather than failing at the last step.

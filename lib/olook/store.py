@@ -84,6 +84,43 @@ CREATE TABLE IF NOT EXISTS address_book (
   PRIMARY KEY (account, resource)
 );
 
+CREATE TABLE IF NOT EXISTS events (
+  account   TEXT NOT NULL,
+  calendar  TEXT NOT NULL,
+  uid       TEXT NOT NULL,
+  start     INTEGER NOT NULL,
+  end       INTEGER DEFAULT 0,
+  day       TEXT DEFAULT '',
+  all_day   INTEGER DEFAULT 0,
+  summary   TEXT DEFAULT '',
+  location  TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  organiser TEXT DEFAULT '',
+  status    TEXT DEFAULT '',
+  colour    TEXT DEFAULT '',
+  calendar_name TEXT DEFAULT '',
+  recurring INTEGER DEFAULT 0,
+  read_only INTEGER DEFAULT 0,
+  url       TEXT DEFAULT '',
+  etag      TEXT DEFAULT '',
+  -- An expanded recurrence repeats the uid, so the occurrence needs the
+  -- start in the key to be a row of its own.
+  PRIMARY KEY (account, calendar, uid, start)
+);
+
+CREATE INDEX IF NOT EXISTS events_by_day ON events (day);
+
+CREATE TABLE IF NOT EXISTS calendars (
+  account   TEXT NOT NULL,
+  id        TEXT NOT NULL,
+  name      TEXT DEFAULT '',
+  colour    TEXT DEFAULT '',
+  url       TEXT DEFAULT '',
+  read_only INTEGER DEFAULT 0,
+  hidden    INTEGER DEFAULT 0,
+  PRIMARY KEY (account, id)
+);
+
 CREATE TABLE IF NOT EXISTS state (
   key   TEXT PRIMARY KEY,
   value TEXT
@@ -628,6 +665,113 @@ def address_book(conn, accounts=None):
         sql += " WHERE account IN (%s)" % ",".join("?" * len(accounts))
         params.extend(accounts)
     return [_address_book_row(row) for row in conn.execute(sql, params)]
+
+
+# ------------------------------------------------------------------ calendar
+
+EVENT_COLUMNS = ("account, calendar, uid, start, end, day, all_day, summary, "
+                 "location, description, organiser, status, colour, "
+                 "calendar_name, recurring, read_only, url, etag")
+
+
+def replace_events(conn, account, start, end, events):
+    """One window of one account's calendar, wholesale.
+
+    Deleting the window first is what makes a cancelled meeting disappear:
+    an event that is no longer sent back is one that is no longer there.
+    """
+    conn.execute("DELETE FROM events WHERE account = ? AND start >= ? AND start < ?",
+                 (account, int(start), int(end)))
+    conn.executemany(
+        "INSERT OR REPLACE INTO events (%s) VALUES (%s)"
+        % (EVENT_COLUMNS, ",".join("?" * 18)),
+        [(account, e.get("calendar", ""), e.get("uid", ""), int(e.get("start", 0)),
+          int(e.get("end", 0)), e.get("day", ""), 1 if e.get("allDay") else 0,
+          e.get("summary", ""), e.get("location", ""), e.get("description", ""),
+          e.get("organiser", ""), e.get("status", ""), e.get("colour", ""),
+          e.get("calendarName", ""), 1 if e.get("recurring") else 0,
+          1 if e.get("readOnly") else 0, e.get("url", ""), e.get("etag", ""))
+         for e in events])
+    conn.commit()
+
+
+def events(conn, accounts=None, start=None, end=None, calendars=None):
+    """What is on the calendar, earliest first."""
+    where, params = [], []
+    if accounts:
+        where.append("account IN (%s)" % ",".join("?" * len(accounts)))
+        params.extend(accounts)
+    if calendars:
+        where.append("calendar IN (%s)" % ",".join("?" * len(calendars)))
+        params.extend(calendars)
+    if start is not None:
+        where.append("end > ?")
+        params.append(int(start))
+    if end is not None:
+        where.append("start < ?")
+        params.append(int(end))
+    sql = "SELECT * FROM events"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY start, summary"
+    return [_event_row(row) for row in conn.execute(sql, params)]
+
+
+def _event_row(row):
+    return {
+        "account": row["account"],
+        "calendar": row["calendar"],
+        "calendarName": row["calendar_name"],
+        "uid": row["uid"],
+        "start": row["start"],
+        "end": row["end"],
+        "day": row["day"],
+        "allDay": bool(row["all_day"]),
+        "summary": row["summary"],
+        "location": row["location"],
+        "description": row["description"],
+        "organiser": row["organiser"],
+        "status": row["status"],
+        "colour": row["colour"],
+        "recurring": bool(row["recurring"]),
+        "readOnly": bool(row["read_only"]),
+        "url": row["url"],
+        "etag": row["etag"],
+    }
+
+
+def replace_calendars(conn, account, found):
+    """The account's calendars, keeping whichever the user has hidden."""
+    hidden = {row["id"] for row in conn.execute(
+        "SELECT id FROM calendars WHERE account = ? AND hidden = 1", (account,))}
+    conn.execute("DELETE FROM calendars WHERE account = ?", (account,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO calendars "
+        "(account, id, name, colour, url, read_only, hidden) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(account, c.get("id", ""), c.get("name", ""), c.get("colour", ""),
+          c.get("url", ""), 1 if c.get("readOnly") else 0,
+          1 if c.get("id") in hidden else 0) for c in found])
+    conn.commit()
+
+
+def calendars(conn, accounts=None):
+    sql = "SELECT * FROM calendars"
+    params = []
+    if accounts:
+        sql += " WHERE account IN (%s)" % ",".join("?" * len(accounts))
+        params.extend(accounts)
+    sql += " ORDER BY name"
+    return [{"account": row["account"], "id": row["id"], "name": row["name"],
+             "colour": row["colour"], "url": row["url"],
+             "readOnly": bool(row["read_only"]), "hidden": bool(row["hidden"])}
+            for row in conn.execute(sql, params)]
+
+
+def hide_calendar(conn, account, calendar_id, hidden):
+    conn.execute("UPDATE calendars SET hidden = ? WHERE account = ? AND id = ?",
+                 (1 if hidden else 0, account, calendar_id))
+    conn.commit()
 
 
 def set_keywords(conn, account, folder, uids, add=(), remove=()):

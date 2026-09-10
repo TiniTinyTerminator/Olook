@@ -59,14 +59,20 @@ has that this client is better off without.
   list rather than off it.
 
 
-- **Calendar.** Still a placeholder. The engine already speaks to accounts
-  that carry one.
+- **The calendar only reads.** A month grid with the day's agenda beside it
+  is built, over CalDAV, and every calendar on the account is enumerated
+  rather than only the default one. What is missing is writing: no new
+  appointment, no edit, no accepting an invitation, and no meeting request
+  from a message. The scope for it is already granted.
 
-  When it is built: enumerate `calendarList` rather than assuming `primary`.
-  An account routinely holds several — a personal one, shared ones, birthdays,
-  subscribed holidays — and a client that reads only the default silently
-  hides most of what is in the account. No extra API or scope is needed for
-  this; `calendar` and `calendar.readonly` both cover the list.
+  Google gates CalDAV behind a switch of its own, `caldav.googleapis.com`,
+  separately from the calendar scope. A project without it gets a 403 that
+  names the API, which the client passes through with the link to turn it on.
+
+- **Only Google has a calendar.** CalDAV was chosen so Nextcloud, Fastmail
+  and iCloud need only a URL and a password rather than new code, but nothing
+  discovers those yet, and Microsoft does not speak CalDAV at all — its
+  calendars are Graph, like its address book.
 - **Rules have no interface.** They work, and are managed with `olook rule
   add / list / remove`; nothing in the client shows or edits them.
 - **Notifications** beyond the bar badge: a desktop notification per message
