@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import (addressbook, caldav, config, htmldoc, htmlrich, htmltext, keyring,
+from . import (addressbook, caldav, config, graph, htmldoc, htmlrich, htmltext, keyring,
                mailbox, markdown, message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
@@ -91,8 +91,8 @@ def cmd_accounts(args):
             "demo": bool(account.get("demo")),
             # Whether the People tab may add to and edit this account's book,
             # which needs an application of your own behind it.
-            "addressBook": bool(addressbook.supports(account)
-                                and addressbook.configured(account)),
+            "addressBook": bool(book_for(account).supports(account)
+                                and book_for(account).configured(account)),
         })
     emit({"ok": True, "accounts": out},
          lambda d: "\n".join(
@@ -450,9 +450,9 @@ def cmd_markdown(args):
 def cmd_contacts_auth(args):
     """Grant the contacts application access, once."""
     account = config.account(args.account)
-    if not addressbook.supports(account):
+    if not book_for(account).supports(account):
         raise CliError("That account has no address book to read.")
-    grant = addressbook.grant(account)
+    grant = book_for(account).grant(account)
 
     def report(event):
         emit_event(event)
@@ -468,16 +468,16 @@ def cmd_contacts_sync(args, conn):
     for entry in config.accounts():
         if not entry.get("enabled") or entry.get("demo"):
             continue
-        if not addressbook.supports(entry):
+        if not book_for(entry).supports(entry):
             continue
         if args.account and entry["id"] != config.account(args.account)["id"]:
             continue
         try:
-            people = addressbook.fetch(entry)
-        except addressbook.AddressBookError as exc:
+            people = book_for(entry).fetch(entry)
+        except BOOK_ERRORS as exc:
             results.append({"account": entry["id"], "ok": False, "error": str(exc)})
             continue
-        addressbook.save(conn, entry["id"], people)
+        store.replace_address_book(conn, entry["id"], people)
         results.append({"account": entry["id"], "ok": True, "contacts": len(people)})
 
     emit({"ok": any(r["ok"] for r in results) or not results,
@@ -508,6 +508,24 @@ def cmd_contacts(args):
              for c in d["contacts"]) or "No contacts yet. Run: olook sync")
 
 
+# --------------------------------------------------------------- backends
+
+# Google reaches the address book and the calendar through open protocols;
+# Microsoft has neither, and goes through Graph. Which one an account is on
+# is decided here and nowhere else, so every command below reads the same.
+
+def book_for(account):
+    return graph if graph.supports(account) else addressbook
+
+
+def calendar_for(account):
+    return graph if graph.supports(account) else caldav
+
+
+BOOK_ERRORS = (addressbook.AddressBookError, graph.GraphError)
+CALENDAR_ERRORS = (caldav.CalendarError, graph.GraphError)
+
+
 # ------------------------------------------------------------------ calendar
 
 def _calendar_accounts(args):
@@ -519,7 +537,7 @@ def _calendar_accounts(args):
             continue
         if wanted and entry["id"] != wanted:
             continue
-        if caldav.configured(entry):
+        if calendar_for(entry).configured(entry):
             out.append(entry)
     return out
 
@@ -555,8 +573,9 @@ def cmd_calendars(args):
     if args.sync:
         for entry in _calendar_accounts(args):
             try:
-                store.replace_calendars(conn, entry["id"], caldav.calendars(entry))
-            except caldav.CalendarError as exc:
+                store.replace_calendars(conn, entry["id"],
+                                        calendar_for(entry).calendars(entry))
+            except CALENDAR_ERRORS as exc:
                 trouble.append({"account": entry["id"], "error": str(exc)})
 
     if args.hide or args.show:
@@ -585,7 +604,7 @@ def cmd_calendar(args):
     if args.sync:
         for entry in accounts:
             try:
-                found = caldav.calendars(entry)
+                found = calendar_for(entry).calendars(entry)
                 store.replace_calendars(conn, entry["id"], found)
                 hidden = {c["id"] for c in store.calendars(conn, [entry["id"]])
                           if c["hidden"]}
@@ -593,12 +612,12 @@ def cmd_calendar(args):
                 for calendar in found:
                     if calendar["id"] in hidden:
                         continue
-                    gathered.extend(caldav.events(
+                    gathered.extend(calendar_for(entry).events(
                         entry, calendar,
                         datetime.datetime.fromtimestamp(start),
                         datetime.datetime.fromtimestamp(end)))
                 store.replace_events(conn, entry["id"], start, end, gathered)
-            except caldav.CalendarError as exc:
+            except CALENDAR_ERRORS as exc:
                 trouble.append({"account": entry["id"], "error": str(exc)})
 
     hidden = {c["id"] for c in store.calendars(conn) if c["hidden"]}
@@ -621,7 +640,7 @@ def cmd_calendar(args):
 def cmd_contact_save(args):
     """Add a contact, or change one that is already in the book."""
     account = config.account(args.account)
-    if not addressbook.supports(account) or not addressbook.configured(account):
+    if not book_for(account).supports(account) or not book_for(account).configured(account):
         raise CliError("That account has no address book to write to.")
 
     conn = store.connect()
@@ -645,9 +664,9 @@ def cmd_contact_save(args):
         if args.phone is None:
             contact["phones"] = cached.get("phones") or []
         etag = args.etag or cached.get("etag", "")
-        person = addressbook.update(account, args.resource, etag, contact)
+        person = book_for(account).update(account, args.resource, etag, contact)
     else:
-        person = addressbook.create(account, contact)
+        person = book_for(account).create(account, contact)
 
     store.save_contact(conn, account["id"], person)
     emit({"ok": True, "contact": person},
@@ -657,9 +676,9 @@ def cmd_contact_save(args):
 def cmd_contact_remove(args):
     """Take a contact out of the account's address book."""
     account = config.account(args.account)
-    if not addressbook.supports(account) or not addressbook.configured(account):
+    if not book_for(account).supports(account) or not book_for(account).configured(account):
         raise CliError("That account has no address book to write to.")
-    addressbook.remove(account, args.resource)
+    book_for(account).remove(account, args.resource)
     store.forget_contact(store.connect(), account["id"], args.resource)
     emit({"ok": True, "resource": args.resource}, lambda d: "Deleted.")
 
