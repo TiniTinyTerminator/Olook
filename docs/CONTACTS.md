@@ -58,9 +58,19 @@ Mail is untouched by any of this and keeps working as it does now.
 
    | API | enable it? | why |
    |---|---|---|
-   | **Google People API** | yes | the contacts this reads |
-   | **Google Calendar API** | only with a calendar scope | needed for the scope to appear, and for the calls when they exist |
+   | **Google People API** | yes | the contacts this reads and writes |
+   | **CalDAV API** | with a calendar scope | what the calendar actually calls |
+   | **Google Calendar API** | with a calendar scope | not called, but the scope only appears in the picker when it is on |
    | **Gmail API** | **no** | mail never touches it — see below |
+
+   The two calendar entries are not a mistake. Olook reads calendars over
+   CalDAV, which Google gates behind `caldav.googleapis.com`, a switch of its
+   own that is separate from the scope. The Calendar API next to it is the
+   REST one, which Olook never calls — but the consent screen's scope picker
+   only lists scopes belonging to enabled APIs, and `auth/calendar` belongs to
+   that one. So it is on for the picker's sake and does nothing afterwards.
+   Leaving it on costs nothing: an enabled API consumes no quota until
+   something calls it.
 
    Gmail is the surprising one. Olook reads and sends over IMAP and SMTP,
    authenticating with XOAUTH2; it makes no Gmail REST calls at all, so the
@@ -68,12 +78,14 @@ Mail is untouched by any of this and keeps working as it does now.
    Thunderbird's application rather than yours, so nothing you enable in this
    project affects it either way.
 
-   Enable the People API most reliably by going straight to
-   <https://console.cloud.google.com/apis/library/people.googleapis.com> and
-   pressing Enable.
+   The direct links, which are more reliable than the library's search:
 
-   Searching the library for "People API" can come up empty, because it is
-   listed with the "Google" in front. The **Contacts API** you will find
+   - <https://console.cloud.google.com/apis/library/people.googleapis.com>
+   - <https://console.cloud.google.com/apis/library/caldav.googleapis.com>
+   - <https://console.cloud.google.com/apis/library/calendar-json.googleapis.com>
+
+   Searching the library is worth avoiding: "People API" can come up empty,
+   because it is listed with the "Google" in front. The **Contacts API** you will find
    instead is the old GData one, shut down in 2021, and is not what this
    talks to — the endpoint here is `people.googleapis.com`. Without the right
    one enabled, the scope will not appear in the consent screen's list and
