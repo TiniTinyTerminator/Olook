@@ -15,7 +15,7 @@ import subprocess
 import sys
 import time
 
-from . import (addressbook, caldav, config, graph, htmldoc, htmlrich, htmltext, keyring,
+from . import (addressbook, caldav, carddav, config, graph, htmldoc, htmlrich, htmltext, keyring,
                mailbox, markdown, message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
@@ -520,14 +520,26 @@ def cmd_contacts(args):
 # is decided here and nowhere else, so every command below reads the same.
 
 def book_for(account):
-    return graph if graph.supports(account) else addressbook
+    """Which door to the address book this account goes through.
+
+    Google has two, and CardDAV is the one the borrowed application may knock
+    on, so it is the default and needs nothing set up. An account that has
+    been given a contacts application of its own keeps the People API, which
+    is what that application was registered for.
+    """
+    if graph.supports(account):
+        return graph
+    if carddav.supports(account) and not addressbook.configured(account):
+        return carddav
+    return addressbook
 
 
 def calendar_for(account):
     return graph if graph.supports(account) else caldav
 
 
-BOOK_ERRORS = (addressbook.AddressBookError, graph.GraphError)
+BOOK_ERRORS = (addressbook.AddressBookError, carddav.AddressBookError,
+               graph.GraphError)
 CALENDAR_ERRORS = (caldav.CalendarError, graph.GraphError)
 
 

@@ -311,7 +311,7 @@ def unfold(text):
     return lines
 
 
-def _split(line):
+def split_line(line):
     """NAME;PARAM=value:the value -- minding a colon inside a quoted param."""
     quoted = False
     for index, char in enumerate(line):
@@ -332,7 +332,7 @@ def _split(line):
     return name, params, value
 
 
-def _text(value):
+def unescape(value):
     """Undo the escaping iCalendar puts on free text."""
     out = []
     index = 0
@@ -411,7 +411,7 @@ def parse_events(text):
     current = None
     depth_other = 0
     for line in unfold(text):
-        name, params, value = _split(line)
+        name, params, value = split_line(line)
         if not name:
             continue
         if name == "BEGIN" and value.upper() == "VEVENT":
@@ -449,11 +449,11 @@ def parse_events(text):
         if name == "UID":
             current["uid"] = value.strip()
         elif name == "SUMMARY":
-            current["summary"] = _text(value)
+            current["summary"] = unescape(value)
         elif name == "LOCATION":
-            current["location"] = _text(value)
+            current["location"] = unescape(value)
         elif name == "DESCRIPTION":
-            current["description"] = _text(value)
+            current["description"] = unescape(value)
         elif name == "ORGANIZER":
             current["organiser"] = value.replace("mailto:", "").strip()
         elif name == "STATUS":

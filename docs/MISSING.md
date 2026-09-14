@@ -20,17 +20,11 @@ has that this client is better off without.
   markdown as the source of truth and decorates it, which is a project rather
   than a change.
 
-- **The address book needs an application of your own.** Reading and editing
-  Google Contacts is built, but Olook speaks to Gmail as Thunderbird, whose
-  application is approved for mail and refuses to be asked for anything else.
-  Contacts therefore run on a separate grant with your own client id; see
-  docs/CONTACTS.md, which is about five minutes of clicking. Microsoft's equivalent
-  — Graph /me/contacts — is not written.
-
-- **Editing a contact needs the wider scope.** Adding, changing and deleting
-  go through the People API, which takes `contacts` rather than
-  `contacts.readonly`. An account granted only the narrow one shows no editing
-  at all, which is honest but silent about why.
+- **Nothing here needs an application of your own any more.** Contacts and
+  the calendar both ride on the grant the mail already uses, over CardDAV and
+  CalDAV; Microsoft's go through Graph. The People API path is still in the
+  tree for an account that has its own application configured, and is the only
+  reason docs/CONTACTS.md still describes a Google Cloud project.
 
 ## Mail handling
 
@@ -66,13 +60,13 @@ has that this client is better off without.
   from a message. The scope for it is already granted.
 
   Google gates CalDAV behind a switch of its own, `caldav.googleapis.com`,
-  separately from the calendar scope. A project without it gets a 403 that
+  separately from the calendar scope. That only bites an account signed in
+  with an application of your own -- the borrowed one has it -- and the 403
   names the API, which the client passes through with the link to turn it on.
 
-- **Only Google has a calendar.** CalDAV was chosen so Nextcloud, Fastmail
-  and iCloud need only a URL and a password rather than new code, but nothing
-  discovers those yet, and Microsoft does not speak CalDAV at all — its
-  calendars are Graph, like its address book.
+- **Only Google and Microsoft have a calendar.** CalDAV was chosen so
+  Nextcloud, Fastmail and iCloud need only a URL and a password rather than
+  new code, but nothing discovers those yet.
 - **Rules have no interface.** They work, and are managed with `olook rule
   add / list / remove`; nothing in the client shows or edits them.
 - **Notifications** beyond the bar badge: a desktop notification per message

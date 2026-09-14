@@ -1,53 +1,60 @@
-# Reading your Google contacts
+# Google contacts and calendar
 
-The People tab is built from your mail. To have it also show the address book
-your phone syncs — real names, phone numbers, and people you have never
-emailed — Google needs an application of your own. This is about five minutes,
-done once per Google account.
+**You almost certainly do not need this page.** Both work out of the box:
 
-## Can one application do mail, calendar and contacts?
+```
+olook contacts-auth --account <id>     # contacts and the calendar, one sign-in
+olook contacts --sync
+olook calendar --sync
+```
 
-It can, and you should not. Google grades scopes, and mail is graded harder
-than the rest:
+The rest of this page is the older path, kept for the one case that still
+wants it.
 
-| scope | grade | an unverified app can publish it |
-|---|---|---|
-| `mail.google.com` | restricted | no — needs a paid third-party security assessment |
-| `contacts.readonly` | sensitive | yes, with a warning screen |
-| `calendar.readonly` | sensitive | yes, with a warning screen |
+## Why nothing needs setting up
 
-An application left unpublished — Google calls it Testing — hands out refresh
-tokens that expire after seven days. Publishing stops that, and an application
-asking for mail cannot be published without an assessment nobody is going to
-buy for a personal mail client.
+Olook talks to Google as Thunderbird, the way open-source mail clients
+generally do: registering an application that thousands of people sign into
+means passing Google's review, and Thunderbird has already passed it. That
+application turns out to be approved for three things, not one:
 
-So one application for everything means signing into your mail every week. The
-split below means signing into mail never: Thunderbird's application is
-already reviewed for mail, and yours carries the rest.
+| what | scope |
+|---|---|
+| mail | `https://mail.google.com/` |
+| contacts | `https://www.googleapis.com/auth/carddav` |
+| calendar | `https://www.googleapis.com/auth/calendar` |
 
-Calendar belongs on your application when there is a calendar to fill, and so
-does write access to either. All of them are sensitive rather than restricted,
-so they sit beside contacts without costing anything — `--contacts-scopes`
-sets them, and no second project is ever needed.
+Thunderbird asks for each only when connecting to that service, which is why
+it took a while to notice. Olook now does the same: contacts over CardDAV,
+the calendar over CalDAV, both on a grant of their own beside the mail one. A
+scope cannot be widened after the fact -- an account already signed in for
+mail holds a token good for mail alone -- so they ask separately, once.
 
-Worth knowing before you grant them: Olook cannot write to contacts or the
-calendar yet. Granting the wider scopes now only saves you a second trip
-through the consent screen when it can.
+Because that application is published rather than in testing, its tokens do
+not expire after seven days, and none of the Google Cloud console below is
+needed.
 
-## Why your own application
+### The scope that *is* blocked
 
-Olook talks to Gmail as Thunderbird. Open-source mail clients generally do:
-registering an application that thousands of people will sign into means
-passing Google's review, and Thunderbird has already passed it. Its
-application is approved **for mail and only for mail**, and Google refuses the
-sign-in outright if it is asked for anything else. That is the "app is
-blocked" screen — nothing on this machine can fix it, because the application
-belongs to Thunderbird.
+`https://www.googleapis.com/auth/contacts` -- the People API -- is not on
+Thunderbird's list, and asking for it is what produces "Access blocked". It
+reaches the same address book that `auth/carddav` does, by a different door.
+If you have seen that screen, this is why.
 
-So contacts get their own application: yours, asking for the things
-Thunderbird's cannot.
+## When you would still want your own application
 
-Mail is untouched by any of this and keeps working as it does now.
+Only if you want the People API specifically: it returns contact photos and a
+few fields vCard does not carry, and it is a JSON API rather than XML over
+WebDAV. Nothing in Olook needs it today.
+
+Set one up and Olook uses it for contacts automatically, leaving the calendar
+on the borrowed grant. Mail is untouched either way.
+
+One thing to know before starting: mail cannot join it. Google grades
+`mail.google.com` as *restricted*, which needs a paid third-party security
+assessment before an application carrying it can be published, and an
+unpublished application hands out refresh tokens that expire weekly. Contacts
+and calendar scopes are only *sensitive*, so they publish without one.
 
 ## Making one
 
