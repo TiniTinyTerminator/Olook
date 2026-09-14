@@ -585,7 +585,14 @@ Item {
   property var calendars: []
   property bool calendarLoading: false
   property bool calendarSyncing: false
-  readonly property bool canReadCalendar: root.bookAccounts.length > 0
+  readonly property var calendarAccounts: {
+    var out = []
+    for (var i = 0; i < root.accounts.length; i++)
+      if (root.accounts[i].calendar) out.push(root.accounts[i])
+    return out
+  }
+
+  readonly property bool canReadCalendar: root.calendarAccounts.length > 0
 
   // The window currently held, as YYYY-MM-DD. The engine caches whatever it
   // has fetched, so moving back to a month already seen paints from disk.

@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 from xml.etree import ElementTree
 
-from . import addressbook, oauth
+from . import oauth
 
 DAV_NS = "DAV:"
 CALDAV_NS = "urn:ietf:params:xml:ns:caldav"
@@ -35,20 +35,55 @@ class CalendarError(Exception):
     pass
 
 
-def supports(account):
-    """Whether this account has a calendar we know how to read.
+# What the mail client's own application is allowed to ask Google for beyond
+# the mail itself. Both are scopes Thunderbird's application is approved for
+# -- it reaches Google contacts and calendars the same way, over DAV -- and
+# borrowing them is what spares this from needing an application of its own.
+#
+# The People API scope is the one that is *not* on that list, which is what
+# "app is blocked" meant the first time contacts were tried: auth/contacts
+# and auth/carddav both reach the address book, and only the second is ours
+# to ask for here.
+DAV_SCOPES = ("https://www.googleapis.com/auth/carddav "
+              "https://www.googleapis.com/auth/calendar")
 
-    Google only, for now, and on the same grant the address book uses: the
-    contacts application asks for the calendar scope alongside, so a client
-    that can read one can usually read the other.
-    """
+
+def supports(account):
+    """Whether this account has a calendar we know how to read."""
     return (account.get("provider") == "gmail"
             and account.get("auth") == "oauth2"
             and not account.get("demo"))
 
 
 def configured(account):
-    return supports(account) and addressbook.configured(account)
+    """Nothing to configure: the mail client id may ask for DAV itself."""
+    return supports(account)
+
+
+def grant(account):
+    """A stand-in account for the DAV grant.
+
+    Its own grant rather than the mail one because a scope cannot be widened
+    after the fact -- an account signed in for mail alone holds a refresh
+    token good for mail alone, and asking the token endpoint for more with it
+    is refused. So the calendar asks separately, and the two tokens sit side
+    by side.
+    """
+    oauth_config = account.get("oauth") or {}
+    return {
+        "id": account["id"] + "#dav",
+        "reauth": "olook calendar-auth --account " + account["id"],
+        "email": account.get("email", ""),
+        "provider": "gmail",
+        "auth": "oauth2",
+        "oauth": {
+            "flavor": "google",
+            "client_id": oauth_config.get("client_id", ""),
+            "client_secret": oauth_config.get("client_secret", ""),
+            "scope": DAV_SCOPES,
+            "exact": True,
+        },
+    }
 
 
 def _root(account):
@@ -58,7 +93,7 @@ def _root(account):
 # ------------------------------------------------------------------ requests
 
 def _request(account, method, url, body=None, depth="0"):
-    token = oauth.access_token(addressbook.grant(account))
+    token = oauth.access_token(grant(account))
     headers = {
         "Authorization": "Bearer " + token,
         "Depth": depth,
@@ -76,16 +111,15 @@ def _request(account, method, url, body=None, depth="0"):
         detail = exc.read().decode("utf-8", "replace")
         if "caldav.googleapis.com" in detail or "accessNotConfigured" in detail:
             raise CalendarError(
-                "The CalDAV API is not switched on for your Google project. "
-                "Enable it once at "
-                "https://console.cloud.google.com/apis/library/caldav.googleapis.com "
-                "and try again.") from exc
+                "The CalDAV API is not switched on for the application this "
+                "account signs in with. If that is one of your own, enable it "
+                "once at https://console.cloud.google.com/apis/library/"
+                "caldav.googleapis.com and try again.") from exc
         if exc.code in (401, 403):
             raise CalendarError(
-                "Your application has not been given the calendar. Ask for it "
-                "and sign in again: olook set " + str(account.get("id", ""))
-                + " --contacts-scopes \"contacts calendar\", "
-                "then olook contacts-auth.") from exc
+                "This account has not been given its calendar yet. Sign in "
+                "for it: olook calendar-auth --account "
+                + str(account.get("id", ""))) from exc
         raise CalendarError(
             "Calendar request failed: %d %s" % (exc.code, _tidy(detail))) from exc
     except urllib.error.URLError as exc:

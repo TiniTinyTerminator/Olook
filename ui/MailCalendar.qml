@@ -372,8 +372,10 @@ Item {
             visible: root.eventsOn(root.selected).length === 0
             wrapMode: Text.Wrap
             text: root.service && !root.service.canReadCalendar
-              ? "No account here keeps a calendar yet. Give one an application of its own — see docs/CONTACTS.md — and ask for the calendar scope."
-              : "Nothing on this day."
+              ? "No account here keeps a calendar."
+              : (root.events.length === 0
+                 ? "Nothing fetched yet — press the refresh button above. The first time, it will ask you to sign in for the calendar."
+                 : "Nothing on this day.")
             color: ui.faint
             font.family: ui.fontFamily
             font.pixelSize: Style.font.bodySmall

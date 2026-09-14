@@ -93,6 +93,11 @@ def cmd_accounts(args):
             # which needs an application of your own behind it.
             "addressBook": bool(book_for(account).supports(account)
                                 and book_for(account).configured(account)),
+            # Separate from the address book: Google's calendar needs only
+            # the mail client's own grant, while its contacts still want an
+            # application of your own.
+            "calendar": bool(calendar_for(account).supports(account)
+                             and calendar_for(account).configured(account)),
         })
     emit({"ok": True, "accounts": out},
          lambda d: "\n".join(
@@ -564,6 +569,19 @@ def _window(args):
     if end <= start:
         raise CliError("The end of the range is not after its start.")
     return start, end
+
+
+def cmd_calendar_auth(args):
+    """Grant the calendar, which is a different ask from the mail."""
+    account = config.account(args.account)
+    backend = calendar_for(account)
+    if not backend.supports(account):
+        raise CliError("That account has no calendar to read.")
+    grant = backend.grant(account)
+
+    payload = oauth.authorize(grant, emit_event, flow=args.flow or None)
+    oauth.store_tokens(grant["id"], payload)
+    emit_event({"ok": True, "event": "done", "account": account["id"]})
 
 
 def cmd_calendars(args):
@@ -1537,6 +1555,12 @@ def build_parser():
     p.add_argument("--sync", action="store_true",
                    help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
+
+    p = sub.add_parser("calendar-auth",
+                       help="let the client read this account's calendar")
+    p.add_argument("--account")
+    p.add_argument("--flow", choices=["loopback", "device"], default="")
+    p.set_defaults(func=cmd_calendar_auth)
 
     p = sub.add_parser("calendars", help="the calendars on your accounts")
     p.add_argument("--account")
