@@ -653,7 +653,11 @@ Item {
     run(["calendars", hidden ? "--hide" : "--show", String(id)],
         function (ok, payload) {
       if (ok && payload) root.calendars = payload.calendars || []
-      root.loadCalendar(root.calendarFrom, root.calendarTo)
+      // A hidden calendar is skipped when fetching, so its events are not in
+      // the cache to come back. Showing one therefore has to ask the server;
+      // hiding one only has to re-read what is already here.
+      if (hidden) root.loadCalendar(root.calendarFrom, root.calendarTo)
+      else root.syncCalendar(null)
     }, "calendar")
   }
 

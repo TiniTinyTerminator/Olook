@@ -53,6 +53,11 @@ has that this client is better off without.
   list rather than off it.
 
 
+- **Calendars cannot be added or unsubscribed from here.** Which of the
+  account's calendars are shown is a panel down the left of the Calendar tab,
+  and that choice is kept. Subscribing to a new one, or leaving one for good,
+  is still done wherever the account lives.
+
 - **The calendar only reads.** A month grid with the day's agenda beside it
   is built, over CalDAV, and every calendar on the account is enumerated
   rather than only the default one. What is missing is writing: no new

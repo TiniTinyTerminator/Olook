@@ -63,6 +63,45 @@ Item {
 
   function eventsOn(key) { return root.byDay[key] || [] }
 
+  readonly property var calendars: service ? service.calendars : []
+
+  // The panel's contents, flattened: an account heading followed by that
+  // account's calendars. Headings are only worth the room when more than one
+  // account has a calendar to name.
+  readonly property var calendarRows: {
+    var order = []
+    var grouped = ({})
+    for (var i = 0; i < root.calendars.length; i++) {
+      var entry = root.calendars[i]
+      if (!grouped[entry.account]) {
+        grouped[entry.account] = []
+        order.push(entry.account)
+      }
+      grouped[entry.account].push(entry)
+    }
+
+    var accounts = root.service ? root.service.accounts : []
+    function nameOf(id) {
+      for (var j = 0; j < accounts.length; j++)
+        if (accounts[j].id === id) return accounts[j].email || accounts[j].name
+      return id
+    }
+
+    var rows = []
+    for (var k = 0; k < order.length; k++) {
+      if (order.length > 1)
+        rows.push({ "heading": nameOf(order[k]), "calendar": null })
+      var mine = grouped[order[k]]
+      for (var m = 0; m < mine.length; m++)
+        rows.push({ "heading": "", "calendar": mine[m] })
+    }
+    return rows
+  }
+
+  function toggleCalendar(entry) {
+    if (root.service && entry) root.service.setCalendarHidden(entry.id, !entry.hidden)
+  }
+
   function step(months) {
     root.month = new Date(root.month.getFullYear(), root.month.getMonth() + months, 1)
     root.ask()
@@ -191,9 +230,125 @@ Item {
       height: parent.height - y
       spacing: 0
 
+      // ------------------------------------------------------ the calendars
+      Item {
+        id: calendarPanel
+        visible: root.calendarRows.length > 0
+        width: visible ? Math.max(Style.space(170), Math.round(root.width * 0.16)) : 0
+        height: parent.height
+
+        Column {
+          anchors.fill: parent
+          anchors.margins: Style.space(12)
+          spacing: Style.space(8)
+
+          Text {
+            text: "Calendars"
+            color: ui.dim
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          ListView {
+            width: parent.width
+            height: parent.height - y
+            clip: true
+            spacing: Style.space(1)
+            model: root.calendarRows
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            delegate: Item {
+              id: calendarRow
+              required property var modelData
+              width: ListView.view.width
+              height: modelData.heading !== "" ? Style.space(26) : Style.space(24)
+
+              // An account's name, above the calendars that belong to it.
+              Text {
+                visible: calendarRow.modelData.heading !== ""
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Style.space(3)
+                width: parent.width
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: calendarRow.modelData.heading
+                color: ui.faint
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              Rectangle {
+                visible: calendarRow.modelData.calendar !== null
+                anchors.fill: parent
+                radius: Style.space(3)
+                color: calendarHover.containsMouse ? ui.hover : "transparent"
+
+                Row {
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(4)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(4)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(7)
+
+                  // Filled when the calendar is shown, hollow when it is not:
+                  // the tick and the colour key are the same mark.
+                  Rectangle {
+                    id: swatch
+                    readonly property var entry: calendarRow.modelData.calendar
+                    readonly property color ink: (entry && entry.colour)
+                      ? entry.colour : ui.accent
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Style.space(12)
+                    height: Style.space(12)
+                    radius: Style.space(3)
+                    color: (entry && entry.hidden) ? "transparent" : swatch.ink
+                    border.width: 1
+                    border.color: swatch.ink
+                  }
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - swatch.width - parent.spacing
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    text: calendarRow.modelData.calendar
+                      ? calendarRow.modelData.calendar.name : ""
+                    color: (calendarRow.modelData.calendar
+                            && calendarRow.modelData.calendar.hidden)
+                      ? ui.faint : ui.foreground
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+                }
+
+                MouseArea {
+                  id: calendarHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.toggleCalendar(calendarRow.modelData.calendar)
+                }
+              }
+            }
+          }
+        }
+      }
+
+      Rectangle {
+        id: panelEdge
+        visible: calendarPanel.visible
+        width: visible ? ui.hairline : 0
+        height: parent.height
+        color: ui.border
+      }
+
       // ---------------------------------------------------------- the month
       Item {
-        width: parent.width - agenda.width - agendaEdge.width
+        width: parent.width - calendarPanel.width - panelEdge.width
+               - agenda.width - agendaEdge.width
         height: parent.height
 
         Column {
