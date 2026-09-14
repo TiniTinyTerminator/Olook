@@ -13,7 +13,7 @@ import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
-from . import htmldoc, htmltext, keyring, mailbox, markdown, oauth
+from . import graph, htmldoc, htmltext, keyring, mailbox, markdown, oauth
 
 
 class SendError(Exception):
@@ -165,6 +165,11 @@ def send(account, draft, save_to_sent=True):
         del msg["Bcc"]
         server.send_message(msg, from_addr=account["email"], to_addrs=targets)
     except smtplib.SMTPException as exc:
+        if _smtp_switched_off(exc) and graph.supports(account):
+            # The tenant has turned SMTP off for everyone in it. That is a
+            # control on the protocol, not on the mailbox, and Graph is a
+            # different door into the same one.
+            return _send_over_graph(account, msg, targets)
         raise SendError(f"Sending failed: {exc}") from exc
     finally:
         try:
@@ -176,6 +181,31 @@ def send(account, draft, save_to_sent=True):
     if save_to_sent:
         stored = _append_to_sent(account, msg)
     return {"messageId": msg["Message-ID"], "recipients": targets, "sentFolder": stored}
+
+
+def _smtp_switched_off(exc):
+    """Whether an administrator has turned SMTP off for the whole tenant.
+
+    No password or token fixes that, so there is nothing to be gained by
+    retrying the same way.
+    """
+    detail = str(exc).lower()
+    return ("smtpclientauthentication is disabled" in detail
+            or ("5.7.139" in detail and "disabled" in detail))
+
+
+def _send_over_graph(account, msg, targets):
+    del msg["Bcc"]
+    try:
+        graph.send_mime(account, msg.as_bytes())
+    except graph.GraphError as exc:
+        raise SendError(
+            "This account's provider has turned SMTP off, and sending the "
+            "other way did not work either. " + str(exc)) from exc
+    # Graph files its own copy in Sent Items, so appending one here would
+    # leave two.
+    return {"messageId": msg["Message-ID"], "recipients": targets,
+            "sentFolder": "Sent Items", "via": "graph"}
 
 
 def _smtp_xoauth2(server, username, token):

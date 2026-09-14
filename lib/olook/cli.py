@@ -1312,8 +1312,18 @@ def cmd_test(args):
         server.quit()
         result["smtp"] = "ok — authenticated"
     except Exception as exc:
-        result["ok"] = False
-        result["smtp"] = f"failed — {exc}"
+        # An administrator switching SMTP off for the whole tenant is not a
+        # broken account: Graph still sends, and that is what sending does.
+        # Reporting it as a failure sent the last reader looking for a
+        # password problem that does not exist.
+        if send._smtp_switched_off(exc) and graph.supports(account):
+            result["smtp"] = ("blocked by the provider — SMTP is switched off "
+                              "for this tenant, so mail goes out through Graph "
+                              "instead")
+            result["sendVia"] = "graph"
+        else:
+            result["ok"] = False
+            result["smtp"] = f"failed — {exc}"
     emit(result, lambda d: f"IMAP: {d['imap']}\nSMTP: {d['smtp']}")
 
 

@@ -53,6 +53,12 @@ has that this client is better off without.
   list rather than off it.
 
 
+- **Sending through Graph is untested against a server.** A tenant that has
+  switched SMTP off -- TU Delft has -- sends through Graph instead, which is a
+  different door to the same mailbox and not the one that switch closes. The
+  detection and the fallback are written and the error it keys on was taken
+  from the real refusal, but no message has gone out that way yet.
+
 - **Calendars cannot be added or unsubscribed from here.** Which of the
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,

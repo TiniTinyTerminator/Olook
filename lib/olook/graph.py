@@ -13,6 +13,7 @@ the address book as well. It does have to ask separately: an access token is
 issued for one resource, and IMAP and Graph are two.
 """
 
+import base64
 import datetime
 import json
 import urllib.error
@@ -23,9 +24,16 @@ from . import oauth
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
-CONTACT_SCOPES = ("offline_access "
-                  "https://graph.microsoft.com/Contacts.ReadWrite "
-                  "https://graph.microsoft.com/Calendars.ReadWrite")
+# Mail.Send is here because a tenant can switch SMTP off entirely -- TU
+# Delft has -- and then the only way out of the account is Graph. It is a
+# different door to the same mailbox, and not the one the SMTP switch closes.
+GRAPH_SCOPES = ("offline_access "
+                "https://graph.microsoft.com/Contacts.ReadWrite "
+                "https://graph.microsoft.com/Calendars.ReadWrite "
+                "https://graph.microsoft.com/Mail.Send")
+
+# The old name, kept so nothing that imports it breaks.
+CONTACT_SCOPES = GRAPH_SCOPES
 
 # Only the fields the client shows, so a large book stays one round trip.
 CONTACT_FIELDS = ("id,displayName,emailAddresses,mobilePhone,businessPhones,"
@@ -60,6 +68,9 @@ def grant(account):
     """
     oauth_config = account.get("oauth") or {}
     return {
+        # Named for contacts because that is what it first carried; it now
+        # covers the calendar and sending too. Renaming it would orphan the
+        # token already stored under this name for no gain.
         "id": account["id"] + "#contacts",
         "reauth": "olook contacts-auth --account " + account["id"],
         "email": account.get("email", ""),
@@ -70,7 +81,7 @@ def grant(account):
             "client_id": oauth_config.get("client_id", ""),
             "client_secret": oauth_config.get("client_secret", ""),
             "tenant": oauth_config.get("tenant") or "common",
-            "scope": CONTACT_SCOPES,
+            "scope": GRAPH_SCOPES,
             "exact": True,
         },
     }
@@ -325,3 +336,43 @@ def events(account, calendar, start, end):
         path, _, raw = link.split("/v1.0", 1)[1].partition("?")
         query = dict(urllib.parse.parse_qsl(raw))
     return out
+
+
+# ---------------------------------------------------------------- sending
+
+def send_mime(account, raw):
+    """Send a built message through Graph rather than SMTP.
+
+    A tenant can disable SMTP authentication for everyone in it, which is a
+    control on legacy protocols rather than on the mailbox: Graph still
+    sends. Graph accepts the MIME as it stands, base64-encoded, so the
+    message this sends is the same one SMTP would have carried -- same
+    headers, same parts, same Message-ID.
+
+    Graph files the copy in Sent Items itself, so nothing should append one
+    afterwards.
+    """
+    body = base64.b64encode(raw).decode("ascii")
+    token = oauth.access_token(grant(account))
+    request = urllib.request.Request(
+        GRAPH + "/me/sendMail", data=body.encode("ascii"), method="POST",
+        headers={"Authorization": "Bearer " + token,
+                 "Content-Type": "text/plain"})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            response.read()
+        return True
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(detail)["error"]["message"]
+        except (ValueError, KeyError, TypeError):
+            detail = detail[:200]
+        if exc.code in (401, 403):
+            raise GraphError(
+                "This account has not been given permission to send through "
+                "Graph. Sign in for it: olook contacts-auth --account "
+                + str(account.get("id", "")) + " (" + detail + ")") from exc
+        raise GraphError(f"Graph could not send the message: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise GraphError(f"Cannot reach Microsoft: {exc.reason}") from exc
