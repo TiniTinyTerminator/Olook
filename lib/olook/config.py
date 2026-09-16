@@ -114,6 +114,38 @@ def upsert(entry):
     return entry
 
 
+def reorder(ids):
+    """Put the accounts in the given order.
+
+    The order accounts are stored in is the order they are shown in, so
+    reordering the list is the whole of it. Anything the caller leaves out
+    keeps its place at the end rather than disappearing -- a stale list from
+    a client that has not caught up should not delete an account.
+    """
+    doc = load()
+    wanted = [str(i) for i in (ids or [])]
+    by_id = {}
+    for entry in doc["accounts"]:
+        if isinstance(entry, dict) and entry.get("id"):
+            by_id[str(entry["id"])] = entry
+
+    ordered = [by_id.pop(i) for i in wanted if i in by_id]
+    ordered.extend(entry for entry in doc["accounts"]
+                   if isinstance(entry, dict) and str(entry.get("id")) in by_id)
+    doc["accounts"] = ordered
+    save(doc)
+    return [str(a.get("id")) for a in ordered]
+
+
+def set_folder_order(account_id, names):
+    """Remember the order this account's folders are shown in."""
+    entry = account(account_id)
+    entry = dict(entry)
+    entry["folderOrder"] = [str(n) for n in (names or []) if str(n)]
+    upsert(entry)
+    return entry["folderOrder"]
+
+
 def remove(account_id):
     doc = load()
     before = len(doc["accounts"])

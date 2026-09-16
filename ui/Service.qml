@@ -1327,6 +1327,34 @@ Item {
     }
   }
 
+  // Where accounts and folders sit in the tree. Both are stored by the
+  // engine, so the order survives a restart and the terminal agrees with the
+  // client about it.
+  function reorderAccounts(ids, done) {
+    if (!ids || ids.length === 0) return
+    run(["order", "--accounts", ids.join(",")], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not save that order")
+        return
+      }
+      root.listAccounts(function (found) { root.accounts = found })
+      if (done) done()
+    }, "order")
+  }
+
+  function reorderFolders(accountId, names, done) {
+    if (!accountId || !names) return
+    run(["order", "--account", String(accountId),
+         "--folders", names.join(",")], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not save that order")
+        return
+      }
+      root.loadFolders(false)
+      if (done) done()
+    }, "order")
+  }
+
   // ------------------------------------------------------- account setup
 
   // The full account list, disabled accounts included — `status` deliberately

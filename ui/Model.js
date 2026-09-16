@@ -197,9 +197,30 @@ function badgeText(count) {
 // then the folders it created, then everything the user made.
 var FOLDER_ORDER = ["inbox", "drafts", "sent", "archive", "all", "junk", "trash"]
 
+// Folders that hold mail. Exchange lists a mailbox's calendar, contacts and
+// tasks beside its mail and IMAP cannot tell them apart, so the engine marks
+// them and they are left out of the mail tree — they are not mail, and
+// opening one shows a stub per item saying so.
+function mailFolders(folders) {
+  var out = []
+  for (var i = 0; i < (folders || []).length; i++)
+    if (String(folders[i].kind || "mail") === "mail") out.push(folders[i])
+  return out
+}
+
+
 function sortFolders(folders) {
   var list = (folders || []).slice()
   list.sort(function (a, b) {
+    // A folder the user has dragged somewhere goes where they put it. The
+    // rest keep the standing order — inbox first, then the other special
+    // ones — which is worth keeping for every folder nobody has moved.
+    var pa = Number(a.order)
+    var pb = Number(b.order)
+    if (!isFinite(pa) || pa < 0) pa = Number.MAX_VALUE
+    if (!isFinite(pb) || pb < 0) pb = Number.MAX_VALUE
+    if (pa !== pb) return pa - pb
+
     var ra = FOLDER_ORDER.indexOf(String(a.special || ""))
     var rb = FOLDER_ORDER.indexOf(String(b.special || ""))
     if (ra === -1) ra = FOLDER_ORDER.length

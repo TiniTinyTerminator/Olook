@@ -76,6 +76,13 @@ has that this client is better off without.
   detection and the fallback are written and the error it keys on was taken
   from the real refusal, but no message has gone out that way yet.
 
+- **A hidden non-mail folder cannot be unhidden.** Exchange's calendar,
+  contacts and task folders are left out of the mail tree because IMAP cannot
+  read them, and the names they are matched on are localised to the mailbox's
+  language -- English and Dutch are covered. A mailbox in another language
+  will list folders that show a stub per item instead, and there is no switch
+  to say "show it anyway" or "no, that one is mail".
+
 - **Calendars cannot be added or unsubscribed from here.** Which of the
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,

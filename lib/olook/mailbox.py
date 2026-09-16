@@ -349,6 +349,7 @@ class Session:
                 "name": name,
                 "delimiter": (match.group("delim") or b"/").decode("ascii", "replace"),
                 "special": special,
+                "kind": folder_kind(name),
             })
         return folders
 
@@ -661,6 +662,38 @@ def header_row(account_id, folder, item):
         "attachments": item["attachments"],
         "preview": item.get("preview", ""),
     }
+
+
+# Exchange publishes a mailbox's calendar, contacts and tasks over IMAP
+# alongside its mail, and nothing in the protocol says which is which: the
+# LIST attributes are identical, and STATUS reports an item count that looks
+# exactly like a message count. Opening one is how you find out -- Exchange
+# cannot render a calendar item as a message, so every item comes back as
+# "Retrieval using the IMAP4 protocol failed for the following message".
+#
+# So a folder saying it holds 173 things showed 173 error stubs, or nothing.
+# These are the names Exchange gives them, matched on the first path segment
+# so that Calendar/School goes with Calendar. Names are localised to the
+# mailbox's own language, so this catches an English mailbox and a Dutch one
+# and will miss others -- which costs a folder that cannot be read anyway
+# being listed, not one that can being hidden.
+NON_MAIL_FOLDERS = {
+    "calendar", "agenda", "kalender",
+    "contacts", "contactpersonen", "kontakte",
+    "tasks", "taken", "aufgaben",
+    "notes", "notities", "notizen",
+    "journal", "dagboek",
+    "outbox", "postvak uit",
+    "sync issues", "synchronisatieproblemen",
+    "rss feeds", "rss-feeds",
+    "conversation history", "gespreksgeschiedenis",
+}
+
+
+def folder_kind(name):
+    """Whether a folder holds mail, or something IMAP cannot show as mail."""
+    head = str(name or "").split("/")[0].split("\\")[0].strip().lower()
+    return "other" if head in NON_MAIL_FOLDERS else "mail"
 
 
 def sync_folder(session, conn, folder, limit=200, full=False):

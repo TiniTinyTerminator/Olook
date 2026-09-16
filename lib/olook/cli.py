@@ -382,6 +382,42 @@ def _copy_clipboard(text):
 
 # ----------------------------------------------------------------- mail: read
 
+def _ordered_folders(account, folders):
+    """Tag each folder with where the user dragged it, if anywhere.
+
+    A position rather than a sorted list, because the client sorts its own
+    way when nothing has been dragged -- inbox first, then the other special
+    ones -- and that default is worth keeping for every folder the user has
+    not had an opinion about.
+    """
+    wanted = [str(n) for n in (account.get("folderOrder") or [])]
+    places = {name: index for index, name in enumerate(wanted)}
+    for folder in folders:
+        folder["order"] = places.get(folder["name"], -1)
+        # Worked out on the way past rather than stored, so a cache written
+        # before this existed is classified too.
+        folder["kind"] = mailbox.folder_kind(folder["name"])
+    return folders
+
+
+def cmd_order(args):
+    """Change the order accounts, or one account's folders, are shown in."""
+    if args.folders is not None:
+        account = config.account(args.account)
+        names = [n.strip() for n in args.folders.split(",") if n.strip()]
+        stored = config.set_folder_order(account["id"], names)
+        emit({"ok": True, "account": account["id"], "folderOrder": stored},
+             lambda d: "Folder order saved.")
+        return
+
+    ids = [i.strip() for i in (args.accounts or "").split(",") if i.strip()]
+    if not ids:
+        raise CliError("Nothing to reorder. Pass --accounts or --folders.")
+    ordered = config.reorder(ids)
+    emit({"ok": True, "accounts": ordered},
+         lambda d: "\n".join(d["accounts"]))
+
+
 def cmd_folders(args):
     account = config.account(args.account)
     conn = store.connect()
@@ -399,7 +435,7 @@ def cmd_folders(args):
                 enriched.append(info)
             store.save_folders(conn, account["id"], enriched)
     emit({"ok": True, "account": account["id"],
-          "folders": store.list_folders(conn, account["id"])},
+          "folders": _ordered_folders(account, store.list_folders(conn, account["id"]))},
          lambda d: "\n".join(f"{f['name']:34} {f['unseen']:>5} unread  {f['total']:>6} total"
                              for f in d["folders"]) or "No folders cached yet.")
 
@@ -1660,6 +1696,14 @@ def build_parser():
     p.add_argument("--no-extras", action="store_true",
                    help="sign in for mail only, not contacts and the calendar")
     p.set_defaults(func=cmd_auth)
+
+    p = sub.add_parser("order", help="change the order things are shown in")
+    p.add_argument("--accounts", default="",
+                   help="account ids, in the order you want them")
+    p.add_argument("--account", help="whose folders to reorder")
+    p.add_argument("--folders",
+                   help="folder names, in the order you want them")
+    p.set_defaults(func=cmd_order)
 
     p = sub.add_parser("remove", help="remove an account and its cache")
     p.add_argument("account")
