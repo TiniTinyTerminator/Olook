@@ -528,12 +528,54 @@ Item {
             wrapMode: Text.Wrap
             text: root.service && !root.service.canReadCalendar
               ? "No account here keeps a calendar."
-              : (root.events.length === 0
-                 ? "Nothing fetched yet — press the refresh button above. The first time, it will ask you to sign in for the calendar."
-                 : "Nothing on this day.")
+              : (root.calendars.length === 0
+                 ? "No calendar has been signed in for yet. One sign-in per account covers its calendar and its contacts."
+                 : (root.events.length === 0
+                    ? "Nothing fetched yet — press the refresh button above."
+                    : "Nothing on this day."))
             color: ui.faint
             font.family: ui.fontFamily
             font.pixelSize: Style.font.bodySmall
+          }
+
+          // The sign-in the calendar needs, rather than a line of prose
+          // telling you to go and find a terminal.
+          Repeater {
+            model: (root.service && root.calendars.length === 0)
+                   ? root.service.calendarAccounts : []
+
+            Rectangle {
+              required property var modelData
+              width: signInText.implicitWidth + Style.space(22)
+              height: Style.space(30)
+              radius: ui.radius
+              color: signInHover.containsMouse ? ui.hover : "transparent"
+              border.width: 1
+              border.color: Util.alpha(ui.accent, 0.55)
+
+              Text {
+                id: signInText
+                anchors.centerIn: parent
+                textFormat: Text.PlainText
+                text: root.service && root.service.extrasAuthorizing
+                  ? "Signing in…"
+                  : "Sign in — " + (modelData.email || modelData.id)
+                color: ui.accent
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              MouseArea {
+                id: signInHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.service && !root.service.extrasAuthorizing)
+                  root.service.authorizeExtras(modelData.id, function () {
+                    root.service.syncCalendar(null)
+                  })
+              }
+            }
           }
 
           ListView {

@@ -452,19 +452,66 @@ def cmd_markdown(args):
          lambda d: d["html"])
 
 
+def _run_grant(args, account, grant, what):
+    """Sign in for one of the side grants and keep what comes back."""
+    report = _auth_reporter(args)
+    try:
+        payload = oauth.authorize(grant, report, flow=args.flow or None)
+    except oauth.OAuthError as exc:
+        if getattr(args, "stream", False):
+            emit_event({"event": "error", "error": str(exc)})
+            sys.exit(1)
+        raise CliError(str(exc)) from exc
+
+    oauth.store_tokens(grant["id"], payload)
+    if getattr(args, "stream", False):
+        emit_event({"ok": True, "event": "done", "account": account["id"]})
+        return
+    emit({"ok": True, "account": account["id"], "granted": what},
+         lambda d: "Signed in for this account's " + what + ".")
+
+
+def _auth_reporter(args):
+    """How a sign-in reports itself, the same way for every grant.
+
+    The client wants one JSON object per line; a person at a terminal wants
+    the browser to open and a sentence saying so. Getting this wrong is
+    invisible until someone runs the command by hand and watches JSON scroll
+    past while nothing opens.
+    """
+    streaming = bool(getattr(args, "stream", False))
+
+    def report(event):
+        if streaming:
+            emit_event(event)
+        elif event.get("event") == "device_code":
+            print(f"\n  Go to {event['verification_uri']}\n"
+                  f"  and enter the code:  {event['user_code']}\n")
+        elif event.get("event") == "open_url":
+            print("  Opening your browser to finish sign-in…")
+        elif event.get("event") == "fallback":
+            print("  The browser way round is not available here; "
+                  "use the code below.")
+        elif event.get("event") == "authorized":
+            print("  Authorized.")
+
+        url = event.get("verification_uri") if event.get("event") == "device_code" \
+            else event.get("url")
+        if url and not getattr(args, "no_browser", False):
+            _open_url(url)
+        if event.get("event") == "device_code" and event.get("user_code"):
+            _copy_clipboard(event["user_code"])
+
+    return report
+
+
 def cmd_contacts_auth(args):
     """Grant the contacts application access, once."""
     account = config.account(args.account)
     if not book_for(account).supports(account):
         raise CliError("That account has no address book to read.")
     grant = book_for(account).grant(account)
-
-    def report(event):
-        emit_event(event)
-
-    payload = oauth.authorize(grant, report, flow=args.flow or None)
-    oauth.store_tokens(grant["id"], payload)
-    emit_event({"ok": True, "event": "done", "account": account["id"]})
+    _run_grant(args, account, grant, "address book")
 
 
 def cmd_contacts_sync(args, conn):
@@ -538,9 +585,14 @@ def calendar_for(account):
     return graph if graph.supports(account) else caldav
 
 
+# An account that has not been signed in for yet raises OAuthError, which
+# belongs on these lists as much as a refused request does. Left off, the
+# first unsigned account aborted the whole command and took every other
+# account's contacts and calendars down with it -- so one missing sign-in
+# looked like nothing working anywhere.
 BOOK_ERRORS = (addressbook.AddressBookError, carddav.AddressBookError,
-               graph.GraphError)
-CALENDAR_ERRORS = (caldav.CalendarError, graph.GraphError)
+               graph.GraphError, oauth.OAuthError)
+CALENDAR_ERRORS = (caldav.CalendarError, graph.GraphError, oauth.OAuthError)
 
 
 # ------------------------------------------------------------------ calendar
@@ -590,10 +642,7 @@ def cmd_calendar_auth(args):
     if not backend.supports(account):
         raise CliError("That account has no calendar to read.")
     grant = backend.grant(account)
-
-    payload = oauth.authorize(grant, emit_event, flow=args.flow or None)
-    oauth.store_tokens(grant["id"], payload)
-    emit_event({"ok": True, "event": "done", "account": account["id"]})
+    _run_grant(args, account, grant, "calendar")
 
 
 def cmd_calendars(args):
@@ -1568,6 +1617,9 @@ def build_parser():
                        help="let your contacts application read the address book")
     p.add_argument("--account")
     p.add_argument("--flow", choices=["loopback", "device"], default="")
+    p.add_argument("--stream", action="store_true",
+                   help="emit JSON events per line")
+    p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=cmd_contacts_auth)
 
     p = sub.add_parser("contacts", help="people from your cached mail")
@@ -1582,6 +1634,9 @@ def build_parser():
                        help="let the client read this account's calendar")
     p.add_argument("--account")
     p.add_argument("--flow", choices=["loopback", "device"], default="")
+    p.add_argument("--stream", action="store_true",
+                   help="emit JSON events per line")
+    p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=cmd_calendar_auth)
 
     p = sub.add_parser("calendars", help="the calendars on your accounts")

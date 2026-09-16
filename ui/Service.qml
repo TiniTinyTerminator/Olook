@@ -579,6 +579,43 @@ Item {
     }, "contacts")
   }
 
+  // Signing in for the grant that carries contacts, the calendar, and on
+  // Microsoft the ability to send when a tenant has switched SMTP off. The
+  // engine opens the browser; this only follows along so the panel can say
+  // what is happening.
+  property bool extrasAuthorizing: false
+
+  function authorizeExtras(accountId, done) {
+    var id = String(accountId || "")
+    if (!id) {
+      var candidates = root.bookAccounts.length ? root.bookAccounts
+                                                : root.calendarAccounts
+      if (!candidates.length) return null
+      id = String(candidates[0].id)
+    }
+    root.extrasAuthorizing = true
+    var process = authRunner.createObject(root, {
+      command: [cliPath, "contacts-auth", "--account", id, "--stream"],
+      handler: function (event) {
+        var kind = String(event.event || "")
+        if (kind === "error") {
+          root.extrasAuthorizing = false
+          root.error = String(event.error || "Sign-in failed")
+          root.actionFailed(root.error)
+        } else if (kind === "done" || kind === "authorized") {
+          root.extrasAuthorizing = false
+          root.notice = "Signed in"
+          noticeTimer.restart()
+          root.refreshStatus(true)
+          root.loadCalendars()
+          if (done) done()
+        }
+      }
+    })
+    if (process) process.running = true
+    return process
+  }
+
   // ------------------------------------------------------------- calendar
 
   property var events: []
@@ -633,7 +670,12 @@ Item {
       // trouble is reported without wiping what is on screen.
       var problems = (payload && payload.problems) || []
       if (problems.length > 0) {
-        root.error = String(problems[0].error || "Could not read the calendar")
+        // Every account that could not be read, not just the first: with
+        // three accounts, naming one left the other two looking fine.
+        var lines = []
+        for (var p = 0; p < problems.length; p++)
+          lines.push(String(problems[p].account) + ": " + String(problems[p].error))
+        root.error = lines.join("   ")
         root.actionFailed(root.error)
       } else if (!ok) {
         reportFailure(payload, stderrText, "Could not read the calendar")
