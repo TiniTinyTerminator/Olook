@@ -65,6 +65,11 @@ Item {
 
   readonly property var calendars: service ? service.calendars : []
 
+  // Offered whatever else is on screen: an account already signed in does
+  // not sign in the one beside it, and gating this on "no calendars at all"
+  // hid the button behind another account's calendar.
+  readonly property var needSignIn: service ? service.accountsNeedingExtras : []
+
   // The panel's contents, flattened: an account heading followed by that
   // account's calendars. Headings are only worth the room when more than one
   // account has a calendar to name.
@@ -528,8 +533,8 @@ Item {
             wrapMode: Text.Wrap
             text: root.service && !root.service.canReadCalendar
               ? "No account here keeps a calendar."
-              : (root.calendars.length === 0
-                 ? "No calendar has been signed in for yet. One sign-in per account covers its calendar and its contacts."
+              : (root.needSignIn.length > 0
+                 ? "One sign-in per account covers its calendar and its contacts."
                  : (root.events.length === 0
                     ? "Nothing fetched yet — press the refresh button above."
                     : "Nothing on this day."))
@@ -541,8 +546,7 @@ Item {
           // The sign-in the calendar needs, rather than a line of prose
           // telling you to go and find a terminal.
           Repeater {
-            model: (root.service && root.calendars.length === 0)
-                   ? root.service.calendarAccounts : []
+            model: root.needSignIn
 
             Rectangle {
               required property var modelData

@@ -98,12 +98,32 @@ def cmd_accounts(args):
             # application of your own.
             "calendar": bool(calendar_for(account).supports(account)
                              and calendar_for(account).configured(account)),
+            # Whether the side grant -- contacts, calendar, and on Microsoft
+            # the ability to send -- has been signed in for. The client needs
+            # this to offer the sign-in beside the accounts still missing it,
+            # rather than only when nothing at all has been signed in.
+            "extrasAuthorized": _extras_authorized(account),
         })
     emit({"ok": True, "accounts": out},
          lambda d: "\n".join(
              f"{a['id']:24} {a['email']:34} {a['provider']:10} "
              f"{'ok' if a['authorized'] else 'NEEDS AUTH':11} {a['unread']} unread"
              for a in d["accounts"]) or "No accounts. Run: olook setup")
+
+
+def _extras_authorized(account):
+    """Whether this account's contacts-and-calendar grant holds a token."""
+    for chooser in (book_for, calendar_for):
+        try:
+            backend = chooser(account)
+            if not backend.supports(account) or not backend.configured(account):
+                continue
+            grant = backend.grant(account)
+        except Exception:
+            continue
+        if keyring.get_secret(grant["id"], "refresh_token"):
+            return True
+    return False
 
 
 def cmd_discover(args):

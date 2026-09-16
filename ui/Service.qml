@@ -606,6 +606,9 @@ Item {
           root.extrasAuthorizing = false
           root.notice = "Signed in"
           noticeTimer.restart()
+          // The account list carries whether this grant is signed in, so it
+          // has to be re-read or the button stays on screen after the job.
+          root.listAccounts(function (found) { root.accounts = found })
           root.refreshStatus(true)
           root.loadCalendars()
           if (done) done()
@@ -630,6 +633,19 @@ Item {
   }
 
   readonly property bool canReadCalendar: root.calendarAccounts.length > 0
+
+  // Accounts that could keep contacts or a calendar and have not been signed
+  // in for yet. Asked per account rather than "has anything been signed in",
+  // because one account already set up says nothing about the next one.
+  readonly property var accountsNeedingExtras: {
+    var out = []
+    for (var i = 0; i < root.accounts.length; i++) {
+      var entry = root.accounts[i]
+      if ((entry.calendar || entry.addressBook) && !entry.extrasAuthorized)
+        out.push(entry)
+    }
+    return out
+  }
 
   // The window currently held, as YYYY-MM-DD. The engine caches whatever it
   // has fetched, so moving back to a month already seen paints from disk.
