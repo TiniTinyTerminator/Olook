@@ -41,6 +41,12 @@ Item {
         root.state = "done"
         service.refreshStatus(true)
         service.sync(false)
+      } else if (kind === "extras_authorized" || kind === "extras_failed") {
+        // The contacts and calendar consent follows the mail one and sends
+        // the panel back through "browser" on its way. Mail is already in by
+        // then, so this only has to put the panel back where it was.
+        root.state = "done"
+        service.refreshStatus(true)
       } else if (kind === "error") {
         root.errorText = String(event.error || "Sign-in failed")
         root.state = "error"

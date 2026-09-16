@@ -295,8 +295,67 @@ def cmd_auth(args):
             sys.exit(1)
         raise CliError(str(exc)) from exc
 
+    # Signing in should sign the account in, not sign its mail in. Outlook
+    # asks once and has the calendar; there is no reason this should ask
+    # again later, through a button most people would never find.
+    if not args.no_extras:
+        _authorize_extras(args, account, opener)
+
     if not args.stream:
         emit({"ok": True, "stored": "oauth2"}, lambda d: "Account authorized.")
+
+
+def _authorize_extras(args, account, opener):
+    """Follow a mail sign-in with the one for contacts and the calendar.
+
+    Two round trips rather than one, because neither provider will issue a
+    single token for both: Microsoft mints a token per resource and IMAP and
+    Graph are two, and Google's mail scope lives on a grant of its own. The
+    second consent is usually a click, the browser already knowing who you
+    are.
+
+    It never fails the sign-in. The mail is authorized by the time this runs,
+    and an account whose tenant refuses the wider permissions should end up
+    with working mail and a note, not a failed setup.
+    """
+    # Usually one grant covers both -- Graph on Microsoft, DAV on Google --
+    # but an account using the People API for contacts keeps the calendar on
+    # a grant of its own, and both need asking for.
+    wanted = []
+    for chooser in (book_for, calendar_for):
+        try:
+            backend = chooser(account)
+            if not backend.supports(account) or not backend.configured(account):
+                continue
+            grant = backend.grant(account)
+        except Exception:
+            continue
+        if keyring.get_secret(grant["id"], "refresh_token"):
+            continue
+        if not any(g["id"] == grant["id"] for g in wanted):
+            wanted.append(grant)
+
+    for grant in wanted:
+        def report(event):
+            kind = event.get("event")
+            # The client is watching for "authorized" to mean the account is
+            # in; this second one would tell it so twice.
+            if kind == "authorized":
+                event = {"event": "extras_authorized"}
+            opener(event)
+
+        try:
+            payload = oauth.authorize(grant, report, flow=args.flow)
+            oauth.store_tokens(grant["id"], payload)
+        except oauth.OAuthError as exc:
+            note = ("Mail is signed in. The calendar and contacts were not: "
+                    + str(exc))
+            if args.stream:
+                emit_event({"event": "extras_failed", "error": note})
+            else:
+                print("  " + note)
+            return
+
 
 
 def _open_url(url):
@@ -1569,6 +1628,8 @@ def build_parser():
     p.add_argument("--password-stdin", action="store_true")
     p.add_argument("--stream", action="store_true", help="emit JSON events per line")
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--no-extras", action="store_true",
+                   help="sign in for mail only, not contacts and the calendar")
     p.set_defaults(func=cmd_auth)
 
     p = sub.add_parser("remove", help="remove an account and its cache")

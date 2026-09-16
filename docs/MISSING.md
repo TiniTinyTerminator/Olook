@@ -53,6 +53,14 @@ has that this client is better off without.
   list rather than off it.
 
 
+- **Two consent screens, not one.** Signing an account in now asks for its
+  contacts and calendar straight after its mail, so nobody has to find a
+  button for it later -- but it is two trips through the browser, because
+  neither provider will issue one token for both. Microsoft mints a token per
+  resource and IMAP and Graph are two; Google's mail scope sits on a grant of
+  its own. The second is usually a click, the browser already knowing who you
+  are.
+
 - **Sending through Graph is untested against a server.** A tenant that has
   switched SMTP off -- TU Delft has -- sends through Graph instead, which is a
   different door to the same mailbox and not the one that switch closes. The

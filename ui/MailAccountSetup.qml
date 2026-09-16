@@ -159,6 +159,9 @@ Item {
         root.verificationUri = String(event.url || "")
       } else if (kind === "authorized") {
         root.runTest()
+      } else if (kind === "extras_authorized" || kind === "extras_failed") {
+        // A second consent, for contacts and the calendar, comes after the
+        // mail one; the account is already made and tested by then.
       } else if (kind === "error") {
         root.errorText = String(event.error || "Sign-in failed.")
       }
