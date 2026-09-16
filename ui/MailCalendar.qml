@@ -543,6 +543,43 @@ Item {
             font.pixelSize: Style.font.bodySmall
           }
 
+          // When the organisation will not let someone consent for
+          // themselves, the narrower ask is the one thing worth trying
+          // before going to an administrator.
+          Rectangle {
+            visible: !!(root.service && root.service.extrasNeedApproval)
+            width: readOnlyText.implicitWidth + Style.space(22)
+            height: Style.space(30)
+            radius: ui.radius
+            color: readOnlyHover.containsMouse ? ui.hover : "transparent"
+            border.width: 1
+            border.color: ui.border
+
+            Text {
+              id: readOnlyText
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: "Try asking for read-only"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            MouseArea {
+              id: readOnlyHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                var waiting = root.needSignIn
+                if (root.service && waiting.length > 0)
+                  root.service.authorizeExtras(waiting[0].id, function () {
+                    root.service.syncCalendar(null)
+                  }, true)
+              }
+            }
+          }
+
           // The sign-in the calendar needs, rather than a line of prose
           // telling you to go and find a terminal.
           Repeater {
@@ -577,7 +614,7 @@ Item {
                 onClicked: if (root.service && !root.service.extrasAuthorizing)
                   root.service.authorizeExtras(modelData.id, function () {
                     root.service.syncCalendar(null)
-                  })
+                  }, false)
               }
             }
           }

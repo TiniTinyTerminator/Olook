@@ -32,6 +32,16 @@ GRAPH_SCOPES = ("offline_access "
                 "https://graph.microsoft.com/Calendars.ReadWrite "
                 "https://graph.microsoft.com/Mail.Send")
 
+# The same thing with nothing that writes. A tenant can require an
+# administrator to approve the set above while letting people consent to this
+# one themselves, which is the difference between a read-only calendar and no
+# calendar at all. Asking for less is the honest way past that; borrowing an
+# application the tenant has already trusted, to get permissions it withheld,
+# is not.
+READ_SCOPES = ("offline_access "
+               "https://graph.microsoft.com/Contacts.Read "
+               "https://graph.microsoft.com/Calendars.Read")
+
 # The old name, kept so nothing that imports it breaks.
 CONTACT_SCOPES = GRAPH_SCOPES
 
@@ -67,6 +77,9 @@ def grant(account):
     the two refresh tokens sit side by side without disturbing each other.
     """
     oauth_config = account.get("oauth") or {}
+    # Which set was consented to has to be remembered: a refresh asks for the
+    # scope again, and asking for more than was granted is refused.
+    scope = READ_SCOPES if account.get("graphReadOnly") else GRAPH_SCOPES
     return {
         # Named for contacts because that is what it first carried; it now
         # covers the calendar and sending too. Renaming it would orphan the
@@ -81,7 +94,7 @@ def grant(account):
             "client_id": oauth_config.get("client_id", ""),
             "client_secret": oauth_config.get("client_secret", ""),
             "tenant": oauth_config.get("tenant") or "common",
-            "scope": GRAPH_SCOPES,
+            "scope": scope,
             "exact": True,
         },
     }
@@ -198,7 +211,16 @@ def _contact_body(contact):
     return body
 
 
+def _refuse_if_read_only(account, what):
+    if account.get("graphReadOnly"):
+        raise GraphError(
+            "This account was signed in for reading only, so " + what
+            + " is not possible. Signing in for the wider permissions needs "
+            "your administrator to approve the application first.")
+
+
 def create(account, contact):
+    _refuse_if_read_only(account, "adding a contact")
     if not str(contact.get("name") or "").strip():
         raise GraphError("A contact needs at least a name.")
     return _flatten_contact(
@@ -206,6 +228,7 @@ def create(account, contact):
 
 
 def update(account, resource, etag, contact):
+    _refuse_if_read_only(account, "editing a contact")
     if not resource:
         raise GraphError("That contact has no address-book entry to edit.")
     headers = {"If-Match": etag} if etag else None
@@ -215,6 +238,7 @@ def update(account, resource, etag, contact):
 
 
 def remove(account, resource):
+    _refuse_if_read_only(account, "deleting a contact")
     if not resource:
         raise GraphError("That contact has no address-book entry to delete.")
     _call(account, "DELETE", "/me/contacts/" + urllib.parse.quote(resource))
@@ -352,6 +376,7 @@ def send_mime(account, raw):
     Graph files the copy in Sent Items itself, so nothing should append one
     afterwards.
     """
+    _refuse_if_read_only(account, "sending mail")
     body = base64.b64encode(raw).decode("ascii")
     token = oauth.access_token(grant(account))
     request = urllib.request.Request(

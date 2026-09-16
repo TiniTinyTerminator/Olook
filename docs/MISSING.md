@@ -53,6 +53,15 @@ has that this client is better off without.
   list rather than off it.
 
 
+- **A tenant can refuse the whole thing.** An organisation may require an
+  administrator to approve a third-party application before anyone in it can
+  consent -- TU Delft does, for Thunderbird's. Signing in for reading only
+  asks for less and some tenants allow that without approval, which is the
+  difference between a read-only calendar and no calendar; writing and
+  sending then need the administrator. Nothing here tries to get around the
+  refusal, and borrowing an application the tenant has already trusted in
+  order to obtain permissions it withheld would be exactly that.
+
 - **Two consent screens, not one.** Signing an account in now asks for its
   contacts and calendar straight after its mail, so nobody has to find a
   button for it later -- but it is two trips through the browser, because

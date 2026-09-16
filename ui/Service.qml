@@ -585,7 +585,11 @@ Item {
   // what is happening.
   property bool extrasAuthorizing: false
 
-  function authorizeExtras(accountId, done) {
+  // Set when a tenant will not let someone consent for themselves, so the
+  // panel can offer the narrower ask instead of only reporting a refusal.
+  property bool extrasNeedApproval: false
+
+  function authorizeExtras(accountId, done, readOnly) {
     var id = String(accountId || "")
     if (!id) {
       var candidates = root.bookAccounts.length ? root.bookAccounts
@@ -594,13 +598,18 @@ Item {
       id = String(candidates[0].id)
     }
     root.extrasAuthorizing = true
+    root.extrasNeedApproval = false
+    var args = [cliPath, "contacts-auth", "--account", id, "--stream"]
+    if (readOnly) args.push("--read-only")
     var process = authRunner.createObject(root, {
-      command: [cliPath, "contacts-auth", "--account", id, "--stream"],
+      command: args,
       handler: function (event) {
         var kind = String(event.event || "")
         if (kind === "error") {
           root.extrasAuthorizing = false
           root.error = String(event.error || "Sign-in failed")
+          root.extrasNeedApproval = !readOnly
+            && root.error.toLowerCase().indexOf("administrator") !== -1
           root.actionFailed(root.error)
         } else if (kind === "done" || kind === "authorized") {
           root.extrasAuthorizing = false

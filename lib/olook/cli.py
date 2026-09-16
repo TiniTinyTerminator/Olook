@@ -533,14 +533,24 @@ def cmd_markdown(args):
 
 def _run_grant(args, account, grant, what):
     """Sign in for one of the side grants and keep what comes back."""
+    # Remembered on the account, because a refresh asks for the scope again
+    # and has to ask for the same one. Written either way, so that signing in
+    # again without --read-only puts the account back to the full set.
+    read_only = bool(getattr(args, "read_only", False))
+    if bool(account.get("graphReadOnly")) != read_only:
+        account = dict(account)
+        account["graphReadOnly"] = read_only
+        config.upsert(account)
+    grant = (graph if graph.supports(account) else caldav).grant(account)
     report = _auth_reporter(args)
     try:
         payload = oauth.authorize(grant, report, flow=args.flow or None)
     except oauth.OAuthError as exc:
+        detail = _consent_advice(args, str(exc))
         if getattr(args, "stream", False):
-            emit_event({"event": "error", "error": str(exc)})
+            emit_event({"event": "error", "error": detail})
             sys.exit(1)
-        raise CliError(str(exc)) from exc
+        raise CliError(detail) from exc
 
     oauth.store_tokens(grant["id"], payload)
     if getattr(args, "stream", False):
@@ -548,6 +558,25 @@ def _run_grant(args, account, grant, what):
         return
     emit({"ok": True, "account": account["id"], "granted": what},
          lambda d: "Signed in for this account's " + what + ".")
+
+
+# What Microsoft says when a tenant will not let people consent for
+# themselves. The wording moves around; the codes do not.
+NEEDS_APPROVAL = ("aadsts65001", "aadsts90094", "admin approval",
+                  "administrator has not consented", "consent_required")
+
+
+def _consent_advice(args, detail):
+    """Add the one thing worth trying when a tenant withholds consent."""
+    if getattr(args, "read_only", False):
+        return detail
+    if not any(mark in detail.lower() for mark in NEEDS_APPROVAL):
+        return detail
+    return (detail + "  Your organisation requires an administrator to "
+            "approve this application. Two ways on: ask them to, or try "
+            "again asking only for permissions that read, which some tenants "
+            "allow without approval — add --read-only to the same command. "
+            "Reading mail is unaffected either way.")
 
 
 def _auth_reporter(args):
@@ -1701,6 +1730,10 @@ def build_parser():
     p.add_argument("--stream", action="store_true",
                    help="emit JSON events per line")
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--read-only", action="store_true",
+                   help="ask only for permissions that read, "
+                        "which a tenant may allow without an "
+                        "administrator approving the app")
     p.set_defaults(func=cmd_contacts_auth)
 
     p = sub.add_parser("contacts", help="people from your cached mail")
@@ -1718,6 +1751,10 @@ def build_parser():
     p.add_argument("--stream", action="store_true",
                    help="emit JSON events per line")
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--read-only", action="store_true",
+                   help="ask only for permissions that read, "
+                        "which a tenant may allow without an "
+                        "administrator approving the app")
     p.set_defaults(func=cmd_calendar_auth)
 
     p = sub.add_parser("calendars", help="the calendars on your accounts")
