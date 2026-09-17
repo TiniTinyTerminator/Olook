@@ -741,7 +741,15 @@ def _event_row(row):
 
 
 def replace_calendars(conn, account, found):
-    """The account's calendars, keeping whichever the user has hidden."""
+    """The account's calendars, keeping whichever the user has hidden.
+
+    Nothing back means nothing is written. A fetch that returns no calendars
+    at all is far likelier to be a blip than an account that has genuinely
+    lost every one of them, and the wholesale delete below would take the
+    list off the screen until the next good sync put it back.
+    """
+    if not found:
+        return
     hidden = {row["id"] for row in conn.execute(
         "SELECT id FROM calendars WHERE account = ? AND hidden = 1", (account,))}
     conn.execute("DELETE FROM calendars WHERE account = ?", (account,))
