@@ -240,6 +240,8 @@ Item {
       boundsBehavior: Flickable.StopAtBounds
       ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+      MomentumScroll { view: hourFlick }
+
       // Opening on midnight wastes half the view on hours nobody uses.
       Component.onCompleted: contentY = Math.min(
         Math.max(0, 7 * root.hourHeight - Style.space(8)),

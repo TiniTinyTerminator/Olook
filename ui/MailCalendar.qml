@@ -488,6 +488,7 @@ Item {
           }
 
           ListView {
+            id: calendarList
             width: parent.width
             height: parent.height - y
             clip: true
@@ -495,6 +496,8 @@ Item {
             model: root.calendarRows
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            MomentumScroll { view: calendarList }
 
             delegate: Item {
               id: calendarRow
@@ -685,8 +688,22 @@ Item {
                 readonly property string key: root.dayKey(cell.date)
                 readonly property bool outside: cell.date.getMonth() !== root.month.getMonth()
                 readonly property var items: root.eventsOn(cell.key)
-                // Three fit; a fourth would push the count off the bottom.
-                readonly property int shown: Math.min(3, cell.items.length)
+
+                // How many appointments a cell can show depends on how tall
+                // the cell is, which depends on the window. Three was assumed
+                // and the third plus the "+2 more" under it hung out of the
+                // bottom of a short cell.
+                readonly property int chipStep: Style.space(15) + Style.space(2)
+                // What is left under the date pill, margins and its spacing.
+                readonly property int roomForChips:
+                  Math.max(0, cell.height - Style.space(28))
+                readonly property int fits:
+                  Math.floor(cell.roomForChips / cell.chipStep)
+                // When there are more than fit, one of the places goes to
+                // the line that says how many are left.
+                readonly property int shown: cell.items.length <= cell.fits
+                  ? cell.items.length
+                  : Math.max(0, cell.fits - 1)
 
                 Rectangle {
                   anchors.fill: parent
@@ -713,6 +730,10 @@ Item {
                   anchors.fill: parent
                   anchors.margins: Style.space(4)
                   spacing: Style.space(2)
+                  // Belt and braces: the arithmetic above decides what to
+                  // draw, and this makes certain nothing escapes the cell
+                  // whatever it decides.
+                  clip: true
 
                   Rectangle {
                     width: Style.space(20)
@@ -771,11 +792,22 @@ Item {
                   }
 
                   Text {
+                    width: parent.width
                     visible: cell.items.length > cell.shown
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
                     text: "+" + (cell.items.length - cell.shown) + " more"
                     color: ui.faint
                     font.family: ui.fontFamily
                     font.pixelSize: Style.font.bodySmall
+
+                    MouseArea {
+                      anchors.fill: parent
+                      cursorShape: Qt.PointingHandCursor
+                      // The rest of the day is what the agenda beside the
+                      // grid is for.
+                      onClicked: root.selected = cell.key
+                    }
                   }
                 }
 
@@ -806,6 +838,7 @@ Item {
 
         // ------------------------------------------------ one appointment
         Flickable {
+          id: detailFlick
           anchors.fill: parent
           visible: !!root.openEvent
           contentWidth: width
@@ -813,6 +846,8 @@ Item {
           clip: true
           boundsBehavior: Flickable.StopAtBounds
           ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+          MomentumScroll { view: detailFlick }
 
           Column {
             id: detail
@@ -1035,6 +1070,7 @@ Item {
           }
 
           ListView {
+            id: agendaList
             width: parent.width
             height: parent.height - y
             clip: true
@@ -1042,6 +1078,8 @@ Item {
             model: root.eventsOn(root.selected)
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            MomentumScroll { view: agendaList }
 
             // The row is an Item holding a Column, not a Column itself: a
             // MouseArea filling its parent cannot be a child of a Column,
