@@ -83,13 +83,6 @@ has that this client is better off without.
   will list folders that show a stub per item instead, and there is no switch
   to say "show it anyway" or "no, that one is mail".
 
-- **The calendar shows a month and nothing else.** Outlook opens on a choice
-  of day, work week, week and month, and each answers a different question --
-  a month says how busy a fortnight looks, a day says whether there is room at
-  three o'clock. Only the month is built. The work week is the one worth
-  having next: five columns, no weekend, which is the view a timetable is
-  actually read in.
-
 - **Nothing can be added to the calendar.** Reading is done on both
   providers; writing is not started. A new appointment, moving one, and
   accepting an invitation that arrives as mail are all missing, and the scope

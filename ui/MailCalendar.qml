@@ -17,6 +17,60 @@ Item {
   property date month: root.startOfMonth(new Date())
   property string selected: root.dayKey(new Date())
 
+  // day | workweek | week | month. Each answers a different question: a month
+  // says how busy a fortnight looks, a day says whether there is room at
+  // three o'clock, and a work week is how a timetable is actually read.
+  property string view: "month"
+  readonly property var viewNames: [
+    { "id": "day", "label": "Day" },
+    { "id": "workweek", "label": "Work week" },
+    { "id": "week", "label": "Week" },
+    { "id": "month", "label": "Month" }
+  ]
+
+  function dateOf(key) {
+    var parts = String(key || "").split("-")
+    if (parts.length !== 3) return new Date()
+    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+  }
+
+  // The Monday of whichever week the given day falls in.
+  function weekStart(date) {
+    var weekday = (date.getDay() + 6) % 7
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - weekday)
+  }
+
+  // The first day on screen, and how many days follow it.
+  function spanStart() {
+    var day = root.dateOf(root.selected)
+    if (root.view === "day") return day
+    if (root.view === "month") return root.gridStart()
+    return root.weekStart(day)
+  }
+
+  function spanDays() {
+    if (root.view === "day") return 1
+    if (root.view === "workweek") return 5
+    if (root.view === "week") return 7
+    return 42
+  }
+
+  // What the time grid draws: one entry per column.
+  readonly property var spanColumns: {
+    var out = []
+    if (root.view === "month") return out
+    var from = root.spanStart()
+    for (var i = 0; i < root.spanDays(); i++) {
+      var day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i)
+      out.push({
+        "key": root.dayKey(day),
+        "date": day,
+        "label": root.weekdays[(day.getDay() + 6) % 7] + " " + day.getDate()
+      })
+    }
+    return out
+  }
+
   readonly property var events: service ? service.events : []
   readonly property string today: root.dayKey(new Date())
 
@@ -107,8 +161,26 @@ Item {
     if (root.service && entry) root.service.setCalendarHidden(entry.id, !entry.hidden)
   }
 
-  function step(months) {
-    root.month = new Date(root.month.getFullYear(), root.month.getMonth() + months, 1)
+  function step(direction) {
+    if (root.view === "month") {
+      root.month = new Date(root.month.getFullYear(),
+                            root.month.getMonth() + direction, 1)
+      root.ask()
+      return
+    }
+    var days = root.view === "day" ? 1 : 7
+    var day = root.dateOf(root.selected)
+    var moved = new Date(day.getFullYear(), day.getMonth(),
+                         day.getDate() + direction * days)
+    root.selected = root.dayKey(moved)
+    root.month = root.startOfMonth(moved)
+    root.ask()
+  }
+
+  function setView(name) {
+    if (!name || name === root.view) return
+    root.view = name
+    root.month = root.startOfMonth(root.dateOf(root.selected))
     root.ask()
   }
 
@@ -123,8 +195,12 @@ Item {
   // days are filled in too.
   function ask() {
     if (!root.service) return
-    var from = root.gridStart()
-    var to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 42)
+    var from = root.spanStart()
+    // A day or a week is a small ask; fetching the month around it means
+    // stepping to the next day is usually a read from the cache.
+    var length = root.view === "month" ? 42 : 42
+    if (root.view !== "month") from = root.gridStart()
+    var to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + length)
     root.service.loadCalendar(root.dayKey(from), root.dayKey(to))
   }
 
@@ -185,10 +261,51 @@ Item {
 
         Text {
           anchors.verticalCenter: parent.verticalCenter
-          text: root.monthNames[root.month.getMonth()] + " " + root.month.getFullYear()
+          text: root.headingText
           color: ui.foreground
           font.family: ui.fontFamily
           font.pixelSize: Style.font.title
+        }
+      }
+
+      Row {
+        anchors.right: refreshButton.left
+        anchors.rightMargin: Style.space(10)
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(4)
+
+        Repeater {
+          model: root.viewNames
+
+          Rectangle {
+            required property var modelData
+            readonly property bool current: root.view === modelData.id
+            width: viewLabel.implicitWidth + Style.space(16)
+            height: Style.space(26)
+            radius: ui.radius
+            color: current ? ui.selected
+              : (viewHover.containsMouse ? ui.hover : "transparent")
+            border.width: 1
+            border.color: current ? Util.alpha(ui.accent, 0.55) : ui.border
+
+            Text {
+              id: viewLabel
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: parent.modelData.label
+              color: parent.current ? ui.accent : ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            MouseArea {
+              id: viewHover
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.setView(parent.modelData.id)
+            }
+          }
         }
       }
 
@@ -350,14 +467,26 @@ Item {
         color: ui.border
       }
 
-      // ---------------------------------------------------------- the month
+      // ------------------------------------------------- the month, or hours
       Item {
         width: parent.width - calendarPanel.width - panelEdge.width
                - agenda.width - agendaEdge.width
         height: parent.height
 
+        MailTimeGrid {
+          anchors.fill: parent
+          visible: root.view !== "month"
+          ui: root.ui
+          days: root.spanColumns
+          byDay: root.byDay
+          today: root.today
+          selected: root.selected
+          onDaySelected: function (key) { root.selected = key }
+        }
+
         Column {
           anchors.fill: parent
+          visible: root.view === "month"
           spacing: 0
 
           Row {
@@ -689,6 +818,26 @@ Item {
         }
       }
     }
+  }
+
+  // What the header says, which is the span on screen rather than always a
+  // month: "Thu 17 September", "15 – 19 September", "September 2026".
+  readonly property string headingText: {
+    if (root.view === "month")
+      return root.monthNames[root.month.getMonth()] + " " + root.month.getFullYear()
+
+    var columns = root.spanColumns
+    if (columns.length === 0) return ""
+    var first = columns[0].date
+    var last = columns[columns.length - 1].date
+    if (root.view === "day")
+      return root.weekdays[(first.getDay() + 6) % 7] + " " + first.getDate()
+             + " " + root.monthNames[first.getMonth()]
+    if (first.getMonth() === last.getMonth())
+      return first.getDate() + " – " + last.getDate() + " "
+             + root.monthNames[first.getMonth()] + " " + first.getFullYear()
+    return first.getDate() + " " + root.monthNames[first.getMonth()] + " – "
+           + last.getDate() + " " + root.monthNames[last.getMonth()]
   }
 
   readonly property string agendaTitle: {
