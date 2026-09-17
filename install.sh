@@ -15,6 +15,10 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ID="ttt.olook"
 PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
+# The calendar rides in the bar as a plugin of its own, because a plugin
+# registers one bar widget and Olook's is the mail envelope.
+WIDGET_ID="ttt.olook-calendar"
+WIDGET_DIR="$HOME/.config/omarchy/plugins/$WIDGET_ID"
 BIN_DIR="$HOME/.local/bin"
 MODE="copy"
 
@@ -78,7 +82,7 @@ if [[ "$MODE" == "uninstall" ]]; then
 fi
 
 mkdir -p "$(dirname "$PLUGIN_DIR")" "$BIN_DIR"
-rm -rf "$PLUGIN_DIR"
+rm -rf "$PLUGIN_DIR" "$WIDGET_DIR"
 
 if [[ "$MODE" == "link" ]]; then
   ln -sfn "$SRC" "$PLUGIN_DIR"
@@ -88,6 +92,13 @@ else
   cp -r "$SRC/manifest.json" "$SRC/ui" "$SRC/bin" "$SRC/lib" "$PLUGIN_DIR/"
   echo "Copied Olook into $PLUGIN_DIR"
 fi
+
+mkdir -p "$WIDGET_DIR"
+cp "$SRC/widget/manifest.json" "$SRC/widget/Panel.qml" "$WIDGET_DIR/"
+# The widget scrolls the way the rest of the client does, and the component
+# that does it lives with the client.
+cp "$SRC/ui/MomentumScroll.qml" "$WIDGET_DIR/"
+echo "Copied the calendar widget into $WIDGET_DIR"
 
 ln -sfn "$PLUGIN_DIR/bin/olook" "$BIN_DIR/olook"
 echo "Linked the engine to $BIN_DIR/olook"
@@ -103,6 +114,15 @@ if command -v omarchy >/dev/null 2>&1; then
     omarchy plugin enable "$PLUGIN_ID" --section right >/dev/null 2>&1 \
       && echo "Added Olook to the bar." \
       || echo "Could not add the bar widget automatically. Run: omarchy plugin enable $PLUGIN_ID --section right"
+  fi
+fi
+
+if command -v omarchy >/dev/null 2>&1; then
+  # Not enabled automatically: putting a widget in someone's bar uninvited is
+  # rude, and it would sit beside the clock it is meant to replace.
+  if omarchy plugin list --json 2>/dev/null | grep -q "\"id\":\"$WIDGET_ID\""; then
+    echo "Calendar widget available. To put it in the bar:"
+    echo "  omarchy bar put $WIDGET_ID --before omarchy.clock"
   fi
 fi
 

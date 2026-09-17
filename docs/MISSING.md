@@ -89,11 +89,6 @@ has that this client is better off without.
   for each is already granted -- `Calendars.ReadWrite` on Graph, `auth/calendar`
   on DAV -- so this is a matter of building it rather than of permission.
 
-- **The bar has no calendar of its own.** Omarchy's clock widget shows the
-  date; nothing shows what is on. A widget listing the next appointments from
-  the same cache the Calendar tab reads would be a second plugin, because a
-  plugin registers one bar widget and Olook's is the mail envelope.
-
 - **Gmail has no picture for the account itself.** A contact's picture comes
   out of the vCard and a Microsoft mailbox's own comes from Graph, but
   Google's needs the `profile` scope, which is another trip through consent
