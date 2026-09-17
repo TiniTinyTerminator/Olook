@@ -162,6 +162,22 @@ def _prop_text(props, namespace, name):
     return (node.text or "").strip() if node is not None else ""
 
 
+def calendar_id(url):
+    """A name for a calendar that is its own and not its neighbour's.
+
+    Google ends every calendar with the same segment -- both the primary and
+    a shared one live at .../<something>/events/ -- so the last segment
+    called them both "events" and the second overwrote the first in a table
+    keyed on it. The identity is the segment in front of that.
+    """
+    parts = [p for p in urllib.parse.urlparse(url).path.split("/") if p]
+    while parts and parts[-1] in ("events", "calendar"):
+        parts.pop()
+    if not parts:
+        return "calendar"
+    return urllib.parse.unquote(parts[-1])
+
+
 # ----------------------------------------------------------------- discovery
 
 CALENDAR_PROPS = """<?xml version="1.0" encoding="utf-8"?>
@@ -234,7 +250,7 @@ def calendars(account):
 
         url = _absolute(home, href)
         found.append({
-            "id": url.rstrip("/").rsplit("/", 1)[-1],
+            "id": calendar_id(url),
             "url": url,
             "name": _prop_text(props, DAV_NS, "displayname") or "Calendar",
             "colour": colour,

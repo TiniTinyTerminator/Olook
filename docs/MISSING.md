@@ -83,6 +83,24 @@ has that this client is better off without.
   will list folders that show a stub per item instead, and there is no switch
   to say "show it anyway" or "no, that one is mail".
 
+- **The calendar shows a month and nothing else.** Outlook opens on a choice
+  of day, work week, week and month, and each answers a different question --
+  a month says how busy a fortnight looks, a day says whether there is room at
+  three o'clock. Only the month is built. The work week is the one worth
+  having next: five columns, no weekend, which is the view a timetable is
+  actually read in.
+
+- **Nothing can be added to the calendar.** Reading is done on both
+  providers; writing is not started. A new appointment, moving one, and
+  accepting an invitation that arrives as mail are all missing, and the scope
+  for each is already granted -- `Calendars.ReadWrite` on Graph, `auth/calendar`
+  on DAV -- so this is a matter of building it rather than of permission.
+
+- **The bar has no calendar of its own.** Omarchy's clock widget shows the
+  date; nothing shows what is on. A widget listing the next appointments from
+  the same cache the Calendar tab reads would be a second plugin, because a
+  plugin registers one bar widget and Olook's is the mail envelope.
+
 - **Calendars cannot be added or unsubscribed from here.** Which of the
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,
