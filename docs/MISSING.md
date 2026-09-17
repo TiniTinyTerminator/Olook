@@ -101,11 +101,6 @@ has that this client is better off without.
   fetched: that is one request per contact, five hundred round trips for a
   list that is mostly initials.
 
-- **A calendar from a file cannot be added from the client.** `olook
-  calendar-add --file x.ics` and `--url https://…` work, and the calendar
-  then sits beside the account ones, but nothing in the window adds or
-  forgets one.
-
 - **Recurrence in a file is read, not honoured in full.** CalDAV and Graph
   expand a range on the server; a file has to be expanded here, and what is
   implemented is the part a timetable is written with -- the frequencies,

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -158,6 +159,24 @@ Item {
         rows.push({ "heading": "", "calendar": mine[m] })
     }
     return rows
+  }
+
+  // Adding a calendar that lives in a file. Held here rather than in the
+  // fields so that closing the form and opening it again starts clean.
+  property bool addingCalendar: false
+  property string draftName: ""
+  property string draftSource: ""
+
+  function startAddCalendar() {
+    root.draftName = ""
+    root.draftSource = ""
+    root.addingCalendar = true
+  }
+
+  function commitCalendar() {
+    if (!root.service || root.draftSource.trim() === "") return
+    root.service.addCalendarFile(root.draftName.trim(), root.draftSource.trim(), "",
+                                 function (ok) { if (ok) root.addingCalendar = false })
   }
 
   function toggleCalendar(entry) {
@@ -367,11 +386,87 @@ Item {
           anchors.margins: Style.space(12)
           spacing: Style.space(8)
 
-          Text {
-            text: "Calendars"
-            color: ui.dim
-            font.family: ui.fontFamily
-            font.pixelSize: Style.font.bodySmall
+          Item {
+            width: parent.width
+            height: Style.space(18)
+
+            Text {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Calendars"
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Rectangle {
+              id: addCalendarButton
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(18)
+              height: Style.space(18)
+              radius: Style.space(4)
+              color: addCalendarHover.containsMouse ? ui.hover : "transparent"
+
+              Text {
+                anchors.centerIn: parent
+                text: "\udb81\udc15"
+                color: ui.dim
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: addCalendarHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.addingCalendar ? root.addingCalendar = false
+                                               : root.startAddCalendar()
+              }
+
+              PanelToolTip {
+                visible: addCalendarHover.containsMouse
+                text: "Add a calendar from a file or a link"
+                fontFamily: ui.fontFamily
+              }
+            }
+          }
+
+          // The form, which stays out of the way until the plus is pressed.
+          Column {
+            width: parent.width
+            visible: root.addingCalendar
+            spacing: Style.space(5)
+
+            CalendarField {
+              id: nameField
+              width: parent.width
+              placeholder: "Name"
+              onEdited: function (value) { root.draftName = value }
+            }
+
+            CalendarField {
+              id: sourceField
+              width: parent.width
+              placeholder: "File path or https:// link"
+              onEdited: function (value) { root.draftSource = value }
+            }
+
+            Row {
+              spacing: Style.space(5)
+
+              PanelChip {
+                label: "Browse…"
+                onTriggered: calendarPicker.open()
+              }
+
+              PanelChip {
+                label: "Add"
+                accent: true
+                onTriggered: root.commitCalendar()
+              }
+            }
           }
 
           ListView {
@@ -455,6 +550,43 @@ Item {
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: root.toggleCalendar(calendarRow.modelData.calendar)
+                }
+
+                Rectangle {
+                  readonly property var entry: calendarRow.modelData.calendar
+                  visible: !!entry && entry.account === "local"
+                           && (calendarHover.containsMouse || forgetHover.containsMouse)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(2)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Style.space(16)
+                  height: Style.space(16)
+                  radius: Style.space(4)
+                  color: forgetHover.containsMouse
+                    ? Util.alpha(ui.urgent, 0.22) : "transparent"
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "\u00d7"
+                    color: forgetHover.containsMouse ? ui.urgent : ui.faint
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  MouseArea {
+                    id: forgetHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.service && parent.entry)
+                      root.service.forgetCalendar(parent.entry.id)
+                  }
+
+                  PanelToolTip {
+                    visible: forgetHover.containsMouse
+                    text: "Stop showing this calendar"
+                    fontFamily: ui.fontFamily
+                  }
                 }
               }
             }
@@ -856,6 +988,91 @@ Item {
     var to = new Date(event.end * 1000)
     return Model.pad(from.getHours()) + ":" + Model.pad(from.getMinutes())
            + " – " + Model.pad(to.getHours()) + ":" + Model.pad(to.getMinutes())
+  }
+
+  FileDialog {
+    id: calendarPicker
+    title: "Choose a calendar file"
+    nameFilters: ["Calendars (*.ics *.ical *.ifb)", "All files (*)"]
+    onAccepted: {
+      var path = String(calendarPicker.selectedFile).replace(/^file:\/\//, "")
+      root.draftSource = decodeURIComponent(path)
+      sourceField.text = root.draftSource
+      if (root.draftName === "") {
+        var base = root.draftSource.split("/").pop().replace(/\.[^.]*$/, "")
+        root.draftName = base
+        nameField.text = base
+      }
+    }
+  }
+
+  component CalendarField: Rectangle {
+    id: field
+    property string placeholder: ""
+    property alias text: fieldInput.text
+    signal edited(string value)
+
+    height: Style.space(26)
+    radius: ui.radius
+    color: ui.surface
+    border.width: 1
+    border.color: fieldInput.activeFocus ? ui.accent : ui.border
+
+    TextInput {
+      id: fieldInput
+      anchors.fill: parent
+      anchors.leftMargin: Style.space(7)
+      anchors.rightMargin: Style.space(7)
+      verticalAlignment: TextInput.AlignVCenter
+      color: ui.foreground
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+      selectionColor: Util.alpha(ui.accent, 0.35)
+      selectByMouse: true
+      clip: true
+      onTextChanged: field.edited(text)
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        visible: fieldInput.text === ""
+        text: field.placeholder
+        color: ui.faint
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
+  }
+
+  component PanelChip: Rectangle {
+    id: chip
+    property string label: ""
+    property bool accent: false
+    signal triggered()
+
+    width: chipLabel.implicitWidth + Style.space(14)
+    height: Style.space(24)
+    radius: ui.radius
+    color: chipHover.containsMouse ? ui.hover : "transparent"
+    border.width: 1
+    border.color: chip.accent ? Util.alpha(ui.accent, 0.55) : ui.border
+
+    Text {
+      id: chipLabel
+      anchors.centerIn: parent
+      textFormat: Text.PlainText
+      text: chip.label
+      color: chip.accent ? ui.accent : ui.foreground
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    MouseArea {
+      id: chipHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: chip.triggered()
+    }
   }
 
   component StepButton: Rectangle {

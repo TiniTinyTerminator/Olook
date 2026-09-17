@@ -750,6 +750,44 @@ Item {
     }, "calendar")
   }
 
+  // Calendars kept in a file or behind a link, which belong to no account.
+  function addCalendarFile(name, source, colour, done) {
+    if (!source) return
+    var args = ["calendar-add", "--name", String(name || "")]
+    args = args.concat([
+      String(source).indexOf("://") !== -1 ? "--url" : "--file", String(source)])
+    if (colour) args = args.concat(["--colour", String(colour)])
+    root.calendarSyncing = true
+    run(args, function (ok, payload, stderrText) {
+      root.calendarSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not read that calendar")
+        if (done) done(false)
+        return
+      }
+      root.notice = ((payload && payload.events) || 0) + " events"
+      noticeTimer.restart()
+      root.loadCalendars()
+      // The window on screen has not been fetched from this calendar yet.
+      root.fetchedMonths = ({})
+      root.loadCalendar(root.calendarFrom, root.calendarTo)
+      if (done) done(true)
+    }, "calendar")
+  }
+
+  function forgetCalendar(id, done) {
+    if (!id) return
+    run(["calendar-forget", String(id)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remove that calendar")
+        return
+      }
+      root.loadCalendars()
+      root.loadCalendar(root.calendarFrom, root.calendarTo)
+      if (done) done()
+    }, "calendar")
+  }
+
   function setCalendarHidden(id, hidden) {
     if (!id) return
     run(["calendars", hidden ? "--hide" : "--show", String(id)],
