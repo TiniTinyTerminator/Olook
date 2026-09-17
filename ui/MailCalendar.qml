@@ -1043,18 +1043,27 @@ Item {
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            delegate: Column {
+            // The row is an Item holding a Column, not a Column itself: a
+            // MouseArea filling its parent cannot be a child of a Column,
+            // which both positions it and is sized by it. Putting one there
+            // collapsed the height and drew every row on top of the last.
+            delegate: Item {
               id: agendaRow
               required property var modelData
               width: ListView.view.width
-              spacing: Style.space(2)
+              implicitHeight: agendaBody.implicitHeight
+              height: implicitHeight
 
               MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.showEvent(agendaRow.modelData)
-                z: 1
               }
+
+              Column {
+                id: agendaBody
+                width: parent.width
+                spacing: Style.space(2)
 
               Row {
                 spacing: Style.space(6)
@@ -1106,6 +1115,7 @@ Item {
                 color: ui.faint
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.bodySmall
+              }
               }
             }
           }
