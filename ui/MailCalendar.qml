@@ -118,6 +118,24 @@ Item {
 
   function eventsOn(key) { return root.byDay[key] || [] }
 
+  // The appointment being looked at, which takes over the pane beside the
+  // grid. A month cell has room for a name and nothing else, so everything
+  // else an appointment carries needs somewhere to be read.
+  property var openEvent: null
+
+  function showEvent(entry) {
+    if (!entry) return
+    root.openEvent = entry
+    if (entry.day) root.selected = String(entry.day)
+  }
+
+  onSelectedChanged: {
+    // Moving to another day is leaving the appointment that was open on the
+    // last one, unless the appointment is what moved us.
+    if (root.openEvent && String(root.openEvent.day || "") !== root.selected)
+      root.openEvent = null
+  }
+
   readonly property var calendars: service ? service.calendars : []
 
   // Offered whatever else is on screen: an account already signed in does
@@ -617,6 +635,7 @@ Item {
           today: root.today
           selected: root.selected
           onDaySelected: function (key) { root.selected = key }
+          onEventChosen: function (event) { root.showEvent(event) }
         }
 
         Column {
@@ -739,6 +758,15 @@ Item {
                         font.family: ui.fontFamily
                         font.pixelSize: Style.font.bodySmall
                       }
+
+                      MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                          root.selected = cell.key
+                          root.showEvent(parent.event)
+                        }
+                      }
                     }
                   }
 
@@ -776,8 +804,131 @@ Item {
         width: Math.max(Style.space(240), Math.round(root.width * 0.26))
         height: parent.height
 
+        // ------------------------------------------------ one appointment
+        Flickable {
+          anchors.fill: parent
+          visible: !!root.openEvent
+          contentWidth: width
+          contentHeight: detail.implicitHeight + Style.space(28)
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+          Column {
+            id: detail
+            x: Style.space(14)
+            y: Style.space(14)
+            width: parent.width - Style.space(28)
+            spacing: Style.space(8)
+
+            Row {
+              spacing: Style.space(6)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "\udb80\udd41"
+                color: ui.dim
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.bodySmall
+
+                MouseArea {
+                  anchors.fill: parent
+                  anchors.margins: -Style.space(4)
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.openEvent = null
+                }
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Back to the day"
+                color: ui.dim
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.openEvent = null
+                }
+              }
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.space(7)
+
+              Rectangle {
+                width: Style.space(3)
+                height: titleText.implicitHeight
+                radius: Style.space(2)
+                color: root.openEvent
+                  ? (root.openEvent.colour || ui.accent) : ui.accent
+              }
+
+              Text {
+                id: titleText
+                width: parent.width - Style.space(10)
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                text: root.openEvent
+                  ? (root.openEvent.summary || "(no title)") : ""
+                color: ui.foreground
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.body
+              }
+            }
+
+            EventLine {
+              width: parent.width
+              label: "When"
+              value: root.openEvent ? root.whenText(root.openEvent) : ""
+            }
+            EventLine {
+              width: parent.width
+              label: "Where"
+              value: root.openEvent ? (root.openEvent.location || "") : ""
+            }
+            EventLine {
+              width: parent.width
+              label: "Organiser"
+              value: root.openEvent ? (root.openEvent.organiser || "") : ""
+            }
+            EventLine {
+              width: parent.width
+              label: "Calendar"
+              value: root.openEvent ? (root.openEvent.calendarName || "") : ""
+            }
+            EventLine {
+              width: parent.width
+              label: "Repeats"
+              value: !!(root.openEvent && root.openEvent.recurring)
+                ? "One of a series" : ""
+            }
+
+            Rectangle {
+              width: parent.width
+              height: ui.hairline
+              color: ui.border
+              visible: !!(root.openEvent && (root.openEvent.description || "") !== "")
+            }
+
+            Text {
+              width: parent.width
+              visible: !!(root.openEvent && (root.openEvent.description || "") !== "")
+              textFormat: Text.PlainText
+              wrapMode: Text.Wrap
+              text: root.openEvent ? (root.openEvent.description || "") : ""
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+
         Column {
           anchors.fill: parent
+          visible: !root.openEvent
           anchors.margins: Style.space(14)
           spacing: Style.space(10)
 
@@ -893,9 +1044,17 @@ Item {
             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
             delegate: Column {
+              id: agendaRow
               required property var modelData
               width: ListView.view.width
               spacing: Style.space(2)
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.showEvent(agendaRow.modelData)
+                z: 1
+              }
 
               Row {
                 spacing: Style.space(6)
@@ -1004,6 +1163,41 @@ Item {
         nameField.text = base
       }
     }
+  }
+
+  // A labelled line that takes no room when there is nothing to put on it.
+  component EventLine: Column {
+    property string label: ""
+    property string value: ""
+    visible: value !== ""
+    height: visible ? implicitHeight : 0
+    spacing: Style.space(1)
+
+    Text {
+      text: parent.label
+      color: ui.faint
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    Text {
+      width: parent.width
+      textFormat: Text.PlainText
+      wrapMode: Text.Wrap
+      text: parent.value
+      color: ui.foreground
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+  }
+
+  function whenText(event) {
+    if (!event) return ""
+    var from = new Date(event.start * 1000)
+    var day = root.weekdays[(from.getDay() + 6) % 7] + " " + from.getDate()
+              + " " + root.monthNames[from.getMonth()]
+    if (event.allDay) return day + " — all day"
+    return day + ", " + root.clock(event)
   }
 
   component CalendarField: Rectangle {

@@ -19,6 +19,7 @@ Item {
   property string selected: ""
 
   signal daySelected(string key)
+  signal eventChosen(var event)
 
   readonly property int hourHeight: Style.space(42)
   readonly property int gutter: Style.space(46)
@@ -207,6 +208,12 @@ Item {
                     font.family: ui.fontFamily
                     font.pixelSize: Style.font.caption
                   }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.eventChosen(parent.modelData)
+                  }
                 }
               }
             }
@@ -362,7 +369,10 @@ Item {
                   MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.daySelected(dayColumn.modelData.key)
+                    onClicked: {
+                      root.daySelected(dayColumn.modelData.key)
+                      root.eventChosen(modelData.event)
+                    }
                   }
                 }
               }
