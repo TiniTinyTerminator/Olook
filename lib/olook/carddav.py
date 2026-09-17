@@ -195,6 +195,8 @@ def parse_card(text):
                 value.split(";")[0]).strip()
         elif name == "UID":
             person["uid"] = value.strip()
+        elif name == "PHOTO":
+            person["photo"] = _photo(params, value)
 
     if not person["name"] and structured:
         # N is Family;Given;Middle;Prefix;Suffix, written the way it reads.
@@ -204,6 +206,25 @@ def parse_card(text):
         person["name"] = " ".join(
             p for p in (parts[3], parts[1], parts[2], parts[0], parts[4]) if p)
     return person
+
+
+def _photo(params, value):
+    """A vCard photo as something an image element can be handed.
+
+    Two shapes in the wild: the bytes inline, base64, which become a data URI
+    without a second request; and a URL, which is already one. A card with
+    neither is a card with no picture.
+    """
+    value = value.strip()
+    if value.lower().startswith(("http://", "https://", "data:")):
+        return value
+    encoding = (params.get("ENCODING") or "").upper()
+    if encoding not in ("B", "BASE64") and not params.get("TYPE"):
+        return ""
+    kind = str(params.get("TYPE") or "JPEG").split(",")[0].lower()
+    if kind.startswith("image/"):
+        kind = kind.split("/", 1)[1]
+    return "data:image/%s;base64,%s" % (kind or "jpeg", value)
 
 
 def _escape(value):

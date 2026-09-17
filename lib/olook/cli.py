@@ -104,12 +104,34 @@ def cmd_accounts(args):
             # this to offer the sign-in beside the accounts still missing it,
             # rather than only when nothing at all has been signed in.
             "extrasAuthorized": _extras_authorized(account),
+            # Read from the cache only. This command runs constantly, and a
+            # picture is not worth a round trip every time the bar repaints;
+            # the contacts sync refreshes it.
+            "avatar": store.get_state(conn, _avatar_key(account["id"]), "") or "",
         })
     emit({"ok": True, "accounts": out},
          lambda d: "\n".join(
              f"{a['id']:24} {a['email']:34} {a['provider']:10} "
              f"{'ok' if a['authorized'] else 'NEEDS AUTH':11} {a['unread']} unread"
              for a in d["accounts"]) or "No accounts. Run: olook setup")
+
+
+def _avatar_key(account_id):
+    return "avatar:" + str(account_id)
+
+
+def refresh_avatar(conn, account):
+    """Fetch the account's own picture, where the provider offers one."""
+    if not graph.supports(account) or not graph.configured(account):
+        return ""
+    try:
+        photo = graph.account_photo(account)
+    except (graph.GraphError, oauth.OAuthError):
+        return ""
+    # An empty answer is a mailbox with no picture, which is worth recording
+    # so the next sync does not ask again for nothing.
+    store.set_state(conn, _avatar_key(account["id"]), photo)
+    return photo
 
 
 def _extras_authorized(account):
@@ -675,6 +697,7 @@ def cmd_contacts_sync(args, conn):
             results.append({"account": entry["id"], "ok": False, "error": str(exc)})
             continue
         store.replace_address_book(conn, entry["id"], people)
+        refresh_avatar(conn, entry)
         results.append({"account": entry["id"], "ok": True, "contacts": len(people)})
 
     emit({"ok": any(r["ok"] for r in results) or not results,

@@ -459,6 +459,8 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
             entry["etag"] = person["etag"]
             entry["bookAccount"] = person["account"]
             entry["bookEmails"] = person["emails"]
+            if person.get("photo"):
+                entry["photo"] = person["photo"]
         if not addresses and person["name"]:
             # A contact with a number and no address still belongs here.
             key = "book:" + person["name"].lower()
@@ -473,6 +475,7 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
                 "etag": person["etag"],
                 "bookAccount": person["account"],
                 "bookEmails": person["emails"],
+                "photo": person.get("photo", ""),
             })
 
     found = list(people.values())
@@ -484,6 +487,7 @@ def contacts(conn, accounts=None, mine=(), query="", limit=500):
         entry.setdefault("etag", "")
         entry.setdefault("bookAccount", "")
         entry.setdefault("bookEmails", [])
+        entry.setdefault("photo", "")
     if query:
         needle = query.strip().lower()
         found = [p for p in found

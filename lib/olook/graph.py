@@ -362,6 +362,38 @@ def events(account, calendar, start, end):
     return out
 
 
+# ----------------------------------------------------------------- picture
+
+def account_photo(account, size="96x96"):
+    """The account's own picture, as a data URI, or nothing.
+
+    One request per account rather than one per contact: a mailbox has a
+    single picture and five hundred contacts, and fetching each contact's
+    would be five hundred round trips for a list that is mostly initials
+    anyway.
+    """
+    token = oauth.access_token(grant(account))
+    # The sized endpoint is not on every mailbox; the plain one always is.
+    for path in ("/me/photos/%s/$value" % size, "/me/photo/$value"):
+        request = urllib.request.Request(GRAPH + path, headers={
+            "Authorization": "Bearer " + token})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                kind = response.headers.get("Content-Type") or "image/jpeg"
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            # 404 is a mailbox with no picture set, which is not a failure.
+            if exc.code in (401, 403):
+                return ""
+            continue
+        except urllib.error.URLError:
+            return ""
+        if raw:
+            return "data:%s;base64,%s" % (
+                kind.split(";")[0], base64.b64encode(raw).decode("ascii"))
+    return ""
+
+
 # ---------------------------------------------------------------- sending
 
 def send_mime(account, raw):

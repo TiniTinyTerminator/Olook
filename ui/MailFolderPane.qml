@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import QtQuick.Controls
 import qs.Commons
 import qs.Ui
@@ -343,12 +344,33 @@ Item {
 
           Text {
             anchors.centerIn: parent
+            // The initials are the fallback, not the thing being replaced:
+            // a picture that fails to load leaves them showing rather than a
+            // blank disc.
+            visible: accountPicture.status !== Image.Ready
             text: Model.initials(section.account ? section.account.name : "",
                                  section.account ? section.account.email : "")
             color: "white"
             font.family: ui.fontFamily
             font.pixelSize: Style.font.caption
             font.bold: true
+          }
+
+          Image {
+            id: accountPicture
+            anchors.fill: parent
+            source: section.account ? (section.account.avatar || "") : ""
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            visible: status === Image.Ready
+            layer.enabled: visible
+            layer.effect: OpacityMask {
+              maskSource: Rectangle {
+                width: accountPicture.width
+                height: accountPicture.height
+                radius: width / 2
+              }
+            }
           }
 
           // Collapsed there is no room for a count, so unread becomes a dot

@@ -94,6 +94,13 @@ has that this client is better off without.
   the same cache the Calendar tab reads would be a second plugin, because a
   plugin registers one bar widget and Olook's is the mail envelope.
 
+- **Gmail has no picture for the account itself.** A contact's picture comes
+  out of the vCard and a Microsoft mailbox's own comes from Graph, but
+  Google's needs the `profile` scope, which is another trip through consent
+  for a small thing. Contact pictures from a Microsoft mailbox are also not
+  fetched: that is one request per contact, five hundred round trips for a
+  list that is mostly initials.
+
 - **A calendar from a file cannot be added from the client.** `olook
   calendar-add --file x.ics` and `--url https://…` work, and the calendar
   then sits beside the account ones, but nothing in the window adds or

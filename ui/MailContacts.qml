@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import QtQuick.Controls
 import qs.Commons
 import qs.Ui
@@ -302,11 +303,29 @@ Item {
 
               Text {
                 anchors.centerIn: parent
+                visible: rowPicture.status !== Image.Ready
                 text: Model.initials(modelData.name, modelData.address)
                 color: "white"
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
+              }
+
+              Image {
+                id: rowPicture
+                anchors.fill: parent
+                source: modelData.photo || ""
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                visible: status === Image.Ready
+                layer.enabled: visible
+                layer.effect: OpacityMask {
+                  maskSource: Rectangle {
+                    width: rowPicture.width
+                    height: rowPicture.height
+                    radius: width / 2
+                  }
+                }
               }
             }
 
@@ -411,12 +430,30 @@ Item {
 
             Text {
               anchors.centerIn: parent
+              visible: bigPicture.status !== Image.Ready
               text: root.current
                 ? Model.initials(root.current.name, root.current.address) : ""
               color: "white"
               font.family: ui.fontFamily
               font.pixelSize: Style.font.body
               font.bold: true
+            }
+
+            Image {
+              id: bigPicture
+              anchors.fill: parent
+              source: root.current ? (root.current.photo || "") : ""
+              fillMode: Image.PreserveAspectCrop
+              asynchronous: true
+              visible: status === Image.Ready
+              layer.enabled: visible
+              layer.effect: OpacityMask {
+                maskSource: Rectangle {
+                  width: bigPicture.width
+                  height: bigPicture.height
+                  radius: width / 2
+                }
+              }
             }
           }
 
