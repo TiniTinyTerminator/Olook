@@ -94,6 +94,18 @@ has that this client is better off without.
   the same cache the Calendar tab reads would be a second plugin, because a
   plugin registers one bar widget and Olook's is the mail envelope.
 
+- **A calendar from a file cannot be added from the client.** `olook
+  calendar-add --file x.ics` and `--url https://…` work, and the calendar
+  then sits beside the account ones, but nothing in the window adds or
+  forgets one.
+
+- **Recurrence in a file is read, not honoured in full.** CalDAV and Graph
+  expand a range on the server; a file has to be expanded here, and what is
+  implemented is the part a timetable is written with -- the frequencies,
+  INTERVAL, COUNT, UNTIL, BYDAY for weekly rules, and EXDATE. BYSETPOS, a
+  moved single occurrence, and the rest are ignored rather than guessed at,
+  which gives the plain repetition instead of a wrong one.
+
 - **Calendars cannot be added or unsubscribed from here.** Which of the
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,

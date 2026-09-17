@@ -141,6 +141,9 @@ Item {
 
     var accounts = root.service ? root.service.accounts : []
     function nameOf(id) {
+      // Calendars read from a file belong to no mailbox, so they are grouped
+      // under where they came from rather than under an address.
+      if (id === "local") return "On this computer"
       for (var j = 0; j < accounts.length; j++)
         if (accounts[j].id === id) return accounts[j].email || accounts[j].name
       return id

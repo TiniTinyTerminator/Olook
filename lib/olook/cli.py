@@ -15,7 +15,8 @@ import subprocess
 import sys
 import time
 
-from . import (addressbook, caldav, carddav, config, graph, htmldoc, htmlrich, htmltext, keyring,
+from . import (addressbook, caldav, carddav, config, graph, htmldoc,
+               icsfeed, htmlrich, htmltext, keyring,
                mailbox, markdown, message, oauth, providers, rules, send, store)
 
 JSON_OUT = False
@@ -779,6 +780,46 @@ def _window(args):
     return start, end
 
 
+LOCAL_CALENDARS = "local"
+
+
+def _local_calendars():
+    return [icsfeed.describe(entry) for entry in icsfeed.sources()]
+
+
+def cmd_calendar_add(args):
+    """Remember a calendar kept in a file or behind a link."""
+    entry = icsfeed.add(args.name, args.file or args.url, args.colour)
+    # Read it once now, so a bad link is a failure here rather than a
+    # calendar that silently never shows anything.
+    window_start = datetime.datetime.now() - datetime.timedelta(days=30)
+    window_end = datetime.datetime.now() + datetime.timedelta(days=120)
+    try:
+        found = icsfeed.events(entry, window_start, window_end)
+    except icsfeed.FeedError:
+        icsfeed.remove(entry["id"])
+        raise
+
+    conn = store.connect()
+    store.replace_calendars(conn, LOCAL_CALENDARS, _local_calendars())
+    store.replace_events(conn, LOCAL_CALENDARS,
+                         int(window_start.timestamp()),
+                         int(window_end.timestamp()), found)
+    emit({"ok": True, "calendar": entry, "events": len(found)},
+         lambda d: "Added %s — %d events." % (d["calendar"]["name"], d["events"]))
+
+
+def cmd_calendar_forget(args):
+    """Stop showing a calendar that was kept in a file."""
+    icsfeed.remove(args.id)
+    conn = store.connect()
+    conn.execute("DELETE FROM events WHERE account = ? AND calendar = ?",
+                 (LOCAL_CALENDARS, str(args.id)))
+    conn.commit()
+    store.replace_calendars(conn, LOCAL_CALENDARS, _local_calendars())
+    emit({"ok": True, "removed": args.id}, lambda d: "Removed.")
+
+
 def cmd_calendar_auth(args):
     """Grant the calendar, which is a different ask from the mail."""
     account = config.account(args.account)
@@ -808,7 +849,12 @@ def cmd_calendars(args):
             for name in (args.show or []):
                 store.hide_calendar(conn, entry["id"], name, False)
 
-    found = store.calendars(conn, [e["id"] for e in _calendar_accounts(args)] or None)
+    if args.sync and not args.account:
+        store.replace_calendars(conn, LOCAL_CALENDARS, _local_calendars())
+    wanted = [e["id"] for e in _calendar_accounts(args)]
+    if not args.account and icsfeed.sources():
+        wanted.append(LOCAL_CALENDARS)
+    found = store.calendars(conn, wanted or None)
     payload = {"ok": not trouble or bool(found), "calendars": found}
     if trouble:
         payload["problems"] = trouble
@@ -843,9 +889,29 @@ def cmd_calendar(args):
             except CALENDAR_ERRORS as exc:
                 trouble.append({"account": entry["id"], "error": str(exc)})
 
+    if args.sync and not args.account:
+        store.replace_calendars(conn, LOCAL_CALENDARS, _local_calendars())
+        hidden_now = {c["id"] for c in store.calendars(conn, [LOCAL_CALENDARS])
+                      if c["hidden"]}
+        gathered = []
+        for entry in icsfeed.sources():
+            if entry.get("id") in hidden_now:
+                continue
+            try:
+                gathered.extend(icsfeed.events(
+                    entry,
+                    datetime.datetime.fromtimestamp(start),
+                    datetime.datetime.fromtimestamp(end)))
+            except icsfeed.FeedError as exc:
+                trouble.append({"account": str(entry.get("name") or entry.get("id")),
+                                "error": str(exc)})
+        store.replace_events(conn, LOCAL_CALENDARS, start, end, gathered)
+
+    scope = [e["id"] for e in accounts]
+    if not args.account and icsfeed.sources():
+        scope.append(LOCAL_CALENDARS)
     hidden = {c["id"] for c in store.calendars(conn) if c["hidden"]}
-    rows = [e for e in store.events(conn, [e["id"] for e in accounts] or None,
-                                    start, end)
+    rows = [e for e in store.events(conn, scope or None, start, end)
             if e["calendar"] not in hidden]
     payload = {"ok": not trouble or bool(rows), "events": rows,
                "count": len(rows), "start": start, "end": end}
@@ -1787,6 +1853,18 @@ def build_parser():
     p.add_argument("--sync", action="store_true",
                    help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
+
+    p = sub.add_parser("calendar-add",
+                       help="show a calendar kept in an .ics file or behind a link")
+    p.add_argument("--name", default="", help="what to call it")
+    p.add_argument("--file", default="", help="path to an .ics file")
+    p.add_argument("--url", default="", help="an https:// or webcal:// link")
+    p.add_argument("--colour", default="", help="#rrggbb")
+    p.set_defaults(func=cmd_calendar_add)
+
+    p = sub.add_parser("calendar-forget", help="stop showing one of those")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_calendar_forget)
 
     p = sub.add_parser("calendar-auth",
                        help="let the client read this account's calendar")
