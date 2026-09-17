@@ -661,6 +661,11 @@ Item {
   property string calendarFrom: ""
   property string calendarTo: ""
 
+  // Months already asked the server about. A month with nothing in it is not
+  // the same as a month nobody has fetched, and without this the calendar
+  // showed an empty grid for every month until somebody pressed refresh.
+  property var fetchedMonths: ({})
+
   function loadCalendar(from, to) {
     root.calendarFrom = String(from || "")
     root.calendarTo = String(to || "")
@@ -675,6 +680,14 @@ Item {
         return
       }
       root.events = (payload && payload.events) || []
+
+      var window = root.calendarFrom + ".." + root.calendarTo
+      if (root.fetchedMonths[window] || root.calendarSyncing) return
+      if (root.calendarAccounts.length === 0) return
+      // Marked before the answer comes back and left marked on failure, so
+      // one unreachable account cannot turn into a sync on every repaint.
+      root.fetchedMonths[window] = true
+      root.syncCalendar(null)
     }, "calendar")
   }
 

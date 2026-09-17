@@ -104,8 +104,10 @@ has that this client is better off without.
   new code, but nothing discovers those yet.
 - **Rules have no interface.** They work, and are managed with `olook rule
   add / list / remove`; nothing in the client shows or edits them.
-- **Notifications** beyond the bar badge: a desktop notification per message
-  with actions on it.
+- **Notifications carry one action, not several.** Clicking the popup opens
+  the message it is about. Reply, archive and delete from the notification
+  itself are not there, and a notification for several new messages opens the
+  newest rather than a list.
 
 ## Deliberately not worth having
 

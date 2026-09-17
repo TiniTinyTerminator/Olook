@@ -173,11 +173,49 @@ Panel {
 
     onNewMail: function (count, message) {
       if (!root.isPrimary || !mail.notifyOnNew || !message) return
-      Quickshell.execDetached([
-        "notify-send", "--app-name=Mail", "--icon=mail-unread",
-        Model.senderLabel(message),
-        String(message.subject || "") + (count > 1 ? "\nand " + (count - 1) + " more" : "")
-      ])
+      // Run rather than detached, because notify-send stays alive until the
+      // notification is answered and prints the action that answered it.
+      // That is the only way to learn the popup was clicked.
+      var process = notifier.createObject(root, {
+        command: ["notify-send", "--app-name=Mail", "--icon=mail-unread",
+                  "--action=default=Open",
+                  Model.senderLabel(message),
+                  String(message.subject || "")
+                    + (count > 1 ? "\nand " + (count - 1) + " more" : "")],
+        target: {
+          account: String(message.account || ""),
+          folder: String(message.folder || ""),
+          uid: Number(message.uid || 0)
+        }
+      })
+      if (process) process.running = true
+    }
+  }
+
+  Component {
+    id: notifier
+
+    Process {
+      id: notifyProc
+      property var target: null
+      running: false
+      stdout: SplitParser {
+        onRead: function (line) {
+          // Anything on stdout is the key of the action that was invoked;
+          // an expired or dismissed notification prints nothing at all.
+          if (String(line).trim() === "" || !notifyProc.target) return
+          if (!notifyProc.target.uid) {
+            root.openWindow({})
+            return
+          }
+          root.openWindow({
+            account: notifyProc.target.account,
+            folder: notifyProc.target.folder,
+            uid: notifyProc.target.uid
+          })
+        }
+      }
+      onExited: Qt.callLater(function () { notifyProc.destroy() })
     }
   }
 
