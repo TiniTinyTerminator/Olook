@@ -308,11 +308,26 @@ Item {
     // and the folder you actually asked for arrives moments later, so waiting
     // our turn matters more than giving up.
     if (root.syncing) return
-    // Marked before the result comes back, and left marked even on failure:
-    // retrying from onSyncingChanged would turn one unreachable folder into a
-    // loop of failing syncs. `g` still forces a fresh attempt.
+    // Marked before the result comes back, so that onSyncingChanged does not
+    // turn one slow folder into a second attempt while the first is running.
+    // A failure gives the mark back: a folder that could not be fetched once
+    // is worth trying again when it is next opened, and leaving it marked
+    // left a folder showing a count beside an empty list for the rest of the
+    // session with nothing that would ever fill it.
     root.syncedFolders[key] = true
-    root.sync(false)
+    root.sync(false, function (ok) {
+      if (!ok) delete root.syncedFolders[key]
+    })
+  }
+
+  // How many messages the server says are in the folder on screen. The tree
+  // gets this from IMAP; the list only has what has been fetched, and the
+  // difference between the two is worth saying out loud.
+  readonly property int currentFolderTotal: {
+    for (var i = 0; i < root.folders.length; i++)
+      if (root.folders[i].name === root.folder)
+        return Number(root.folders[i].total || 0)
+    return 0
   }
 
   onSyncingChanged: if (!root.syncing) Qt.callLater(root.ensureFolderSynced)
@@ -445,11 +460,15 @@ Item {
     }, "list")
   }
 
-  function sync(full) {
-    if (root.syncing || !root.accountId) return
+  function sync(full, done) {
+    if (root.syncing || !root.accountId) {
+      if (done) done(false)
+      return
+    }
     if (root.currentAccount && root.currentAccount.demo) {
       root.refreshStatus()
       root.loadMessages()
+      if (done) done(true)
       return
     }
     root.syncing = true
@@ -461,12 +480,14 @@ Item {
       root.syncing = false
       if (!ok) {
         reportFailure(payload, stderrText, "Could not reach the mail server")
+        if (done) done(false)
         return
       }
       var results = (payload && payload.results) || []
       for (var i = 0; i < results.length; i++) {
         if (results[i].ok === false) {
           reportFailure({ error: results[i].error }, "", "Sync failed")
+          if (done) done(false)
           return
         }
       }
@@ -475,6 +496,7 @@ Item {
       // finish() at the end of loadFolders reloads the message list, so the
       // rows this sync just fetched land on screen.
       root.loadFolders()
+      if (done) done(true)
     }, "sync")
   }
 

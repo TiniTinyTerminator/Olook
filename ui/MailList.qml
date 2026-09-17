@@ -388,7 +388,8 @@ Item {
 
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
-          text: root.service && root.service.loading ? "󰔟" : "󰇮"
+          text: root.service && (root.service.loading || root.service.syncing)
+            ? "󰔟" : "󰇮"
           color: ui.faint
           font.family: ui.fontFamily
           font.pixelSize: Style.space(34)
@@ -405,6 +406,13 @@ Item {
             if (root.service.query !== "") return "Nothing matches that search"
             if (root.service.filter === "unread") return "No unread mail"
             if (root.service.filter === "flagged") return "Nothing flagged"
+            // The tree's count comes from the server, the list from what has
+            // been fetched. Calling a folder empty when the server says it
+            // holds thousands is the one answer that is certainly wrong.
+            if (root.service.currentFolderTotal > 0)
+              return root.service.syncing
+                ? "Fetching this folder…"
+                : "Nothing fetched from this folder yet — press g to fetch it"
             return "This folder is empty"
           }
           color: ui.dim
