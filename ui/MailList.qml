@@ -25,6 +25,9 @@ Item {
   signal selectionCleared()
   signal bulkRequested(string action)
   signal filterChosen(string mode)
+  signal threadToggled(string key)
+  // Thread keys of the conversations opened in the list.
+  property var expandedThreads: ({})
 
   // Keys of the rows currently ticked, as "account|folder|uid". Keys rather
   // than indices because the list reorders under a sync.
@@ -153,13 +156,16 @@ Item {
           required property int index
 
           readonly property bool header: modelData && modelData.isHeader === true
+          // A message of a conversation opened above it: indented, and one
+          // line shorter, with no preview.
+          readonly property bool child: !header && modelData && modelData.threadChild === true
           readonly property bool current: !header && root.selectedRow === index
           readonly property bool picked: !header && modelData
             && root.selectedKeys.indexOf(modelData.account + "|" + modelData.folder
                                          + "|" + modelData.uid) >= 0
 
           width: listView.width
-          height: header ? Style.space(28) : Style.space(76)
+          height: header ? Style.space(28) : (child ? Style.space(52) : Style.space(76))
 
           // ---- group header
           Text {
@@ -180,7 +186,7 @@ Item {
           Rectangle {
             visible: !rowItem.header
             anchors.fill: parent
-            anchors.leftMargin: Style.space(6)
+            anchors.leftMargin: rowItem.child ? Style.space(28) : Style.space(6)
             anchors.rightMargin: Style.space(6)
             anchors.topMargin: Style.space(1)
             anchors.bottomMargin: Style.space(1)
@@ -215,8 +221,14 @@ Item {
 
             // How many messages the conversation holds, when the list is
             // grouped. Outlook puts the number on the row; so does this.
+            // Pressing it opens the conversation in the list.
             Rectangle {
-              visible: !!(rowItem.modelData && rowItem.modelData.threadCount > 1)
+              id: threadBadge
+              readonly property bool open: !!(rowItem.modelData
+                && root.expandedThreads[rowItem.modelData.threadKey])
+              visible: !rowItem.child
+                       && !!(rowItem.modelData && rowItem.modelData.threadCount > 1)
+              z: 2
               anchors.right: parent.right
               anchors.rightMargin: Style.space(10)
               anchors.bottom: parent.bottom
@@ -224,20 +236,30 @@ Item {
               width: threadCount.implicitWidth + Style.space(12)
               height: Style.space(16)
               radius: height / 2
-              color: Util.alpha(ui.accent, 0.18)
+              color: Util.alpha(ui.accent, threadHover.containsMouse ? 0.3 : 0.18)
 
               Text {
                 id: threadCount
                 textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: rowItem.modelData
-                  ? rowItem.modelData.threadCount + (
+                  ? (threadBadge.open ? "󰅀 " : "󰅂 ") + rowItem.modelData.threadCount + (
                       rowItem.modelData.threadUnread > 0
                         ? " · " + rowItem.modelData.threadUnread + " new" : "")
                   : ""
                 color: ui.accent
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.caption
+              }
+
+              MouseArea {
+                id: threadHover
+                anchors.fill: parent
+                // A little larger than the pill, which is small to aim at.
+                anchors.margins: -Style.space(4)
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.threadToggled(String(rowItem.modelData.threadKey))
               }
             }
 
@@ -345,6 +367,7 @@ Item {
 
               Text {
                 textFormat: Text.PlainText
+                visible: !rowItem.child
                 width: parent.width
                 text: rowItem.modelData ? String(rowItem.modelData.preview || "") : ""
                 color: ui.faint

@@ -89,6 +89,28 @@ function withGroupHeaders(messages, now) {
   return rows
 }
 
+// A conversation opened in the list: its other messages follow the row,
+// marked so the list can draw them indented beneath it.
+function withThreads(rows, expanded) {
+  var out = []
+  for (var i = 0; i < (rows || []).length; i++) {
+    var row = rows[i]
+    out.push(row)
+    if (!row || row.isHeader || !row.threadKey || !expanded[row.threadKey]) continue
+    var members = row.thread || []
+    for (var j = 0; j < members.length; j++) {
+      var child = {}
+      for (var key in members[j]) child[key] = members[j][key]
+      child.isHeader = false
+      child.threadChild = true
+      child.threadKey = row.threadKey
+      child.key = child.account + ":" + child.folder + ":" + child.uid
+      out.push(child)
+    }
+  }
+  return out
+}
+
 function fileSize(bytes) {
   var value = Number(bytes || 0)
   if (value < 1024) return value + " B"

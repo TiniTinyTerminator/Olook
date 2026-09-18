@@ -54,8 +54,6 @@ has that this client is better off without.
   process already holds one for IDLE and could carry the rest. Outlook has no
   `LIST-STATUS` and still asks each folder in turn.
 
-- **Conversations do not expand in the list.** The row is the newest message
-  and the reading pane lists the rest; Outlook expands the row itself.
 
 ## Composing
 

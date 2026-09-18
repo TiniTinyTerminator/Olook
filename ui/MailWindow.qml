@@ -71,9 +71,29 @@ Item {
 
   // "Yesterday", "This week" and so on describe a list in date order. Sorted
   // by sender or subject they would be labels over nothing.
-  readonly property var rows: mail.sortMode === "date"
+  readonly property var rows: Model.withThreads(mail.sortMode === "date"
     ? Model.withGroupHeaders(mail.messages, new Date())
-    : (mail.messages || [])
+    : (mail.messages || []), root.expandedThreads)
+
+  // Conversations opened in the list, by thread key.
+  property var expandedThreads: ({})
+
+  function toggleThread(key) {
+    if (!key) return
+    var next = {}
+    for (var k in root.expandedThreads) next[k] = root.expandedThreads[k]
+    if (next[key]) delete next[key]
+    else next[key] = true
+    // Rows come and go above the selection, so follow the message rather
+    // than the index -- or the highlight lands on a different one.
+    var keep = root.current ? root.current.key : ""
+    root.expandedThreads = next
+    if (keep === "") return
+    for (var i = 0; i < root.rows.length; i++) {
+      if (root.rows[i].key === keep) { root.selectedRow = i; return }
+    }
+    root.selectedRow = -1
+  }
   // The reading pane gives way to the sign-in card when there is no account,
   // or the current one lost its authorization.
   readonly property bool needsSignIn: mail.ready
@@ -1177,6 +1197,8 @@ Item {
                 onRowToggled: function (index) { root.toggleSelection(index) }
                 onRowRanged: function (index) { root.selectRange(index) }
                 onSelectionCleared: root.clearSelection()
+                onThreadToggled: function (key) { root.toggleThread(key) }
+                expandedThreads: root.expandedThreads
                 onBulkRequested: function (action) {
                   var picked = root.selectionOrCurrent()
                   if (picked.length === 0) return
