@@ -943,6 +943,29 @@ def known_uids(conn, account, folder):
         "SELECT uid FROM messages WHERE account = ? AND folder = ?", (account, folder))}
 
 
+def unthreaded_replies(conn, account, folder):
+    """UIDs cached before threading headers were kept that look like replies.
+
+    Only replies need them: a message that starts a conversation has nothing
+    to point back to, and refetching every newsletter would find nothing.
+    """
+    return [int(row["uid"]) for row in conn.execute(
+        "SELECT uid FROM messages WHERE account = ? AND folder = ? "
+        "AND refs = '' AND in_reply_to = '' AND ("
+        "lower(subject) LIKE 're:%' OR lower(subject) LIKE 'aw:%' OR "
+        "lower(subject) LIKE 'antw:%' OR lower(subject) LIKE 'sv:%')",
+        (account, folder))]
+
+
+def set_thread_headers(conn, account, folder, found):
+    conn.executemany(
+        "UPDATE messages SET refs = ?, in_reply_to = ? "
+        "WHERE account = ? AND folder = ? AND uid = ?",
+        [(refs, parent, account, folder, uid)
+         for uid, (refs, parent) in found.items()])
+    conn.commit()
+
+
 def set_state(conn, key, value):
     conn.execute("INSERT OR REPLACE INTO state (key, value) VALUES (?, ?)",
                  (key, str(value)))

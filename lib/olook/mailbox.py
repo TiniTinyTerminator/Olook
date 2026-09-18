@@ -492,6 +492,25 @@ class Session:
                 out[uid] = _flags_of(group["raw"])
         return out
 
+    def fetch_thread_headers(self, uids):
+        """{uid: (references, in_reply_to)} for messages in the selected folder."""
+        out = {}
+        if not uids:
+            return out
+        data = self._ok(
+            self.imap.uid("FETCH", uid_ranges(uids),
+                          "(UID BODY.PEEK[HEADER.FIELDS (REFERENCES IN-REPLY-TO)])"),
+            "Could not read message headers")
+        for group in _group_fetch(data):
+            uid = _uid_of(group["raw"])
+            if not uid or not group["literals"]:
+                continue
+            parsed = email.message_from_bytes(group["literals"][0],
+                                              policy=email.policy.default)
+            out[uid] = (" ".join(str(parsed.get("References") or "").split()),
+                        str(parsed.get("In-Reply-To") or "").strip())
+        return out
+
     def fetch_headers(self, uids):
         """Return [{uid, flags, size, attachments, headers}] for `uids`."""
         if not uids:

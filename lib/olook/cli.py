@@ -479,6 +479,25 @@ PREFETCH_COUNT = 15
 PREFETCH_MAX_BYTES = 2 * 1024 * 1024
 
 
+def _backfill_threads(session, conn, account, folder):
+    """Once per folder, fetch the threading headers old cached replies lack.
+
+    Mail cached before References and In-Reply-To were kept threads on its
+    subject until it is fetched again; this fetches just those two headers
+    for the replies among it, once, instead of waiting on a full resync.
+    """
+    key = f"threaded:{account['id']}:{folder}"
+    if store.get_state(conn, key):
+        return 0
+    uids = store.unthreaded_replies(conn, account["id"], folder)
+    found = {}
+    for index in range(0, len(uids), 200):
+        found.update(session.fetch_thread_headers(uids[index:index + 200]))
+    store.set_thread_headers(conn, account["id"], folder, found)
+    store.set_state(conn, key, 1)
+    return len(found)
+
+
 def _prefetch_bodies(session, conn, account, folder, count):
     """Fetch the top of a folder's bodies while the connection is open anyway.
 
@@ -532,6 +551,7 @@ def cmd_sync(args):
                                               limit=args.limit, full=args.full)
                 summary["prefetched"] = _prefetch_bodies(
                     session, conn, account, folder, PREFETCH_COUNT)
+                summary["rethreaded"] = _backfill_threads(session, conn, account, folder)
                 # Folder pane counts come from STATUS, fetched for every folder
                 # at once where the server allows it.
                 counts = session.status_all(entry["name"] for entry in folders)
