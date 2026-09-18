@@ -129,6 +129,40 @@ Item {
     if (entry.day) root.selected = String(entry.day)
   }
 
+  // An appointment asked for from outside -- the bar widget summoning the
+  // window on one. The day is known immediately; the appointment itself only
+  // once that month has been read, so the request waits for it.
+  property string pendingDay: ""
+  property string pendingUid: ""
+
+  function openByUid(day, uid) {
+    root.pendingDay = String(day || "")
+    root.pendingUid = String(uid || "")
+    if (root.pendingDay === "") return
+    root.month = root.startOfMonth(root.dateOf(root.pendingDay))
+    root.selected = root.pendingDay
+    root.ask()
+    root.resolvePending()
+  }
+
+  function resolvePending() {
+    if (root.pendingDay === "") return
+    var list = root.eventsOn(root.pendingDay)
+    for (var i = 0; i < list.length; i++) {
+      // Without a uid the day itself is the answer, which is still better
+      // than the month the window would otherwise open on.
+      if (root.pendingUid === ""
+          || String(list[i].uid || "") === root.pendingUid) {
+        root.showEvent(list[i])
+        root.pendingDay = ""
+        root.pendingUid = ""
+        return
+      }
+    }
+  }
+
+  onEventsChanged: root.resolvePending()
+
   onSelectedChanged: {
     // Moving to another day is leaving the appointment that was open on the
     // last one, unless the appointment is what moved us.

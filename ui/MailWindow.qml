@@ -113,6 +113,12 @@ Item {
 
     if (payload.folder && payload.folder !== mail.folder) mail.setFolder(payload.folder)
     if (payload.uid) pendingUid = Number(payload.uid)
+    // A summon naming a day opens the calendar on it, and on the appointment
+    // itself when one is named. This is how the bar widget opens one.
+    if (payload.view === "calendar" && payload.day)
+      Qt.callLater(function () {
+        calendarPane.openByUid(String(payload.day), String(payload.eventUid || ""))
+      })
     // `compose` may be a draft rather than just true, so a bind or a
     // mailto: handler can open the client with the message half written.
     if (payload.compose)
@@ -1272,6 +1278,7 @@ Item {
                 }
 
                 MailCalendar {
+                  id: calendarPane
                   anchors.fill: parent
                   visible: root.view === "calendar"
                   ui: ui

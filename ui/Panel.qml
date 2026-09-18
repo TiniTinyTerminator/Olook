@@ -322,7 +322,10 @@ Panel {
           PanelHero {
             id: hero
             width: parent.width
-            title: "Olook"
+            // No title: the panel hangs off an envelope in the bar and its
+            // own line already says how much unread mail there is. A name
+            // above that is a label on a thing you just pointed at.
+            title: ""
             meta: {
               if (!mail.configured) return "No account yet"
               if (mail.syncing) return "Checking for mail…"
