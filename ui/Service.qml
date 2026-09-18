@@ -1420,16 +1420,46 @@ Item {
   // it was started from, whatever the main window is showing by then.
   // Messages written while nothing could be reached. They wait rather than
   // being lost with the window they were typed in.
+  // Messages given a time to go out wait there too, counted apart.
   property int outboxWaiting: 0
+  property int outboxScheduled: 0
+  property var outboxItems: []
 
-  function refreshOutbox() {
+  function refreshOutbox(then) {
     run(["outbox"], function (ok, payload) {
       root.outboxWaiting = ok && payload ? Number(payload.waiting || 0) : 0
+      root.outboxScheduled = ok && payload ? Number(payload.scheduled || 0) : 0
+      root.outboxItems = ok && payload ? (payload.messages || []) : []
+      if (then) then()
     }, "outbox")
   }
 
+  // Read the outbox afresh each time rather than trusting the counts: a
+  // message scheduled from the client window has to be sent by the bar's
+  // syncer, which did not see it being written.
   function flushOutbox() {
-    if (root.outboxWaiting === 0) return
+    refreshOutbox(function () {
+      var now = Date.now() / 1000
+      var due = 0
+      for (var i = 0; i < root.outboxItems.length; i++)
+        if (Number(root.outboxItems[i].sendAt || 0) <= now) due++
+      if (due > 0) root.sendDue()
+    })
+  }
+
+  function cancelScheduled(path) {
+    run(["outbox", "--cancel", String(path)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not take the message back")
+      } else {
+        root.notice = payload && payload.draft ? "Moved back to Drafts" : "Cancelled"
+        noticeTimer.restart()
+      }
+      root.refreshOutbox()
+    }, "outbox")
+  }
+
+  function sendDue() {
     run(["outbox", "--flush"], function (ok, payload) {
       if (ok && payload && payload.sent > 0) {
         root.notice = payload.sent === 1 ? "Sent the message that was waiting"
@@ -1442,11 +1472,18 @@ Item {
 
   function send(draft, handler, accountId) {
     root.busy = true
-    runWithInput(["send", "--account", String(accountId || root.accountId),
-                  "--draft", "-", "--queue"],
-                 JSON.stringify(draft), function (ok, payload, stderrText) {
+    var args = ["send", "--account", String(accountId || root.accountId),
+                "--draft", "-", "--queue"]
+    if (draft && draft.sendAt) args = args.concat(["--at", String(draft.sendAt)])
+    runWithInput(args, JSON.stringify(draft), function (ok, payload, stderrText) {
       root.busy = false
-      if (ok && payload && payload.queued) {
+      if (ok && payload && payload.scheduled) {
+        var at = new Date(Number(payload.sendAt) * 1000)
+        root.notice = "Will be sent " + Qt.formatDateTime(at, "ddd d MMM, HH:mm")
+        noticeTimer.restart()
+        root.refreshOutbox()
+        root.sent()
+      } else if (ok && payload && payload.queued) {
         // Not sent, but not lost either: it goes out with the next sync.
         root.notice = "No connection — kept to send later"
         noticeTimer.restart()
@@ -1837,6 +1874,15 @@ Item {
     // polling on top of it would just be a second, slower way to find out.
     running: root.configured && root.pollEnabled && !root.watching
     onTriggered: root.sync(false)
+  }
+
+  // Scheduled mail is sent by whichever syncer is running, and a syncer
+  // holding an IDLE connection has no poll to hang it on.
+  Timer {
+    interval: 60 * 1000
+    repeat: true
+    running: root.configured && root.pollEnabled
+    onTriggered: root.flushOutbox()
   }
 
   Component.onCompleted: {

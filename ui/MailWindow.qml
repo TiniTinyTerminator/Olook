@@ -1364,11 +1364,10 @@ Item {
               var total = mail.messages.length
               // A message waiting on a connection is worth saying every time
               // it is true, not only in the moment it failed to go.
-              var waiting = mail.outboxWaiting > 0
-                ? ",  " + mail.outboxWaiting
-                  + (mail.outboxWaiting === 1 ? " waiting to send"
-                                              : " waiting to send")
-                : ""
+              var waiting = (mail.outboxWaiting > 0
+                ? ",  " + mail.outboxWaiting + " waiting to send" : "")
+                + (mail.outboxScheduled > 0
+                ? ",  " + mail.outboxScheduled + " scheduled" : "")
               return total + (total === 1 ? " message" : " messages")
                 + (mail.unread > 0 ? ",  " + mail.unread + " unread" : "")
                 + waiting

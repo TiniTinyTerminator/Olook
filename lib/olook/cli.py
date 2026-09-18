@@ -10,6 +10,7 @@ import argparse
 import datetime
 import json
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -1555,6 +1556,15 @@ def cmd_send(args):
     else:
         with open(args.draft, "r", encoding="utf-8") as handle:
             draft = json.load(handle)
+    if args.at:
+        # Send later: the outbox already holds messages until a sync can send
+        # them, so a scheduled one is the same file with a time on it.
+        send_at = _parse_send_at(args.at)
+        path = _queue_message(account["id"], draft, send_at)
+        emit({"ok": True, "queued": True, "scheduled": True, "sendAt": send_at,
+              "path": str(path)},
+             lambda d: f"Will be sent at {datetime.datetime.fromtimestamp(d['sendAt']):%Y-%m-%d %H:%M}.")
+        return
     try:
         result = send.send(account, draft, save_to_sent=not args.no_save)
     except send.SendError as exc:
@@ -1579,12 +1589,38 @@ def _looks_unreachable(error):
             or "timed out" in text)
 
 
-def _queue_message(account_id, draft):
+def _queue_message(account_id, draft, send_at=0):
     config.ensure_dirs()
     stamp = f"{int(time.time() * 1000)}-{account_id}"
     path = config.OUTBOX_DIR / f"{_safe(stamp)}.json"
-    path.write_text(json.dumps({"account": account_id, "draft": draft}),
-                    encoding="utf-8")
+    held = {"account": account_id, "draft": draft}
+    if send_at:
+        held["sendAt"] = int(send_at)
+    path.write_text(json.dumps(held), encoding="utf-8")
+    return path
+
+
+def _parse_send_at(text):
+    """Seconds since the epoch, or a time as the calendar commands take it."""
+    value = str(text).strip()
+    send_at = int(value) if value.isdigit() else _parse_when(value, "sending")
+    if send_at <= time.time():
+        raise CliError("That time has already passed.")
+    return send_at
+
+
+def _held(path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _outbox_path(text):
+    """A path from `outbox`'s own listing, and nothing outside the outbox."""
+    path = pathlib.Path(text).resolve()
+    if path.parent != config.OUTBOX_DIR.resolve() or not path.is_file():
+        raise CliError("That message is no longer waiting in the outbox.")
     return path
 
 
@@ -1592,34 +1628,72 @@ def cmd_outbox(args):
     """What is waiting to go out, and a nudge to try again."""
     config.ensure_dirs()
     waiting = sorted(config.OUTBOX_DIR.glob("*.json"))
+    now = time.time()
+
+    if args.cancel:
+        # Taking a message back puts it in Drafts, so what was written is
+        # never lost with the schedule.
+        path = _outbox_path(args.cancel)
+        held = _held(path) or {}
+        account = config.account(held.get("account"))
+        draft = held.get("draft") or {}
+        saved = None
+        if not account.get("demo"):
+            saved = send.save_draft(account, draft)
+        path.unlink(missing_ok=True)
+        emit({"ok": True, "cancelled": str(path), "draft": saved,
+              "subject": draft.get("subject", "")},
+             lambda d: "Moved back to Drafts." if d["draft"] else "Cancelled.")
+        return
+
     if not args.flush:
         items = []
         for path in waiting:
-            try:
-                held = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
+            held = _held(path)
+            if held is None:
                 continue
+            draft = held.get("draft") or {}
             items.append({"path": str(path), "account": held.get("account", ""),
-                          "subject": (held.get("draft") or {}).get("subject", "")})
-        emit({"ok": True, "waiting": len(items), "messages": items},
-             lambda d: f"{d['waiting']} waiting to send")
+                          "subject": draft.get("subject", ""),
+                          "to": draft.get("to", []),
+                          "sendAt": int(held.get("sendAt") or 0)})
+        scheduled = sum(1 for item in items if item["sendAt"] > now)
+        emit({"ok": True, "waiting": len(items) - scheduled,
+              "scheduled": scheduled, "messages": items},
+             lambda d: f"{d['waiting']} waiting to send, {d['scheduled']} scheduled")
         return
 
+    # The bar and an open window both flush, so a message is claimed by
+    # renaming it before it is sent: the rename succeeds for one of them and
+    # the other finds the file gone. A claim left behind by a crash is
+    # released once it is old enough that no send can still be running.
+    for stale in config.OUTBOX_DIR.glob("*.sending"):
+        if now - stale.stat().st_mtime > 900:
+            stale.rename(stale.with_suffix(".json"))
+            waiting.append(stale.with_suffix(".json"))
+
     sent, failed = [], []
-    for path in waiting:
-        try:
-            held = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+    for path in sorted(set(waiting)):
+        held = _held(path)
+        if held is None:
             path.unlink(missing_ok=True)
+            continue
+        if int(held.get("sendAt") or 0) > now:
+            continue
+        claim = path.with_suffix(".sending")
+        try:
+            path.rename(claim)
+        except FileNotFoundError:
             continue
         try:
             account = config.account(held.get("account"))
             send.send(account, held.get("draft") or {})
         except Exception as exc:
             # Still no connection, or an account that has since gone: leave it.
+            claim.rename(path)
             failed.append({"path": str(path), "error": str(exc)})
             continue
-        path.unlink(missing_ok=True)
+        claim.unlink(missing_ok=True)
         sent.append(str(path))
     emit({"ok": True, "sent": len(sent), "failed": len(failed),
           "errors": failed},
@@ -2029,8 +2103,10 @@ def build_parser():
                    help="one row per conversation, newest of each")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("outbox", help="messages waiting for a connection")
-    p.add_argument("--flush", action="store_true", help="try sending them now")
+    p = sub.add_parser("outbox", help="messages waiting for a connection or a time")
+    p.add_argument("--flush", action="store_true", help="send whatever is due now")
+    p.add_argument("--cancel", metavar="PATH",
+                   help="take a waiting message back into Drafts")
     p.set_defaults(func=cmd_outbox)
 
     p = sub.add_parser("markdown", help="render markdown from stdin to HTML")
@@ -2227,6 +2303,7 @@ def build_parser():
     p.add_argument("--no-save", action="store_true", help="skip the Sent copy")
     p.add_argument("--queue", action="store_true",
                    help="keep it in the outbox if the server cannot be reached")
+    p.add_argument("--at", help="send later: YYYY-MM-DDTHH:MM, or epoch seconds")
     p.set_defaults(func=cmd_send)
 
     p = sub.add_parser("draft-save", help="store a JSON draft in Drafts")

@@ -215,6 +215,7 @@ Item {
             width: parent.width
             spacing: Style.space(14)
             visible: root.activeSection === "general"
+            onVisibleChanged: if (visible) service.refreshOutbox()
 
             Text {
               textFormat: Text.PlainText
@@ -258,6 +259,70 @@ Item {
                 value: "never"
                 label: "Never, always ask"
                 hint: "Every message offers the button and none acts on its own."
+              }
+            }
+
+            // Waiting in the outbox: scheduled, or written while offline.
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+              visible: service.outboxItems.length > 0
+
+              Text {
+                textFormat: Text.PlainText
+                text: "Waiting to be sent"
+                color: ui.foreground
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.subtitle
+              }
+
+              Repeater {
+                model: service.outboxItems
+
+                delegate: Item {
+                  required property var modelData
+                  width: parent.width
+                  height: Style.space(40)
+
+                  Column {
+                    anchors.left: parent.left
+                    anchors.right: outboxCancel.left
+                    anchors.rightMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                      width: parent.width
+                      textFormat: Text.PlainText
+                      elide: Text.ElideRight
+                      text: String(modelData.subject || "(no subject)")
+                      color: ui.foreground
+                      font.family: ui.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+
+                    Text {
+                      width: parent.width
+                      textFormat: Text.PlainText
+                      elide: Text.ElideRight
+                      text: (modelData.sendAt > Date.now() / 1000
+                        ? "Goes out " + Qt.formatDateTime(new Date(modelData.sendAt * 1000),
+                                                          "ddd d MMM, HH:mm")
+                        : "Waiting for a connection")
+                        + ((modelData.to || []).length > 0 ? " — to " + modelData.to.join(", ") : "")
+                      color: ui.faint
+                      font.family: ui.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
+                  }
+
+                  SettingsButton {
+                    id: outboxCancel
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    label: "Back to Drafts"
+                    onTriggered: service.cancelScheduled(modelData.path)
+                  }
+                }
               }
             }
 

@@ -62,8 +62,8 @@ has that this client is better off without.
 
 ## Composing
 
-- **Send later**, and **recall** — the second only works between Exchange
-  mailboxes anyway.
+- **Recall** only works between Exchange mailboxes, and asks the recipient's
+  server to delete something already delivered. Nothing to build on IMAP.
 
 - **The bar widget's settings are still the widget's.** The Bar widget page
   shows the sync interval and the notification switch and says where to change

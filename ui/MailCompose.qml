@@ -412,6 +412,52 @@ Item {
     root.sendRequested(root.payload())
   }
 
+  // Send later: the same draft with a time on it, held in the outbox until
+  // then. `when` is a Date.
+  function submitAt(when) {
+    if (!canSend || !when || isNaN(when.getTime())) return
+    var draft = root.payload()
+    draft.sendAt = Math.floor(when.getTime() / 1000)
+    laterPopup.close()
+    root.sendRequested(draft)
+  }
+
+  // The times people actually pick, worked out when the menu opens.
+  function laterChoices() {
+    var now = new Date()
+    var out = []
+    var hour = new Date(now.getTime() + 3600 * 1000)
+    hour.setMinutes(Math.ceil(hour.getMinutes() / 5) * 5, 0, 0)
+    out.push({ label: "In an hour", when: hour })
+    if (now.getHours() < 17) {
+      var evening = new Date(now); evening.setHours(18, 0, 0, 0)
+      out.push({ label: "This evening", when: evening })
+    }
+    var tomorrow = new Date(now); tomorrow.setDate(now.getDate() + 1)
+    tomorrow.setHours(8, 0, 0, 0)
+    out.push({ label: "Tomorrow morning", when: tomorrow })
+    var monday = new Date(now)
+    monday.setDate(now.getDate() + ((8 - now.getDay()) % 7 || 7))
+    monday.setHours(8, 0, 0, 0)
+    if (monday.getTime() !== tomorrow.getTime())
+      out.push({ label: "Monday morning", when: monday })
+    return out
+  }
+
+  // "2026-09-21 09:30", or just "09:30" for the next time the clock says so.
+  function parseLater(text) {
+    var value = String(text || "").trim()
+    var full = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})$/.exec(value)
+    if (full) return new Date(Number(full[1]), Number(full[2]) - 1, Number(full[3]),
+                              Number(full[4]), Number(full[5]))
+    var clock = /^(\d{1,2}):(\d{2})$/.exec(value)
+    if (!clock) return null
+    var when = new Date()
+    when.setHours(Number(clock[1]), Number(clock[2]), 0, 0)
+    if (when.getTime() <= Date.now()) when.setDate(when.getDate() + 1)
+    return when
+  }
+
   Rectangle {
     anchors.fill: parent
     color: ui.background
@@ -441,7 +487,7 @@ Item {
         font.pixelSize: Style.font.title
         font.bold: true
         elide: Text.ElideRight
-        width: parent.width - Style.space(280)
+        width: parent.width - Style.space(320)
       }
 
       Row {
@@ -487,6 +533,186 @@ Item {
             hoverEnabled: true
             cursorShape: root.canSend ? Qt.PointingHandCursor : Qt.ArrowCursor
             onClicked: root.submit()
+          }
+        }
+
+        Rectangle {
+          id: laterButton
+          width: Style.space(30)
+          height: Style.space(30)
+          radius: ui.radius
+          color: laterHover.containsMouse || laterPopup.opened ? ui.hover : "transparent"
+          border.width: 1
+          border.color: ui.border
+
+          Text {
+            anchors.centerIn: parent
+            text: "\uDB80\uDCF0"
+            color: root.canSend ? ui.dim : ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.iconSmall
+          }
+
+          MouseArea {
+            id: laterHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: root.canSend ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: if (root.canSend) {
+              laterPopup.choices = root.laterChoices()
+              laterField.text = ""
+              laterPopup.open()
+            }
+          }
+
+          PanelToolTip {
+            visible: laterHover.containsMouse && !laterPopup.opened
+            text: "Send later"
+            fontFamily: ui.fontFamily
+          }
+
+          Popup {
+            id: laterPopup
+            property var choices: []
+            readonly property var typed: root.parseLater(laterField.text)
+            readonly property bool typedOk: !!typed && typed.getTime() > Date.now()
+
+            y: laterButton.height + Style.space(6)
+            x: laterButton.width - width
+            width: Style.space(260)
+            padding: Style.space(6)
+            modal: false
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+            background: Rectangle {
+              color: ui.surface
+              radius: ui.radius
+              border.width: ui.hairline
+              border.color: ui.border
+            }
+
+            contentItem: Column {
+              spacing: Style.space(2)
+
+              Text {
+                textFormat: Text.PlainText
+                leftPadding: Style.space(8)
+                bottomPadding: Style.space(4)
+                text: "Send later"
+                color: ui.faint
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Repeater {
+                model: laterPopup.choices
+
+                delegate: Rectangle {
+                  required property var modelData
+                  width: laterPopup.availableWidth
+                  height: Style.space(30)
+                  radius: ui.radius
+                  color: choiceHover.containsMouse ? ui.hover : "transparent"
+
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.label
+                    color: ui.foreground
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.space(8)
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Qt.formatDateTime(modelData.when, "ddd HH:mm")
+                    color: ui.dim
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  MouseArea {
+                    id: choiceHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.submitAt(modelData.when)
+                  }
+                }
+              }
+
+              Rectangle {
+                width: laterPopup.availableWidth
+                height: ui.hairline
+                color: ui.border
+              }
+
+              Item {
+                width: laterPopup.availableWidth
+                height: Style.space(34)
+
+                TextInput {
+                  id: laterField
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(8)
+                  anchors.right: laterGo.left
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  clip: true
+                  color: ui.foreground
+                  selectionColor: Util.alpha(ui.accent, 0.35)
+                  selectedTextColor: ui.foreground
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  onAccepted: if (laterPopup.typedOk) root.submitAt(laterPopup.typed)
+
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: laterField.text === ""
+                    text: "YYYY-MM-DD HH:MM, or HH:MM"
+                    color: ui.faint
+                    font: laterField.font
+                  }
+                }
+
+                Rectangle {
+                  id: laterGo
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: laterGoText.implicitWidth + Style.space(16)
+                  height: Style.space(26)
+                  radius: ui.radius
+                  color: laterPopup.typedOk
+                    ? (laterGoHover.containsMouse ? Qt.lighter(ui.accent, 1.12) : ui.accent)
+                    : Util.alpha(ui.foreground, 0.08)
+
+                  Text {
+                    id: laterGoText
+                    anchors.centerIn: parent
+                    text: "Schedule"
+                    color: laterPopup.typedOk ? ui.background : ui.faint
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                  }
+
+                  MouseArea {
+                    id: laterGoHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: laterPopup.typedOk ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: if (laterPopup.typedOk) root.submitAt(laterPopup.typed)
+                  }
+                }
+              }
+            }
           }
         }
 
