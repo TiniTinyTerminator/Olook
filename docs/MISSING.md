@@ -103,6 +103,12 @@ has that this client is better off without.
   moved single occurrence, and the rest are ignored rather than guessed at,
   which gives the plain repetition instead of a wrong one.
 
+- **One plugin cannot summon another's window from inside the shell.** A
+  plugin's `bar.shell` handle is scoped to itself: `summon` is there, takes
+  the arguments, and quietly does nothing for somebody else's overlay. The
+  calendar widget therefore asks through `omarchy-shell` from outside, which
+  is a process per click rather than a call.
+
 - **Reminders are the widget's, not the engine's.** The notification before
   an appointment comes from the bar widget, so it only fires while the shell
   is running and only for appointments already fetched into it. Nothing wakes
