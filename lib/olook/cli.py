@@ -891,6 +891,107 @@ def cmd_calendar_auth(args):
     _run_grant(args, account, grant, "calendar")
 
 
+def _parse_when(text, what):
+    """A time on the command line: 2026-09-22T14:00, or 2026-09-22 for a day."""
+    value = str(text or "").strip()
+    for pattern in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+        try:
+            return int(datetime.datetime.strptime(value, pattern).timestamp())
+        except ValueError:
+            continue
+    raise CliError(f"Not a time for {what}: {text}. Use YYYY-MM-DDTHH:MM.")
+
+
+def _find_calendar(conn, account, calendar_id):
+    """A calendar by id from the cache, or the account's first writable one."""
+    found = store.calendars(conn, [account["id"]])
+    if not found:
+        found = calendar_for(account).calendars(account)
+        store.replace_calendars(conn, account["id"], found)
+    if calendar_id:
+        for entry in found:
+            if entry["id"] == calendar_id:
+                return entry
+        raise CliError(f"No calendar called {calendar_id} on this account.")
+    writable = [entry for entry in found if not entry.get("readOnly")]
+    if not writable:
+        raise CliError("This account has no calendar that takes new appointments.")
+    # The account's own calendar, not whichever shared one sorts first --
+    # "Family" comes before "someone@gmail.com" alphabetically, and a new
+    # appointment landing in the family's calendar is a surprise. Google names
+    # the primary after the address; Outlook calls it Calendar or Agenda.
+    own = str(account.get("email", "")).lower()
+    for entry in writable:
+        if entry["id"].lower() == own or entry["name"].lower() == own:
+            return entry
+    for entry in writable:
+        if entry["name"].lower() in ("calendar", "agenda", "kalender"):
+            return entry
+    return writable[0]
+
+
+def cmd_event_add(args):
+    """Put a new appointment in a calendar."""
+    account = config.account(args.account)
+    backend = calendar_for(account)
+    if not backend.supports(account):
+        raise CliError("That account has no calendar to add to.")
+    start = _parse_when(args.start, "the start")
+    if args.all_day and len(str(args.start).strip()) == 10:
+        # A day given for an all-day appointment is a day, whatever the
+        # clock here says about where it begins in UTC.
+        start = int(datetime.datetime.strptime(str(args.start).strip(), "%Y-%m-%d")
+                    .replace(tzinfo=datetime.timezone.utc).timestamp())
+    if args.end:
+        end = _parse_when(args.end, "the end")
+        if args.all_day and len(str(args.end).strip()) == 10:
+            end = int(datetime.datetime.strptime(str(args.end).strip(), "%Y-%m-%d")
+                      .replace(tzinfo=datetime.timezone.utc).timestamp())
+    else:
+        end = start + (86400 if args.all_day else 3600)
+    if end <= start:
+        raise CliError("An appointment has to end after it starts.")
+
+    conn = store.connect()
+    calendar = _find_calendar(conn, account, args.calendar)
+    if calendar.get("readOnly"):
+        raise CliError(f"{calendar['name']} is read-only.")
+    fields = {"summary": args.title, "start": start, "end": end,
+              "allDay": bool(args.all_day), "location": args.location or "",
+              "description": args.description or ""}
+    try:
+        uid = backend.create_event(account, calendar, fields)
+    except CALENDAR_ERRORS as exc:
+        raise CliError(str(exc)) from exc
+    emit({"ok": True, "account": account["id"], "calendar": calendar["id"],
+          "uid": uid, "start": start, "end": end},
+         lambda d: "Added to %s." % calendar["name"])
+
+
+def cmd_event_remove(args):
+    """Take an appointment out of its calendar."""
+    account = config.account(args.account)
+    backend = calendar_for(account)
+    conn = store.connect()
+    row = conn.execute(
+        "SELECT * FROM events WHERE account = ? AND uid = ? LIMIT 1",
+        (account["id"], args.uid)).fetchone()
+    try:
+        if backend is graph:
+            backend.delete_event(account, args.uid)
+        else:
+            url = row["url"] if row else ""
+            if not url:
+                raise CliError("That appointment is not in the cache; sync first.")
+            backend.delete_event(account, url)
+    except CALENDAR_ERRORS as exc:
+        raise CliError(str(exc)) from exc
+    conn.execute("DELETE FROM events WHERE account = ? AND uid = ?",
+                 (account["id"], args.uid))
+    conn.commit()
+    emit({"ok": True, "removed": args.uid}, lambda d: "Removed.")
+
+
 def cmd_calendars(args):
     """The calendars on each account, refreshed on request."""
     conn = store.connect()
@@ -1914,6 +2015,22 @@ def build_parser():
     p.add_argument("--sync", action="store_true",
                    help="fetch the account's address book first")
     p.set_defaults(func=cmd_contacts)
+
+    p = sub.add_parser("event-add", help="put a new appointment in a calendar")
+    p.add_argument("--account")
+    p.add_argument("--calendar", default="", help="calendar id; the first writable one if left out")
+    p.add_argument("--title", required=True)
+    p.add_argument("--start", required=True, help="YYYY-MM-DDTHH:MM, or YYYY-MM-DD with --all-day")
+    p.add_argument("--end", default="", help="defaults to an hour, or a day with --all-day")
+    p.add_argument("--all-day", action="store_true")
+    p.add_argument("--location", default="")
+    p.add_argument("--description", default="")
+    p.set_defaults(func=cmd_event_add)
+
+    p = sub.add_parser("event-remove", help="delete an appointment")
+    p.add_argument("--account")
+    p.add_argument("--uid", required=True)
+    p.set_defaults(func=cmd_event_remove)
 
     p = sub.add_parser("calendar-add",
                        help="show a calendar kept in an .ics file or behind a link")

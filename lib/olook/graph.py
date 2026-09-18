@@ -362,6 +362,53 @@ def events(account, calendar, start, end):
     return out
 
 
+# ------------------------------------------------------------ writing events
+
+def create_event(account, calendar, fields):
+    """Add an appointment to one of the account's calendars."""
+    _refuse_if_read_only(account, "adding an appointment")
+    start, end = int(fields["start"]), int(fields["end"])
+    body = {
+        "subject": str(fields.get("summary") or "New appointment"),
+        "isAllDay": bool(fields.get("allDay")),
+    }
+    if fields.get("allDay"):
+        # Graph wants an all-day appointment as whole days at midnight, and
+        # the end is the day after it finishes rather than the day it does.
+        first = datetime.datetime.fromtimestamp(start, datetime.timezone.utc).date()
+        last = datetime.datetime.fromtimestamp(end, datetime.timezone.utc).date()
+        if last <= first:
+            last = first + datetime.timedelta(days=1)
+        body["start"] = {"dateTime": first.isoformat() + "T00:00:00", "timeZone": "UTC"}
+        body["end"] = {"dateTime": last.isoformat() + "T00:00:00", "timeZone": "UTC"}
+    else:
+        stamp = "%Y-%m-%dT%H:%M:%S"
+        body["start"] = {"dateTime": datetime.datetime.fromtimestamp(
+            start, datetime.timezone.utc).strftime(stamp), "timeZone": "UTC"}
+        body["end"] = {"dateTime": datetime.datetime.fromtimestamp(
+            end, datetime.timezone.utc).strftime(stamp), "timeZone": "UTC"}
+    if fields.get("location"):
+        body["location"] = {"displayName": str(fields["location"])}
+    if fields.get("description"):
+        body["body"] = {"contentType": "text", "content": str(fields["description"])}
+
+    made = _call(account, "POST",
+                 "/me/calendars/" + urllib.parse.quote(calendar["id"]) + "/events",
+                 body=body)
+    return str(made.get("id") or "")
+
+
+def delete_event(account, event_id):
+    _refuse_if_read_only(account, "deleting an appointment")
+    try:
+        _call(account, "DELETE", "/me/events/" + urllib.parse.quote(event_id))
+    except GraphError as exc:
+        if "404" in str(exc):
+            return True
+        raise
+    return True
+
+
 # ----------------------------------------------------------------- picture
 
 def account_photo(account, size="96x96"):

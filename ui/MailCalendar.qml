@@ -163,6 +163,117 @@ Item {
 
   onEventsChanged: root.resolvePending()
 
+  // ----------------------------------------------------- a new appointment
+  //
+  // The draft lives here rather than in the fields, so that opening the form
+  // again starts clean and a half-typed appointment cannot be saved by
+  // accident.
+  property bool composing: false
+  property bool confirmingDelete: false
+  onOpenEventChanged: root.confirmingDelete = false
+  property string draftTitle: ""
+  property string draftDay: ""
+  property string draftFrom: "09:00"
+  property string draftUntil: "10:00"
+  property bool draftAllDay: false
+  property string draftLocation: ""
+  property string draftCalendar: ""   // account + "|" + calendar id
+  property string draftProblem: ""
+
+  // Calendars an appointment can go into: an account's own, writable ones.
+  // A calendar read from a file is never written back to.
+  readonly property var writableCalendars: {
+    var out = []
+    for (var i = 0; i < root.calendars.length; i++) {
+      var entry = root.calendars[i]
+      if (entry.readOnly || entry.account === "local") continue
+      out.push(entry)
+    }
+    return out
+  }
+
+  function calendarKey(entry) { return entry.account + "|" + entry.id }
+
+  function startComposing(day, hour) {
+    root.openEvent = null
+    root.draftTitle = ""
+    root.draftDay = day || root.selected
+    var from = (hour === undefined || hour === null) ? 9 : hour
+    root.draftFrom = Model.pad(from) + ":00"
+    root.draftUntil = Model.pad(Math.min(23, from + 1)) + ":00"
+    root.draftAllDay = false
+    root.draftLocation = ""
+    root.draftProblem = ""
+    if (root.draftCalendar === "" && root.writableCalendars.length > 0)
+      root.draftCalendar = root.calendarKey(root.preferredCalendar())
+    root.composing = true
+  }
+
+  // The first account's own calendar, as the engine would choose it: not
+  // whichever shared one happens to sort first.
+  function preferredCalendar() {
+    var list = root.writableCalendars
+    var accounts = root.service ? root.service.accounts : []
+    for (var i = 0; i < list.length; i++)
+      for (var j = 0; j < accounts.length; j++)
+        if (accounts[j].id === list[i].account
+            && String(accounts[j].email || "").toLowerCase() === list[i].id.toLowerCase())
+          return list[i]
+    for (var k = 0; k < list.length; k++) {
+      var name = String(list[k].name || "").toLowerCase()
+      if (name === "calendar" || name === "agenda") return list[k]
+    }
+    return list[0]
+  }
+
+  function validTime(text) { return /^([01]?\d|2[0-3]):[0-5]\d$/.test(String(text)) }
+
+  function saveDraft() {
+    root.draftProblem = ""
+    if (root.draftTitle.trim() === "") { root.draftProblem = "It needs a name."; return }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(root.draftDay)) {
+      root.draftProblem = "The day should look like 2026-09-22."; return
+    }
+    if (!root.draftAllDay) {
+      if (!root.validTime(root.draftFrom) || !root.validTime(root.draftUntil)) {
+        root.draftProblem = "Times should look like 14:30."; return
+      }
+      function minutes(t) { var p = t.split(":"); return Number(p[0]) * 60 + Number(p[1]) }
+      if (minutes(root.draftUntil) <= minutes(root.draftFrom)) {
+        root.draftProblem = "It has to end after it starts."; return
+      }
+    }
+    var parts = root.draftCalendar.split("|")
+    if (parts.length < 2) { root.draftProblem = "Pick a calendar for it."; return }
+    var account = parts[0]
+    var calendar = parts.slice(1).join("|")
+    function pad(t) { var p = t.split(":"); return Model.pad(Number(p[0])) + ":" + p[1] }
+    var fields = {
+      "account": account, "calendar": calendar,
+      "title": root.draftTitle.trim(),
+      "allDay": root.draftAllDay,
+      "location": root.draftLocation.trim(),
+      "start": root.draftAllDay ? root.draftDay
+                                : root.draftDay + "T" + pad(root.draftFrom),
+      "end": root.draftAllDay ? "" : root.draftDay + "T" + pad(root.draftUntil)
+    }
+    if (!root.service) return
+    root.service.addEvent(fields, function (ok) {
+      if (ok) {
+        root.composing = false
+        root.selected = root.draftDay
+      }
+    })
+  }
+
+  function deleteOpenEvent() {
+    if (!root.service || !root.openEvent) return
+    var gone = root.openEvent
+    root.service.removeEvent(gone.account, gone.uid, function (ok) {
+      if (ok) root.openEvent = null
+    })
+  }
+
   onSelectedChanged: {
     // Moving to another day is leaving the appointment that was open on the
     // last one, unless the appointment is what moved us.
@@ -347,6 +458,34 @@ Item {
         anchors.rightMargin: Style.space(10)
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(4)
+
+        Rectangle {
+          width: newLabel.implicitWidth + Style.space(16)
+          height: Style.space(26)
+          radius: ui.radius
+          color: newHover.containsMouse ? ui.hover : "transparent"
+          border.width: 1
+          border.color: Util.alpha(ui.accent, 0.55)
+
+          Text {
+            id: newLabel
+            anchors.centerIn: parent
+            text: "\udb81\udc15  New"
+            color: ui.accent
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          MouseArea {
+            id: newHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.startComposing(root.selected)
+          }
+        }
+
+        Item { width: Style.space(6); height: 1 }
 
         Repeater {
           model: root.viewNames
@@ -673,6 +812,7 @@ Item {
           selected: root.selected
           onDaySelected: function (key) { root.selected = key }
           onEventChosen: function (event) { root.showEvent(event) }
+          onSlotChosen: function (key, hour) { root.startComposing(key, hour) }
         }
 
         Column {
@@ -870,11 +1010,151 @@ Item {
         width: Math.max(Style.space(240), Math.round(root.width * 0.26))
         height: parent.height
 
+        // ---------------------------------------------- a new appointment
+        Flickable {
+          id: composeFlick
+          anchors.fill: parent
+          visible: root.composing
+          contentWidth: width
+          contentHeight: composeColumn.implicitHeight + Style.space(28)
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+
+          MomentumScroll { view: composeFlick }
+
+          // The fields are filled when the form opens, not bound: typing
+          // breaks a binding, and a broken one would show the last draft.
+          onVisibleChanged: if (visible) {
+            titleField.text = root.draftTitle
+            dayField.text = root.draftDay
+            fromField.text = root.draftFrom
+            untilField.text = root.draftUntil
+            placeField.text = root.draftLocation
+          }
+
+          Column {
+            id: composeColumn
+            x: Style.space(14)
+            y: Style.space(14)
+            width: parent.width - Style.space(28)
+            spacing: Style.space(8)
+
+            Text {
+              text: "New appointment"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            CalendarField {
+              id: titleField
+              width: parent.width
+              placeholder: "What is it?"
+              onEdited: function (value) { root.draftTitle = value }
+            }
+
+            CalendarField {
+              id: dayField
+              width: parent.width
+              placeholder: "2026-09-22"
+              onEdited: function (value) { root.draftDay = value }
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.space(6)
+              visible: !root.draftAllDay
+
+              CalendarField {
+                id: fromField
+                width: (parent.width - Style.space(6)) / 2
+                placeholder: "09:00"
+                onEdited: function (value) { root.draftFrom = value }
+              }
+              CalendarField {
+                id: untilField
+                width: (parent.width - Style.space(6)) / 2
+                placeholder: "10:00"
+                onEdited: function (value) { root.draftUntil = value }
+              }
+            }
+
+            PanelChip {
+              label: (root.draftAllDay ? "\udb80\udd32" : "\udb80\udd31") + "  All day"
+              onTriggered: root.draftAllDay = !root.draftAllDay
+            }
+
+            CalendarField {
+              id: placeField
+              width: parent.width
+              placeholder: "Where (optional)"
+              onEdited: function (value) { root.draftLocation = value }
+            }
+
+            Text {
+              text: "Calendar"
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Flow {
+              width: parent.width
+              spacing: Style.space(4)
+
+              Repeater {
+                model: root.writableCalendars
+
+                PanelChip {
+                  required property var modelData
+                  label: modelData.name
+                  accent: root.calendarKey(modelData) === root.draftCalendar
+                  onTriggered: root.draftCalendar = root.calendarKey(modelData)
+                }
+              }
+            }
+
+            Text {
+              width: parent.width
+              visible: root.writableCalendars.length === 0
+              wrapMode: Text.Wrap
+              text: "No calendar here takes new appointments yet — sign an account in for its calendar first."
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              width: parent.width
+              visible: root.draftProblem !== ""
+              wrapMode: Text.Wrap
+              text: root.draftProblem
+              color: ui.urgent
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Row {
+              spacing: Style.space(6)
+
+              PanelChip {
+                label: "Save"
+                accent: true
+                onTriggered: root.saveDraft()
+              }
+              PanelChip {
+                label: "Cancel"
+                onTriggered: root.composing = false
+              }
+            }
+          }
+        }
+
         // ------------------------------------------------ one appointment
         Flickable {
           id: detailFlick
           anchors.fill: parent
-          visible: !!root.openEvent
+          visible: !!root.openEvent && !root.composing
           contentWidth: width
           contentHeight: detail.implicitHeight + Style.space(28)
           clip: true
@@ -992,12 +1272,28 @@ Item {
               font.family: ui.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
+
+            // Only where it can be done: not a calendar read from a file, not
+            // one the account may only read.
+            PanelChip {
+              visible: !!(root.openEvent && !root.openEvent.readOnly
+                          && root.openEvent.account !== "local")
+              label: root.confirmingDelete ? "Really delete?" : "\udb82\ude7a  Delete"
+              onTriggered: {
+                if (root.confirmingDelete) {
+                  root.confirmingDelete = false
+                  root.deleteOpenEvent()
+                } else {
+                  root.confirmingDelete = true
+                }
+              }
+            }
           }
         }
 
         Column {
           anchors.fill: parent
-          visible: !root.openEvent
+          visible: !root.openEvent && !root.composing
           anchors.margins: Style.space(14)
           spacing: Style.space(10)
 

@@ -20,6 +20,8 @@ Item {
 
   signal daySelected(string key)
   signal eventChosen(var event)
+  // An empty hour clicked, which is where a new appointment starts.
+  signal slotChosen(string key, int hour)
 
   readonly property int hourHeight: Style.space(42)
   readonly property int gutter: Style.space(46)
@@ -301,6 +303,18 @@ Item {
                 anchors.fill: parent
                 color: dayColumn.modelData.key === root.selected
                   ? Util.alpha(ui.accent, 0.05) : "transparent"
+              }
+
+              // Declared before the appointments, so it lies under them and a
+              // click on an appointment still reaches the appointment.
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onDoubleClicked: function (mouse) {
+                  root.slotChosen(dayColumn.modelData.key,
+                                  Math.max(0, Math.min(23, Math.floor(mouse.y / root.hourHeight))))
+                }
+                onClicked: root.daySelected(dayColumn.modelData.key)
               }
 
               Rectangle {

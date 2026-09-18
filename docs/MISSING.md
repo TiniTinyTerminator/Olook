@@ -109,11 +109,12 @@ has that this client is better off without.
   will list folders that show a stub per item instead, and there is no switch
   to say "show it anyway" or "no, that one is mail".
 
-- **Nothing can be added to the calendar.** Reading is done on both
-  providers; writing is not started. A new appointment, moving one, and
-  accepting an invitation that arrives as mail are all missing, and the scope
-  for each is already granted -- `Calendars.ReadWrite` on Graph, `auth/calendar`
-  on DAV -- so this is a matter of building it rather than of permission.
+- **Appointments can be added and deleted, not edited or moved.** A new one
+  goes into Google over CalDAV and Outlook over Graph -- both checked by
+  creating one, reading it back through a sync and deleting it again -- and
+  either can be deleted. Changing one that exists, dragging it to another
+  time, repeating ones, and accepting an invitation that arrives as mail are
+  all still missing.
 
 - **Gmail has no picture for the account itself.** A contact's picture comes
   out of the vCard and a Microsoft mailbox's own comes from Graph, but
@@ -150,12 +151,6 @@ has that this client is better off without.
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,
   is still done wherever the account lives.
-
-- **The calendar only reads.** A month grid with the day's agenda beside it
-  is built, over CalDAV, and every calendar on the account is enumerated
-  rather than only the default one. What is missing is writing: no new
-  appointment, no edit, no accepting an invitation, and no meeting request
-  from a message. The scope for it is already granted.
 
   Google gates CalDAV behind a switch of its own, `caldav.googleapis.com`,
   separately from the calendar scope. That only bites an account signed in

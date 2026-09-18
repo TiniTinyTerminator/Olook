@@ -750,6 +750,50 @@ Item {
     }, "calendar")
   }
 
+  // A new appointment. `when` and `until` are "YYYY-MM-DDTHH:MM", or
+  // "YYYY-MM-DD" for an all-day one; the engine works out the rest.
+  function addEvent(fields, done) {
+    if (!fields || !fields.account || !fields.title || !fields.start) return
+    var args = ["event-add", "--account", String(fields.account),
+                "--title", String(fields.title), "--start", String(fields.start)]
+    if (fields.end) args = args.concat(["--end", String(fields.end)])
+    if (fields.calendar) args = args.concat(["--calendar", String(fields.calendar)])
+    if (fields.allDay) args.push("--all-day")
+    if (fields.location) args = args.concat(["--location", String(fields.location)])
+    if (fields.description) args = args.concat(["--description", String(fields.description)])
+    root.calendarSyncing = true
+    run(args, function (ok, payload, stderrText) {
+      root.calendarSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not add that appointment")
+        if (done) done(false)
+        return
+      }
+      root.notice = "Appointment added"
+      noticeTimer.restart()
+      // The window on screen was read before this existed.
+      root.fetchedMonths = ({})
+      root.syncCalendar(null)
+      if (done) done(true)
+    }, "calendar")
+  }
+
+  function removeEvent(account, uid, done) {
+    if (!account || !uid) return
+    run(["event-remove", "--account", String(account), "--uid", String(uid)],
+        function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not delete that appointment")
+        if (done) done(false)
+        return
+      }
+      root.notice = "Appointment deleted"
+      noticeTimer.restart()
+      root.loadCalendar(root.calendarFrom, root.calendarTo)
+      if (done) done(true)
+    }, "calendar")
+  }
+
   // Calendars kept in a file or behind a link, which belong to no account.
   function addCalendarFile(name, source, colour, done) {
     if (!source) return

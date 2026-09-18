@@ -483,3 +483,105 @@ def parse_events(text):
         elif name in ("RRULE", "RECURRENCE-ID"):
             current["recurring"] = True
     return out
+
+
+# -------------------------------------------------------------------- writing
+
+def _ical_text(value):
+    """Escape free text the way iCalendar wants it."""
+    return (str(value or "").replace("\\", "\\\\").replace(";", "\\;")
+            .replace(",", "\\,").replace("\r\n", "\\n").replace("\n", "\\n"))
+
+
+def _fold(line):
+    """Lines longer than 75 octets continue on the next, after a space."""
+    raw = line.encode("utf-8")
+    if len(raw) <= 75:
+        return line
+    pieces, current = [], b""
+    for char in line:
+        encoded = char.encode("utf-8")
+        if len(current) + len(encoded) > (75 if not pieces else 74):
+            pieces.append(current.decode("utf-8"))
+            current = b""
+        current += encoded
+    pieces.append(current.decode("utf-8"))
+    return "\r\n ".join(pieces)
+
+
+def build_event(uid, fields):
+    """One appointment as the iCalendar document a CalDAV server stores."""
+    start, end = int(fields["start"]), int(fields["end"])
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Olook//Calendar//EN",
+             "CALSCALE:GREGORIAN", "BEGIN:VEVENT", "UID:" + uid, "DTSTAMP:" + stamp]
+    if fields.get("allDay"):
+        # A date and nothing else, which floats: the same day wherever it is
+        # read, rather than midnight somewhere that is the day before here.
+        first = datetime.datetime.fromtimestamp(start, datetime.timezone.utc).date()
+        last = datetime.datetime.fromtimestamp(end, datetime.timezone.utc).date()
+        if last <= first:
+            last = first + datetime.timedelta(days=1)
+        lines.append("DTSTART;VALUE=DATE:" + first.strftime("%Y%m%d"))
+        lines.append("DTEND;VALUE=DATE:" + last.strftime("%Y%m%d"))
+    else:
+        lines.append("DTSTART:" + datetime.datetime.fromtimestamp(
+            start, datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+        lines.append("DTEND:" + datetime.datetime.fromtimestamp(
+            end, datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    lines.append("SUMMARY:" + _ical_text(fields.get("summary") or "New appointment"))
+    if fields.get("location"):
+        lines.append("LOCATION:" + _ical_text(fields["location"]))
+    if fields.get("description"):
+        lines.append("DESCRIPTION:" + _ical_text(fields["description"]))
+    lines += ["END:VEVENT", "END:VCALENDAR"]
+    return "\r\n".join(_fold(line) for line in lines) + "\r\n"
+
+
+def _put(account, url, body, headers):
+    token = oauth.access_token(grant(account))
+    sending = {"Authorization": "Bearer " + token,
+               "Content-Type": "text/calendar; charset=utf-8"}
+    sending.update(headers or {})
+    request = urllib.request.Request(url, data=body.encode("utf-8"),
+                                     method="PUT", headers=sending)
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            return dict(response.headers)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        if exc.code in (401, 403):
+            raise CalendarError(
+                "This calendar will not take new appointments from here. "
+                "It may be read-only, or the sign-in may only cover reading: "
+                "olook calendar-auth --account " + str(account.get("id", ""))) from exc
+        raise CalendarError(
+            "Could not save the appointment: %d %s" % (exc.code, _tidy(detail))) from exc
+    except urllib.error.URLError as exc:
+        raise CalendarError(f"Cannot reach the calendar: {exc.reason}") from exc
+
+
+def create_event(account, calendar, fields):
+    """Add an appointment to one of the account's calendars."""
+    import uuid as uuidlib
+    uid = str(uuidlib.uuid4()) + "@olook"
+    url = calendar["url"].rstrip("/") + "/" + urllib.parse.quote(uid) + ".ics"
+    # If-None-Match stops a new appointment quietly replacing an old one that
+    # happened to have the same name on the server.
+    _put(account, url, build_event(uid, fields), {"If-None-Match": "*"})
+    return uid
+
+
+def delete_event(account, url):
+    token = oauth.access_token(grant(account))
+    request = urllib.request.Request(url, method="DELETE",
+                                     headers={"Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(request, timeout=45):
+            return True
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return True
+        raise CalendarError(f"Could not delete the appointment: {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise CalendarError(f"Cannot reach the calendar: {exc.reason}") from exc
