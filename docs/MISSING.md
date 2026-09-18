@@ -1,11 +1,11 @@
 # What Olook still lacks
 
-Measured against Outlook, and against a couple of things Olook itself started
-and did not finish. Ordered by what would actually be missed, not by what is
-easiest. The last section is the part worth arguing about: features Outlook
-has that this client is better off without.
+Measured against Outlook. Three kinds of gap, kept apart because they call
+for different answers: work that is still to do, limits that come from the
+servers, the shell or the tenant rather than from this code, and features
+Outlook has that this client is better off without.
 
-## Asked for, not yet built
+## Not built yet
 
 - **Markdown renders in place, the way Obsidian does it.** There is a live
   preview under the editor now, rendered by the engine that sends the mail so
@@ -19,14 +19,6 @@ has that this client is better off without.
   what you wrote. Doing this properly means a custom editor that keeps the
   markdown as the source of truth and decorates it, which is a project rather
   than a change.
-
-- **Nothing here needs an application of your own any more.** Contacts and
-  the calendar both ride on the grant the mail already uses, over CardDAV and
-  CalDAV; Microsoft's go through Graph. The People API path is still in the
-  tree for an account that has its own application configured, and is the only
-  reason docs/CONTACTS.md still describes a Google Cloud project.
-
-## Mail handling
 
 - **Mail is slow to arrive on screen.** Measured, not guessed. Reading from
   the cache is fast -- a folder lists in 0.11s and a cached message opens in
@@ -54,8 +46,10 @@ has that this client is better off without.
   process already holds one for IDLE and could carry the rest. Outlook has no
   `LIST-STATUS` and still asks each folder in turn.
 
+## Limitations
 
-## Composing
+Each of these has a reason outside this code: a protocol that has no such
+thing, a server or tenant that says no, or the shell the client lives in.
 
 - **Recall** only works between Exchange mailboxes, and asks the recipient's
   server to delete something already delivered. Nothing to build on IMAP.
@@ -64,13 +58,10 @@ has that this client is better off without.
   shows the sync interval and the notification switch and says where to change
   them; the shell owns those values and the client cannot write them.
 
-## Elsewhere
-
 - **S/MIME and PGP signatures.** The client reads the server's verdict on who
   sent a message; it does not read a certificate carried by the message
-  itself. Neither appears in any mail here, which is why it is far down this
-  list rather than off it.
-
+  itself. Buildable, but nothing to test it on: neither appears in any mail
+  here, and a signature check nobody has seen succeed is worse than none.
 
 - **A tenant can refuse the whole thing.** An organisation may require an
   administrator to approve a third-party application before anyone in it can
@@ -134,16 +125,12 @@ has that this client is better off without.
   is running and only for appointments already fetched into it. Nothing wakes
   the machine for one, and closing the bar closes the reminders with it.
 
-- **The bar widget replaced the clock's extras with appointments.** Omarchy's
-  clock popup also carried ISO week numbers, a year-progress bar and an age
-  readout; this one carries the days you have something on and what is on
-  them. Anyone who wants the old extras back wants `omarchy plugin enable
-  omarchy.clock`, not this.
-
-- **Calendars cannot be added or unsubscribed from here.** Which of the
-  account's calendars are shown is a panel down the left of the Calendar tab,
-  and that choice is kept. Subscribing to a new one, or leaving one for good,
-  is still done wherever the account lives.
+- **An account's own calendars are subscribed to where the account lives.**
+  Files, links and CalDAV servers are added and removed from the calendar
+  panel, and any calendar can be hidden there. Subscribing a Google or
+  Microsoft account to someone else's calendar, or leaving one, is an
+  account-level act the CalDAV and Graph calendar endpoints used here do not
+  offer, so it is still done on the provider's site.
 
   Google gates CalDAV behind a switch of its own, `caldav.googleapis.com`,
   separately from the calendar scope. That only bites an account signed in
