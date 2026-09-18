@@ -103,6 +103,12 @@ has that this client is better off without.
   moved single occurrence, and the rest are ignored rather than guessed at,
   which gives the plain repetition instead of a wrong one.
 
+- **The bar widget replaced the clock's extras with appointments.** Omarchy's
+  clock popup also carried ISO week numbers, a year-progress bar and an age
+  readout; this one carries the days you have something on and what is on
+  them. Anyone who wants the old extras back wants `omarchy plugin enable
+  omarchy.clock`, not this.
+
 - **Calendars cannot be added or unsubscribed from here.** Which of the
   account's calendars are shown is a panel down the left of the Calendar tab,
   and that choice is kept. Subscribing to a new one, or leaving one for good,

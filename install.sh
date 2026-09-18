@@ -121,8 +121,10 @@ if command -v omarchy >/dev/null 2>&1; then
   # Not enabled automatically: putting a widget in someone's bar uninvited is
   # rude, and it would sit beside the clock it is meant to replace.
   if omarchy plugin list --json 2>/dev/null | grep -q "\"id\":\"$WIDGET_ID\""; then
-    echo "Calendar widget available. To put it in the bar:"
+    echo "Clock and calendar widget available. To use it instead of the"
+    echo "Omarchy clock:"
     echo "  omarchy bar put $WIDGET_ID --before omarchy.clock"
+    echo "  omarchy plugin disable omarchy.clock"
   fi
 fi
 
