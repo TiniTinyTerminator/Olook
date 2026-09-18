@@ -62,8 +62,6 @@ has that this client is better off without.
 
 ## Composing
 
-- **Formatting controls.** Markdown and HTML are format choices with no
-  toolbar behind them.
 - **Send later**, and **recall** — the second only works between Exchange
   mailboxes anyway.
 
@@ -160,9 +158,10 @@ has that this client is better off without.
   Nextcloud, Fastmail and iCloud need only a URL and a password rather than
   new code, but nothing discovers those yet.
 - **Notifications carry one action, not several.** Clicking the popup opens
-  the message it is about. Reply, archive and delete from the notification
-  itself are not there, and a notification for several new messages opens the
-  newest rather than a list.
+  the message it is about. Archive or mark-read buttons on the popup itself
+  would be a few more `--action` flags, but Omarchy's notification daemon
+  draws no action buttons and only ever invokes `default`, so they would be
+  offered and never shown.
 
 ## Deliberately not worth having
 

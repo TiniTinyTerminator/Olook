@@ -326,6 +326,67 @@ Item {
 
   // The draft as the engine wants it. Send uses it, and so does pop-out, so
   // moving a half-written message into its own window loses nothing.
+  // ------------------------------------------------------------ formatting
+  //
+  // The toolbar writes the markup rather than hiding it: the body stays the
+  // text that is sent, so what the buttons do is what you could have typed.
+
+  // Wrap the selection -- or a placeholder, selected so typing replaces it.
+  function wrapSelection(before, after, placeholder) {
+    var from = bodyField.selectionStart
+    var to = bodyField.selectionEnd
+    var chosen = from === to ? placeholder : bodyField.getText(from, to)
+    bodyField.remove(from, to)
+    bodyField.insert(from, before + chosen + after)
+    bodyField.select(from + before.length, from + before.length + chosen.length)
+    bodyField.forceActiveFocus()
+  }
+
+  // Apply `decorate(line, index)` to every line the selection touches.
+  function decorateLines(decorate) {
+    var text = bodyField.text
+    var from = text.lastIndexOf("\n", bodyField.selectionStart - 1) + 1
+    var to = text.indexOf("\n", bodyField.selectionEnd)
+    if (to === -1) to = text.length
+    var lines = text.substring(from, to).split("\n")
+    var out = []
+    for (var i = 0; i < lines.length; i++) out.push(decorate(lines[i], i))
+    var joined = out.join("\n")
+    bodyField.remove(from, to)
+    bodyField.insert(from, joined)
+    bodyField.select(from, from + joined.length)
+    bodyField.forceActiveFocus()
+  }
+
+  function applyFormat(kind) {
+    var html = root.format === "html"
+    if (kind === "bold") return html ? wrapSelection("<b>", "</b>", "bold")
+                                     : wrapSelection("**", "**", "bold")
+    if (kind === "italic") return html ? wrapSelection("<i>", "</i>", "italic")
+                                       : wrapSelection("*", "*", "italic")
+    if (kind === "code") return html ? wrapSelection("<code>", "</code>", "code")
+                                     : wrapSelection("`", "`", "code")
+    if (kind === "link") return html
+      ? wrapSelection("<a href=\"https://\">", "</a>", "link text")
+      : wrapSelection("[", "](https://)", "link text")
+    if (kind === "heading") return decorateLines(function (line) {
+      return html ? "<h2>" + line + "</h2>" : "## " + line.replace(/^#+\s*/, "")
+    })
+    if (kind === "quote") return html
+      ? wrapSelection("<blockquote>", "</blockquote>", "quote")
+      : decorateLines(function (line) { return "> " + line })
+    if (kind === "bullets" || kind === "numbers") {
+      if (!html) return decorateLines(function (line, i) {
+        return (kind === "bullets" ? "- " : (i + 1) + ". ") + line
+      })
+      // Each line becomes an item, then the items -- left selected by
+      // decorateLines -- are wrapped in the list.
+      var tag = kind === "bullets" ? "ul" : "ol"
+      decorateLines(function (line) { return "<li>" + line + "</li>" })
+      wrapSelection("<" + tag + ">\n", "\n</" + tag + ">", "")
+    }
+  }
+
   function payload() {
     var source = draft || {}
     return {
@@ -738,6 +799,21 @@ Item {
 
         Flow {
           width: parent.width
+          spacing: Style.space(4)
+          visible: root.format !== "plain"
+
+          FormatButton { kind: "bold"; label: "B"; bold: true; tip: "Bold (Ctrl+B)" }
+          FormatButton { kind: "italic"; label: "I"; italic: true; tip: "Italic (Ctrl+I)" }
+          FormatButton { kind: "heading"; label: "H"; tip: "Heading" }
+          FormatButton { kind: "link"; label: "Link"; tip: "Link (Ctrl+K)" }
+          FormatButton { kind: "bullets"; label: "\u2022 List"; tip: "Bulleted list" }
+          FormatButton { kind: "numbers"; label: "1. List"; tip: "Numbered list" }
+          FormatButton { kind: "quote"; label: "Quote"; tip: "Quote" }
+          FormatButton { kind: "code"; label: "Code"; tip: "Code" }
+        }
+
+        Flow {
+          width: parent.width
           spacing: Style.space(6)
           visible: root.attachments.length > 0
 
@@ -813,6 +889,16 @@ Item {
             textFormat: TextEdit.PlainText
             // Ctrl+Enter is the send shortcut everywhere else; keep it here too.
             Keys.onPressed: function (event) {
+              if ((event.modifiers & Qt.ControlModifier) && root.format !== "plain") {
+                var kind = event.key === Qt.Key_B ? "bold"
+                  : event.key === Qt.Key_I ? "italic"
+                  : event.key === Qt.Key_K ? "link" : ""
+                if (kind !== "") {
+                  root.applyFormat(kind)
+                  event.accepted = true
+                  return
+                }
+              }
               if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
                   && (event.modifiers & Qt.ControlModifier)) {
                 root.submit()
@@ -943,6 +1029,46 @@ Item {
         MomentumScroll { view: bodyFlick }
       }
     }
+  }
+
+  component FormatButton: Rectangle {
+    id: formatButton
+    property string kind: ""
+    property string label: ""
+    property string tip: ""
+    property bool bold: false
+    property bool italic: false
+
+    width: Math.max(Style.space(26), formatText.implicitWidth + Style.space(14))
+    height: Style.space(24)
+    radius: ui.radius
+    color: formatHover.containsMouse ? ui.hover : "transparent"
+    border.width: ui.hairline
+    border.color: ui.border
+
+    Text {
+      id: formatText
+      textFormat: Text.PlainText
+      anchors.centerIn: parent
+      text: formatButton.label
+      color: ui.dim
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: formatButton.bold
+      font.italic: formatButton.italic
+    }
+
+    MouseArea {
+      id: formatHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.applyFormat(formatButton.kind)
+    }
+
+    ToolTip.visible: formatHover.containsMouse && formatButton.tip !== ""
+    ToolTip.delay: 600
+    ToolTip.text: formatButton.tip
   }
 
   component AttachmentChip: Rectangle {
