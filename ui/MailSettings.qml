@@ -1038,6 +1038,69 @@ Item {
           }
         }
 
+        // Which folders are in the tree. Folders IMAP cannot show as mail --
+        // an Exchange calendar, contacts, tasks -- are guessed by name and
+        // left out; the guess can be overruled here, and any folder hidden.
+        Column {
+          width: parent.width
+          spacing: Style.space(2)
+          visible: cardFolders.count > 0
+
+          Text {
+            textFormat: Text.PlainText
+            topPadding: Style.space(6)
+            bottomPadding: Style.space(4)
+            text: "Folders"
+            color: ui.faint
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Repeater {
+            id: cardFolders
+            model: cardRoot.row
+              ? Model.sortFolders(service.foldersFor(cardRoot.row.id)) : []
+
+            delegate: Item {
+              required property var modelData
+              readonly property bool shown: String(modelData.kind || "mail") === "mail"
+              readonly property bool guessed: String(modelData.kind || "mail")
+                === String(modelData.guessedKind || modelData.kind || "mail")
+              width: parent.width
+              height: Style.space(34)
+
+              Text {
+                textFormat: Text.PlainText
+                anchors.left: parent.left
+                anchors.right: folderToggle.left
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideRight
+                text: Model.folderLabel(modelData)
+                  + (shown ? "" : (guessed ? "  — not mail, left out" : "  — hidden"))
+                color: shown ? ui.foreground : ui.faint
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.bodySmall
+              }
+
+              SettingsButton {
+                id: folderToggle
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                label: shown ? "Hide" : "Show"
+                // Setting a folder back to what the name suggests forgets the
+                // choice, so a later rename is judged afresh.
+                onTriggered: {
+                  var want = shown ? "other" : "mail"
+                  var auto = String(modelData.guessedKind || "mail") === want
+                  service.setFolderKind(cardRoot.row.id, modelData.name,
+                                        auto ? "auto" : want)
+                }
+              }
+            }
+          }
+        }
+
         // Password re-entry, shown only while a password account is being
         // re-authorized; OAuth accounts get the sign-in card instead.
         Column {

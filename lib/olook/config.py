@@ -146,6 +146,23 @@ def set_folder_order(account_id, names):
     return entry["folderOrder"]
 
 
+def set_folder_kind(account_id, name, kind):
+    """Overrule the guess at whether a folder holds mail.
+
+    "mail" shows it, "other" leaves it out of the folder tree, and "auto"
+    forgets the choice so the name decides again.
+    """
+    entry = dict(account(account_id))
+    kinds = dict(entry.get("folderKinds") or {})
+    if kind == "auto":
+        kinds.pop(name, None)
+    else:
+        kinds[name] = kind
+    entry["folderKinds"] = kinds
+    upsert(entry)
+    return kinds
+
+
 def remove(account_id):
     doc = load()
     before = len(doc["accounts"])

@@ -416,12 +416,23 @@ def _ordered_folders(account, folders):
     """
     wanted = [str(n) for n in (account.get("folderOrder") or [])]
     places = {name: index for index, name in enumerate(wanted)}
+    chosen = account.get("folderKinds") or {}
     for folder in folders:
         folder["order"] = places.get(folder["name"], -1)
         # Worked out on the way past rather than stored, so a cache written
-        # before this existed is classified too.
-        folder["kind"] = mailbox.folder_kind(folder["name"])
+        # before this existed is classified too. The guess goes by name, so
+        # a choice made in Settings overrules it.
+        folder["guessedKind"] = mailbox.folder_kind(folder["name"])
+        folder["kind"] = chosen.get(folder["name"]) or folder["guessedKind"]
     return folders
+
+
+def cmd_folder_kind(args):
+    """Show a folder the name-guess left out, or hide one it let in."""
+    account = config.account(args.account)
+    kinds = config.set_folder_kind(account["id"], args.folder, args.kind)
+    emit({"ok": True, "account": account["id"], "folderKinds": kinds},
+         lambda d: "Saved.")
 
 
 def cmd_order(args):
@@ -2102,6 +2113,12 @@ def build_parser():
     p.add_argument("--conversations", action="store_true",
                    help="one row per conversation, newest of each")
     p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("folder-kind", help="show or hide a folder in the tree")
+    p.add_argument("--account")
+    p.add_argument("--folder", required=True)
+    p.add_argument("--kind", required=True, choices=("mail", "other", "auto"))
+    p.set_defaults(func=cmd_folder_kind)
 
     p = sub.add_parser("outbox", help="messages waiting for a connection or a time")
     p.add_argument("--flush", action="store_true", help="send whatever is due now")

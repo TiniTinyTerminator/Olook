@@ -100,12 +100,11 @@ has that this client is better off without.
   detection and the fallback are written and the error it keys on was taken
   from the real refusal, but no message has gone out that way yet.
 
-- **A hidden non-mail folder cannot be unhidden.** Exchange's calendar,
-  contacts and task folders are left out of the mail tree because IMAP cannot
-  read them, and the names they are matched on are localised to the mailbox's
-  language -- English and Dutch are covered. A mailbox in another language
-  will list folders that show a stub per item instead, and there is no switch
-  to say "show it anyway" or "no, that one is mail".
+- **Non-mail folders are guessed by name.** Exchange's calendar, contacts
+  and task folders are left out of the mail tree because IMAP cannot read
+  them, and the names are matched in English, Dutch and German. A mailbox in
+  another language lists them until they are hidden by hand, which each
+  account's settings page now allows -- for any folder, either way.
 
 - **One occurrence of a Google series cannot be changed on its own.** Over
   CalDAV an occurrence shares its series' resource, so rewriting it would

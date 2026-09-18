@@ -1561,6 +1561,18 @@ Item {
     }, "order")
   }
 
+  // "mail" shows a folder, "other" hides it, "auto" goes back to the guess.
+  function setFolderKind(accountId, name, kind) {
+    run(["folder-kind", "--account", String(accountId), "--folder", String(name),
+         "--kind", kind], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not change that folder")
+        return
+      }
+      root.loadFolders(false)
+    }, "folder-kind")
+  }
+
   function reorderFolders(accountId, names, done) {
     if (!accountId || !names) return
     run(["order", "--account", String(accountId),
