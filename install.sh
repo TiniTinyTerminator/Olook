@@ -74,7 +74,7 @@ build_shim() {
 }
 
 if [[ "$MODE" == "uninstall" ]]; then
-  rm -rf "$PLUGIN_DIR"
+  rm -rf "$PLUGIN_DIR" "$WIDGET_DIR"
   rm -f "$BIN_DIR/olook"
   reload_shell
   echo "Olook removed. Mail cache and accounts were left alone:"
