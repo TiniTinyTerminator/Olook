@@ -29,8 +29,10 @@ The first release.
 
 **Bar**
 - `ttt.olook`: unread count and the newest mail across every account.
-- `ttt.olook-calendar`: a clock that stands in for Omarchy's, with a month,
-  what is next, and a reminder before each appointment.
+- `ttt.olook-calendar`: a clock that stands in for Omarchy's, laid out like
+  its popup -- the date, the year's progress, a month with ISO week numbers --
+  with the days you have something on marked, the coming week listed, and a
+  reminder before each appointment.
 
 What is still missing, and what cannot be built from here, is in
 [docs/MISSING.md](docs/MISSING.md).
