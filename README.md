@@ -62,23 +62,51 @@ session; the panel opens on **All** again after a restart.
   and below that the list and reading pane take turns instead of overlapping
 - Reading pane on the right or along the bottom, your choice
 - Search across the local cache, keyboard-driven navigation throughout
-- Desktop notification when new mail arrives
+- Desktop notification when new mail arrives; clicking it opens the message
+- Conversations: grouped rows that expand in the list, threaded on
+  References and In-Reply-To
+- Rules for arriving mail (move, categorise, mark read), managed in Settings
+- Send later, from the clock beside Send; waiting mail is listed in Settings
+  and can be taken back into Drafts
+- Formatting buttons for Markdown and HTML (Ctrl+B, Ctrl+I, Ctrl+K)
+- Folders in any order you drag them, and any folder shown or hidden
+- **Calendar**: day, work week, week and month views over Google (CalDAV),
+  Microsoft (Graph), any CalDAV server (Nextcloud, Fastmail, iCloud) and
+  `.ics` files or links; appointments added, changed and deleted
+- **People**: contacts from Google (CardDAV) and Microsoft (Graph), added,
+  edited and removed from the client, with their pictures
+- A second bar widget, `ttt.olook-calendar`, that replaces Omarchy's clock:
+  the time, a month with the days you have something on, what is next, and a
+  reminder before each appointment
 
-**Not yet**
+**Not yet, and why**
 
-- The Calendar and People views in the rail are placeholders. The engine
-  already authenticates against the same accounts, so calendar is the next
-  thing to build on top of it.
+[docs/MISSING.md](docs/MISSING.md) keeps the list: what is still to build,
+what cannot be built from here and the reason, and what is left out on
+purpose.
 
 ## Install
 
 ```bash
-git clone <this repo> ~/Projects/mailclient
-cd ~/Projects/mailclient
+git clone https://github.com/TiniTinyTerminator/olook.git
+cd olook
 ./install.sh          # copies into ~/.config/omarchy/plugins and enables it
 ```
 
-The installer adds the bar widget and links the engine to `~/.local/bin/olook`.
+Needs Python 3 (developed on 3.14) with nothing beyond the standard library.
+`secret-tool` (libsecret) keeps passwords and tokens in the keyring; without it
+they go to a file readable only by you. `gcc` builds the small shim that lets
+mail render as HTML; without it the reading pane falls back to Qt's rich text.
+
+The installer adds the mail bar widget and links the engine to
+`~/.local/bin/olook`. It also installs the calendar widget, which is not put
+on the bar by itself; to have it stand in for the clock:
+
+```bash
+omarchy bar put ttt.olook-calendar --before omarchy.clock
+omarchy plugin disable omarchy.clock
+```
+
 `./install.sh --uninstall` removes both and leaves your accounts and cached mail
 alone.
 
