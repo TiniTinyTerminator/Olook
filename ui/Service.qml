@@ -818,6 +818,47 @@ Item {
     }, "calendar")
   }
 
+  // ---------------------------------------------------------------- rules
+
+  property var rules: []
+
+  function loadRules() {
+    run(["rule", "list"], function (ok, payload) {
+      if (ok && payload) root.rules = payload.rules || []
+    }, "rules")
+  }
+
+  // `rule` is { from, to, subject, move, category, read }; any condition left
+  // empty is not tested, and at least one has to be there.
+  function addRule(rule, done) {
+    var args = ["rule", "add"]
+    if (rule.from) args = args.concat(["--from", String(rule.from)])
+    if (rule.to) args = args.concat(["--to", String(rule.to)])
+    if (rule.subject) args = args.concat(["--subject", String(rule.subject)])
+    if (rule.move) args = args.concat(["--move", String(rule.move)])
+    if (rule.category) args = args.concat(["--category", String(rule.category)])
+    if (rule.read) args.push("--read")
+    run(args, function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not add that rule")
+        if (done) done(false)
+        return
+      }
+      root.loadRules()
+      if (done) done(true)
+    }, "rules")
+  }
+
+  function removeRule(index) {
+    run(["rule", "remove", "--index", String(index)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remove that rule")
+        return
+      }
+      root.loadRules()
+    }, "rules")
+  }
+
   // Calendars kept in a file or behind a link, which belong to no account.
   function addCalendarFile(name, source, colour, done) {
     if (!source) return

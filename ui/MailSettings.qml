@@ -171,6 +171,7 @@ Item {
           NavHeading { text: "Client" }
 
           NavItem { section: "general"; glyph: "󰒓"; label: "General" }
+          NavItem { section: "rules"; glyph: "\uDB80\uDE32"; label: "Rules" }
           NavItem { section: "calendar"; glyph: "󰃭"; label: "Calendar" }
           NavItem { section: "widget"; glyph: "󰍜"; label: "Bar widget" }
         }
@@ -295,6 +296,209 @@ Item {
             }
           }
 
+          // -------------------------------------------------------- rules
+          Column {
+            id: rulesPage
+            width: parent.width
+            spacing: Style.space(12)
+            visible: root.activeSection === "rules"
+            onVisibleChanged: if (visible) service.loadRules()
+
+            property bool markRead: false
+            property bool busy: false
+            readonly property bool hasCondition: ruleFrom.text.trim() !== ""
+              || ruleTo.text.trim() !== "" || ruleSubject.text.trim() !== ""
+            readonly property bool hasAction: ruleMove.text.trim() !== ""
+              || ruleCategory.text.trim() !== "" || rulesPage.markRead
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Rules"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Applied to new mail as it arrives, in every account. Every "
+                + "condition you fill in has to match; one you leave empty is not "
+                + "looked at."
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: service.rules.length === 0
+              text: "No rules yet."
+              color: ui.faint
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Repeater {
+              model: service.rules
+
+              delegate: Item {
+                required property var modelData
+                width: rulesPage.width
+                height: Math.max(ruleSays.implicitHeight, Style.space(30)) + Style.space(10)
+
+                Rectangle {
+                  anchors.fill: parent
+                  radius: ui.radius
+                  color: "transparent"
+                  border.width: ui.hairline
+                  border.color: ui.border
+                }
+
+                Text {
+                  id: ruleSays
+                  textFormat: Text.PlainText
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(12)
+                  anchors.right: ruleRemove.left
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: String(modelData.says || "")
+                  color: ui.foreground
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  wrapMode: Text.Wrap
+                }
+
+                SettingsButton {
+                  id: ruleRemove
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  danger: true
+                  glyph: "\uDB82\uDE7A"
+                  label: "Remove"
+                  onTriggered: service.removeRule(modelData.index)
+                }
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              topPadding: Style.space(8)
+              text: "New rule"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.subtitle
+            }
+
+            SettingsField {
+              label: "When the sender contains"
+              placeholder: "newsletter@example.com, or just example.com"
+              input: ruleFrom
+              RuleInput { id: ruleFrom }
+            }
+
+            SettingsField {
+              label: "When a recipient contains"
+              placeholder: "list@example.com"
+              input: ruleTo
+              RuleInput { id: ruleTo }
+            }
+
+            SettingsField {
+              label: "When the subject contains"
+              placeholder: "[ci]"
+              input: ruleSubject
+              RuleInput { id: ruleSubject }
+            }
+
+            SettingsField {
+              label: "Move it to the folder"
+              placeholder: "Folder name, as the account names it"
+              input: ruleMove
+              RuleInput { id: ruleMove }
+            }
+
+            SettingsField {
+              label: "Give it the category"
+              placeholder: "Receipts"
+              input: ruleCategory
+              RuleInput { id: ruleCategory }
+            }
+
+            Item {
+              width: parent.width
+              height: Style.space(28)
+
+              Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(8)
+
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: rulesPage.markRead ? "\uDB80\uDD32" : "\uDB80\uDD31"
+                  color: rulesPage.markRead ? ui.accent : ui.dim
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.iconSmall
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "Mark it as read"
+                  color: ui.foreground
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: rulesPage.markRead = !rulesPage.markRead
+              }
+            }
+
+            Row {
+              spacing: Style.space(10)
+
+              SettingsButton {
+                primary: true
+                glyph: "\uDB81\uDC15"
+                label: rulesPage.busy ? "Adding…" : "Add rule"
+                enabled: rulesPage.hasCondition && rulesPage.hasAction && !rulesPage.busy
+                onTriggered: {
+                  rulesPage.busy = true
+                  service.addRule({
+                    from: ruleFrom.text.trim(), to: ruleTo.text.trim(),
+                    subject: ruleSubject.text.trim(), move: ruleMove.text.trim(),
+                    category: ruleCategory.text.trim(), read: rulesPage.markRead
+                  }, function (ok) {
+                    rulesPage.busy = false
+                    if (!ok) return
+                    ruleFrom.text = ""; ruleTo.text = ""; ruleSubject.text = ""
+                    ruleMove.text = ""; ruleCategory.text = ""
+                    rulesPage.markRead = false
+                  })
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !rulesPage.hasCondition || !rulesPage.hasAction
+                text: !rulesPage.hasCondition ? "Fill in at least one condition."
+                                              : "Choose what should happen."
+                color: ui.faint
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
+          }
+
           // ----------------------------------------------------- calendar
           Column {
             width: parent.width
@@ -310,17 +514,24 @@ Item {
               font.bold: true
             }
 
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: "Not built yet. The accounts already here carry one, and "
-                + "the engine speaks to the same servers, so what is missing "
-                + "is the reading and writing of calendar data rather than a "
-                + "way to reach it."
-              color: ui.dim
-              font.family: ui.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
+            InfoRow {
+              label: "Calendars"
+              value: {
+                var shown = 0
+                for (var i = 0; i < service.calendars.length; i++)
+                  if (!service.calendars[i].hidden) shown++
+                return shown + " shown of " + service.calendars.length
+              }
+              hint: "Accounts bring their own calendars once signed in for them. "
+                + "Open the calendar and use its calendar list to hide one, or to "
+                + "add a calendar from an .ics file or link."
+            }
+
+            InfoRow {
+              label: "Reminders"
+              value: "From the bar's clock"
+              hint: "The clock in the bar reminds you before an appointment; "
+                + "right-click it to choose how long before, or to turn it off."
             }
           }
 
@@ -1004,6 +1215,17 @@ Item {
         wrapMode: Text.WordWrap
       }
     }
+  }
+
+  component RuleInput: TextInput {
+    anchors.fill: parent
+    verticalAlignment: TextInput.AlignVCenter
+    clip: true
+    color: ui.foreground
+    selectionColor: Util.alpha(ui.accent, 0.35)
+    selectedTextColor: ui.foreground
+    font.family: ui.fontFamily
+    font.pixelSize: Style.font.body
   }
 
   component SettingsField: Item {

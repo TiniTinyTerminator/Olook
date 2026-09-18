@@ -159,8 +159,6 @@ has that this client is better off without.
 - **Only Google and Microsoft have a calendar.** CalDAV was chosen so
   Nextcloud, Fastmail and iCloud need only a URL and a password rather than
   new code, but nothing discovers those yet.
-- **Rules have no interface.** They work, and are managed with `olook rule
-  add / list / remove`; nothing in the client shows or edits them.
 - **Notifications carry one action, not several.** Clicking the popup opens
   the message it is about. Reply, archive and delete from the notification
   itself are not there, and a notification for several new messages opens the
