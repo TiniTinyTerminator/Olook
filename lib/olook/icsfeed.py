@@ -158,43 +158,73 @@ def parse(text):
 
     caldav.parse_events reads everything else; this only has to pick the
     recurrence out, which the server would otherwise have applied already.
+
+    A series that had one occurrence moved or renamed carries it as a second
+    VEVENT with the same UID and a RECURRENCE-ID naming the occurrence it
+    replaces. That one stands on its own, and the series skips the slot.
     """
     base = caldav.parse_events(text)
-    rules, exceptions = _recurrence(text)
-    for index, event in enumerate(base):
-        uid = event.get("uid") or ""
-        event["rrule"] = rules.get(uid, "") if uid else ""
-        event["exdates"] = exceptions.get(uid, []) if uid else []
-    return base
+    extras = _recurrence(text)
+    if len(extras) != len(base):
+        # Not the same VEVENTs in the same order: read nothing rather than
+        # pin a rule on the wrong event.
+        extras = [{"rrule": "", "exdates": [], "recurrenceId": 0}] * len(base)
+
+    replaced = {}
+    for event, extra in zip(base, extras):
+        if extra["recurrenceId"] and event.get("uid"):
+            replaced.setdefault(event["uid"], []).append(extra["recurrenceId"])
+
+    out = []
+    for event, extra in zip(base, extras):
+        if extra["recurrenceId"]:
+            if event.get("status") == "cancelled":
+                continue
+            event["rrule"], event["exdates"] = "", []
+            event["recurring"] = True
+        else:
+            event["rrule"] = extra["rrule"]
+            event["exdates"] = extra["exdates"] + replaced.get(event.get("uid"), [])
+        out.append(event)
+    return out
 
 
 def _recurrence(text):
-    """RRULE and EXDATE per UID, which the event reader does not keep."""
-    rules, exceptions = {}, {}
-    uid = ""
-    inside = False
+    """RRULE, EXDATE and RECURRENCE-ID for each VEVENT, in document order."""
+    out = []
+    current = None
+    depth_other = 0
     for line in caldav.unfold(text):
         name, params, value = caldav.split_line(line)
         if not name:
             continue
         if name == "BEGIN" and value.upper() == "VEVENT":
-            inside, uid = True, ""
+            current = {"rrule": "", "exdates": [], "recurrenceId": 0}
+            continue
+        if current is None:
+            continue
+        if name == "BEGIN":
+            depth_other += 1
+            continue
+        if name == "END" and depth_other:
+            depth_other -= 1
             continue
         if name == "END" and value.upper() == "VEVENT":
-            inside = False
+            out.append(current)
+            current = None
             continue
-        if not inside:
+        if depth_other:
             continue
-        if name == "UID":
-            uid = value.strip()
-        elif name == "RRULE" and uid:
-            rules[uid] = value.strip()
-        elif name == "EXDATE" and uid:
+        if name == "RRULE":
+            current["rrule"] = value.strip()
+        elif name == "EXDATE":
             for part in value.split(","):
                 when, _ = caldav._when(part.strip(), params)
                 if when:
-                    exceptions.setdefault(uid, []).append(when)
-    return rules, exceptions
+                    current["exdates"].append(when)
+        elif name == "RECURRENCE-ID":
+            current["recurrenceId"], _ = caldav._when(value.strip(), params)
+    return out
 
 
 # ---------------------------------------------------------------- recurrence

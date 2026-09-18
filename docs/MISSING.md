@@ -122,9 +122,10 @@ has that this client is better off without.
 - **Recurrence in a file is read, not honoured in full.** CalDAV and Graph
   expand a range on the server; a file has to be expanded here, and what is
   implemented is the part a timetable is written with -- the frequencies,
-  INTERVAL, COUNT, UNTIL, BYDAY for weekly rules, and EXDATE. BYSETPOS, a
-  moved single occurrence, and the rest are ignored rather than guessed at,
-  which gives the plain repetition instead of a wrong one.
+  INTERVAL, COUNT, UNTIL, BYDAY for weekly rules, EXDATE, and a single
+  occurrence moved, renamed or cancelled through RECURRENCE-ID. BYSETPOS,
+  BYMONTHDAY and the rest are ignored rather than guessed at, which gives the
+  plain repetition instead of a wrong one.
 
 - **One plugin cannot summon another's window from inside the shell.** A
   plugin's `bar.shell` handle is scoped to itself: `summon` is there, takes
