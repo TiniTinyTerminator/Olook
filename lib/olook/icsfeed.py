@@ -283,9 +283,11 @@ def parse_rule(text):
 def _occurrences(first, rule, window_end):
     """The start of each occurrence, earliest first.
 
-    A subset of RFC 5545: the frequencies, INTERVAL, COUNT, UNTIL, and BYDAY
-    for weekly rules. That is what a timetable is written with. Anything else
-    in the rule is ignored rather than guessed at, which yields the plain
+    A subset of RFC 5545: the frequencies, INTERVAL, COUNT, UNTIL, BYDAY for
+    weekly rules, and for monthly and yearly ones BYMONTHDAY, BYDAY with or
+    without a position ("2TU", "-1FR"), BYMONTH and BYSETPOS. That covers a
+    timetable and the usual "second Tuesday of the month". Anything else in
+    the rule is ignored rather than guessed at, which yields the plain
     repetition instead of the wrong one.
     """
     freq = rule.get("FREQ", "").upper()
@@ -326,6 +328,13 @@ def _occurrences(first, rule, window_end):
             monday = cursor - datetime.timedelta(days=cursor.weekday())
             for day in sorted(days):
                 moments.append(monday + datetime.timedelta(days=day))
+        elif freq in ("MONTHLY", "YEARLY") and (rule.get("BYMONTHDAY")
+                                                 or rule.get("BYDAY")):
+            months = [cursor.month]
+            if freq == "YEARLY" and rule.get("BYMONTH"):
+                months = sorted(_numbers(rule["BYMONTH"], 1, 12))
+            for month in months:
+                moments.extend(_month_moments(cursor.year, month, rule, start))
         else:
             moments.append(cursor)
 
@@ -352,6 +361,66 @@ def _occurrences(first, rule, window_end):
             cursor = _add_months(cursor, 12 * interval)
         else:
             return
+
+
+def _numbers(text, low, high):
+    """A comma list of integers, keeping those whose size is in range."""
+    out = []
+    for token in str(text).split(","):
+        try:
+            value = int(token)
+        except ValueError:
+            continue
+        if low <= abs(value) <= high:
+            out.append(value)
+    return out
+
+
+def _month_moments(year, month, rule, start):
+    """Every day in one month a BYMONTHDAY / BYDAY / BYSETPOS rule picks.
+
+    Days named both ways must satisfy both, as RFC 5545 has it. The time of
+    day is the first occurrence's.
+    """
+    length = _days_in(year, month)
+    chosen = None
+    if rule.get("BYMONTHDAY"):
+        chosen = set()
+        for value in _numbers(rule["BYMONTHDAY"], 1, 31):
+            day = value if value > 0 else length + 1 + value
+            if 1 <= day <= length:
+                chosen.add(day)
+    if rule.get("BYDAY"):
+        picked = set()
+        for token in rule["BYDAY"].split(","):
+            token = token.strip().upper()
+            name, position = token[-2:], token[:-2]
+            if name not in WEEKDAYS:
+                continue
+            matching = [d for d in range(1, length + 1)
+                        if datetime.date(year, month, d).weekday() == WEEKDAYS[name]]
+            if position:
+                try:
+                    index = int(position)
+                except ValueError:
+                    continue
+                if index > 0 and index <= len(matching):
+                    picked.add(matching[index - 1])
+                elif index < 0 and -index <= len(matching):
+                    picked.add(matching[index])
+            else:
+                picked.update(matching)
+        chosen = picked if chosen is None else (chosen & picked)
+    days = sorted(chosen or [])
+    if rule.get("BYSETPOS") and days:
+        kept = set()
+        for position in _numbers(rule["BYSETPOS"], 1, 366):
+            if position > 0 and position <= len(days):
+                kept.add(days[position - 1])
+            elif position < 0 and -position <= len(days):
+                kept.add(days[position])
+        days = sorted(kept)
+    return [start.replace(year=year, month=month, day=day) for day in days]
 
 
 def _add_months(when, months):
