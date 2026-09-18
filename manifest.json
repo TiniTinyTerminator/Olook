@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "TiniTinyTerminator",
   "license": "MIT",
-  "description": "Olook: an Outlook-style mail client for Omarchy \u2014 unread count in the bar, a recent-mail panel, and a full reader with Gmail, Outlook.com and Microsoft 365 sign-in.",
+  "description": "Olook: an Outlook-style mail client for Omarchy — unread count in the bar, a recent-mail panel, and a full reader with Gmail, Outlook.com and Microsoft 365 sign-in.",
   "kinds": [
     "bar-widget",
     "overlay"
@@ -31,7 +31,8 @@
       "syncIntervalSec": 180,
       "notify": true,
       "panelMessageCount": 8,
-      "unreadOnlyBadge": false
+      "unreadOnlyBadge": false,
+      "badge": "Dot when new mail arrives"
     },
     "schema": [
       {
@@ -57,6 +58,18 @@
         "max": 20,
         "step": 1,
         "defaultValue": 8
+      },
+      {
+        "key": "badge",
+        "type": "enum",
+        "label": "Badge on the icon",
+        "options": [
+          "Dot when new mail arrives",
+          "Unread count",
+          "Nothing"
+        ],
+        "defaultValue": "Dot when new mail arrives",
+        "description": "The dot clears when you open the panel; the count is everything unread."
       },
       {
         "key": "unreadOnlyBadge",

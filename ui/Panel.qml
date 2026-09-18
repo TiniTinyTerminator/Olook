@@ -29,6 +29,25 @@ Panel {
   }
   readonly property bool hideWhenRead: setting("unreadOnlyBadge", false) === true
 
+  // What the icon carries: a dot for mail that arrived since the panel was
+  // last opened, the unread count, or nothing. The dot is the default
+  // because an unread count in the thousands says nothing new, and a dot for
+  // "anything unread" would never go out.
+  readonly property string badgeMode: {
+    var value = String(setting("badge", "Dot when new mail arrives"))
+    if (value === "Unread count") return "count"
+    if (value === "Nothing") return "none"
+    return "dot"
+  }
+
+  // The unread count when you last looked. Mail arriving pushes the count
+  // past it; reading mail elsewhere pulls it down, and the mark follows so
+  // the next arrival still shows.
+  property int seenUnread: -1
+  readonly property bool hasNew: seenUnread >= 0 && mail.unread > seenUnread
+
+  function markSeen() { root.seenUnread = mail.unread }
+
   // Which mailbox the panel is showing, by account id; "" is all of them.
   // Session-scoped on purpose: the widget opens showing everything.
   property string accountFilter: ""
@@ -72,7 +91,9 @@ Panel {
     root.accountFilter = ids[(at + step + ids.length) % ids.length]
   }
   readonly property bool hasUnread: mail.unread > 0
-  readonly property color barIconColor: hasUnread ? barForeground : Qt.darker(barForeground, 1.45)
+  // Lit when the badge has something to say, dimmed when it does not.
+  readonly property bool iconLit: root.badgeMode === "dot" ? root.hasNew : root.hasUnread
+  readonly property color barIconColor: iconLit ? barForeground : Qt.darker(barForeground, 1.45)
 
   // Only one bar instance per monitor should drive the periodic sync and the
   // new-mail notification; the others just render the same cached state.
@@ -155,6 +176,7 @@ Panel {
   visible: !hideWhenRead || hasUnread || opened
 
   onOpenedChanged: if (opened) {
+    root.markSeen()
     cursorActive = false
     messageIndex = 0
     focusSection = "messages"
@@ -165,6 +187,13 @@ Panel {
   Service {
     id: mail
     settings: root.settings
+
+    // The first count read is the baseline: nothing is new at startup. It
+    // lands before `ready` is set, which is how it is told apart.
+    onUnreadChanged: {
+      if (!mail.ready || mail.unread < root.seenUnread || root.opened)
+        root.markSeen()
+    }
     // One syncer per desktop: the other monitors' widgets render the same
     // cache this one fills. It keeps an IDLE connection open per account, so
     // new mail — and its notification — arrives when it arrives.
@@ -228,6 +257,10 @@ Panel {
     function toggle(): void { root.toggle() }
     function sync(): string { mail.sync(false); return "ok" }
     function unread(): string { return String(mail.unread) }
+    function badge(): string {
+      return JSON.stringify({ "mode": root.badgeMode, "unread": mail.unread,
+                              "seen": root.seenUnread, "dot": root.hasNew })
+    }
     function window(): string { root.openWindow({}); return "ok" }
     function compose(): string { root.compose(); return "ok" }
   }
@@ -247,9 +280,22 @@ Panel {
           font.pixelSize: Style.bar.iconFont
         }
 
+        // New mail since you last looked: a dot where the count would sit.
+        Rectangle {
+          visible: root.badgeMode === "dot" && root.hasNew
+          anchors.left: glyph.right
+          anchors.leftMargin: -Style.space(4)
+          anchors.bottom: glyph.top
+          anchors.bottomMargin: -Style.space(5)
+          width: Style.space(7)
+          height: width
+          radius: width / 2
+          color: root.urgent
+        }
+
         // Unread badge, tucked into the glyph's top-right like Outlook's.
         Rectangle {
-          visible: root.hasUnread
+          visible: root.badgeMode === "count" && root.hasUnread
           anchors.left: glyph.right
           anchors.leftMargin: -Style.space(5)
           anchors.bottom: glyph.top
