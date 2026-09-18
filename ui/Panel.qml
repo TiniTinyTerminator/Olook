@@ -40,13 +40,11 @@ Panel {
     return "dot"
   }
 
-  // The unread count when you last looked. Mail arriving pushes the count
-  // past it; reading mail elsewhere pulls it down, and the mark follows so
-  // the next arrival still shows.
-  property int seenUnread: -1
-  readonly property bool hasNew: seenUnread >= 0 && mail.unread > seenUnread
-
-  function markSeen() { root.seenUnread = mail.unread }
+  // Mail that arrived since you last looked, by message rather than by
+  // count: the engine remembers the newest message in each inbox at that
+  // moment, so an old message marked unread is not new, and a restart of the
+  // shell does not forget what was.
+  readonly property bool hasNew: mail.fresh > 0
 
   // Which mailbox the panel is showing, by account id; "" is all of them.
   // Session-scoped on purpose: the widget opens showing everything.
@@ -176,7 +174,7 @@ Panel {
   visible: !hideWhenRead || hasUnread || opened
 
   onOpenedChanged: if (opened) {
-    root.markSeen()
+    mail.markSeen()
     cursorActive = false
     messageIndex = 0
     focusSection = "messages"
@@ -188,12 +186,6 @@ Panel {
     id: mail
     settings: root.settings
 
-    // The first count read is the baseline: nothing is new at startup. It
-    // lands before `ready` is set, which is how it is told apart.
-    onUnreadChanged: {
-      if (!mail.ready || mail.unread < root.seenUnread || root.opened)
-        root.markSeen()
-    }
     // One syncer per desktop: the other monitors' widgets render the same
     // cache this one fills. It keeps an IDLE connection open per account, so
     // new mail — and its notification — arrives when it arrives.
@@ -259,7 +251,7 @@ Panel {
     function unread(): string { return String(mail.unread) }
     function badge(): string {
       return JSON.stringify({ "mode": root.badgeMode, "unread": mail.unread,
-                              "seen": root.seenUnread, "dot": root.hasNew })
+                              "fresh": mail.fresh, "dot": root.hasNew })
     }
     function window(): string { root.openWindow({}); return "ok" }
     function compose(): string { root.compose(); return "ok" }

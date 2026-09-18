@@ -18,6 +18,8 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   property bool opened: false
+  // Opening the client is looking at the mail: the bar's new-mail dot goes.
+  onOpenedChanged: if (opened) mail.markSeen(true)
   property string view: "mail"          // mail | calendar | people | settings
   property string pane: "list"          // folders | list | reader
   property bool composing: false

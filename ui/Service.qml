@@ -31,6 +31,9 @@ Item {
   property var selected: null
   property var body: null
   property int unread: 0
+  // Unread mail that arrived since the inboxes were last looked at. Kept by
+  // the engine, so it outlives a restart of the shell.
+  property int fresh: 0
   property int lastSync: 0
   // Newest inbox mail across every account, newest first. The bar panel shows
   // this rather than one account's folder, the way a notification list would.
@@ -202,6 +205,14 @@ Item {
 
   // ------------------------------------------------------------------ status
 
+  // You have looked: what is there now is no longer new.
+  // `always` for a caller that may not have read the count yet.
+  function markSeen(always) {
+    if (root.fresh === 0 && !always) return
+    root.fresh = 0
+    run(["seen"], function () { root.refreshStatus() }, "seen")
+  }
+
   function refreshStatus(thenLoad) {
     run(["status", "--limit", "20"], function (ok, payload) {
       if (!ok || !payload) return
@@ -211,6 +222,7 @@ Item {
       root.accounts = payload.accounts || []
       root.configured = payload.configured === true
       root.unread = payload.unread || 0
+      root.fresh = payload.fresh || 0
       root.recent = payload.messages || []
       root.lastSync = payload.lastSync || 0
       root.ready = true
@@ -1936,7 +1948,12 @@ Item {
     interval: 60 * 1000
     repeat: true
     running: root.configured && root.pollEnabled
-    onTriggered: root.flushOutbox()
+    onTriggered: {
+      root.flushOutbox()
+      // The dot may have been cleared from the client window, which runs a
+      // service of its own; ask again while there is one to clear.
+      if (root.fresh > 0) root.refreshStatus()
+    }
   }
 
   Component.onCompleted: {

@@ -848,6 +848,20 @@ def unread_counts(conn, account=None):
     return out
 
 
+def newest_uid(conn, account, folder="INBOX"):
+    row = conn.execute("SELECT MAX(uid) AS uid FROM messages WHERE account = ? "
+                       "AND folder = ?", (account, folder)).fetchone()
+    return int(row["uid"] or 0) if row else 0
+
+
+def unread_above(conn, account, uid, folder="INBOX"):
+    """Unread messages that arrived after the one numbered `uid`."""
+    row = conn.execute("SELECT COUNT(*) AS n FROM messages WHERE account = ? "
+                       "AND folder = ? AND seen = 0 AND draft = 0 AND uid > ?",
+                       (account, folder, int(uid))).fetchone()
+    return int(row["n"] or 0) if row else 0
+
+
 # ---------------------------------------------------------------------- bodies
 
 def save_body(conn, account, folder, uid, text, html, parts, headers):

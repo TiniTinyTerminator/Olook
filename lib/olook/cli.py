@@ -1819,23 +1819,56 @@ def cmd_draft(args):
 
 # --------------------------------------------------------------------- status
 
+def _seen_key(account_id):
+    return f"seen_uid:{account_id}"
+
+
+def cmd_seen(args):
+    """Mark every inbox as looked at, up to the newest message in it.
+
+    New mail is what arrived after this: a UID above the mark and still
+    unread. UIDs only grow within a folder, so an old message marked unread
+    again stays below the mark and is not new.
+    """
+    conn = store.connect()
+    marked = {}
+    for account in config.accounts():
+        if not account["enabled"]:
+            continue
+        uid = store.newest_uid(conn, account["id"])
+        store.set_state(conn, _seen_key(account["id"]), uid)
+        marked[account["id"]] = uid
+    emit({"ok": True, "marked": marked}, lambda d: "Marked as seen.")
+
+
 def cmd_status(args):
     conn = store.connect()
     counts = store.unread_counts(conn)
     accounts = []
     total = 0
+    fresh_total = 0
     for account in config.accounts():
         if not account["enabled"]:
             continue
         folders = counts.get(account["id"], {})
         inbox_unread = folders.get("INBOX", 0)
         total += inbox_unread
+        # An account with no mark yet has seen what it holds: installing the
+        # client is not an arrival of ten thousand messages.
+        mark = store.get_state(conn, _seen_key(account["id"]))
+        if mark is None:
+            mark = store.newest_uid(conn, account["id"])
+            if mark:
+                store.set_state(conn, _seen_key(account["id"]), mark)
+        fresh = store.unread_above(conn, account["id"], int(mark or 0))
+        fresh_total += fresh
         accounts.append({
             "id": account["id"],
             "email": account["email"],
             "name": account["name"],
             "provider": account["provider"],
             "unread": inbox_unread,
+            "fresh": fresh,
             "authorized": bool(account.get("demo")
                                or keyring.get_secret(account["id"], "refresh_token")
                                or keyring.get_secret(account["id"], "password")),
@@ -1846,7 +1879,7 @@ def cmd_status(args):
         latest.extend(store.list_messages(conn, account["id"], folder="INBOX",
                                           limit=args.limit, unread_only=args.unread))
     latest.sort(key=lambda m: m["date"], reverse=True)
-    emit({"ok": True, "unread": total, "accounts": accounts,
+    emit({"ok": True, "unread": total, "fresh": fresh_total, "accounts": accounts,
           "messages": latest[:args.limit],
           "lastSync": int(store.get_state(conn, "last_sync", 0) or 0),
           "configured": bool(accounts)},
@@ -2179,6 +2212,9 @@ def build_parser():
     p.add_argument("--folder", required=True)
     p.add_argument("--kind", required=True, choices=("mail", "other", "auto"))
     p.set_defaults(func=cmd_folder_kind)
+
+    p = sub.add_parser("seen", help="mark every inbox as looked at, for the new-mail dot")
+    p.set_defaults(func=cmd_seen)
 
     p = sub.add_parser("outbox", help="messages waiting for a connection or a time")
     p.add_argument("--flush", action="store_true", help="send whatever is due now")
