@@ -57,7 +57,14 @@ build_shim() {
   fi
 
   local line="hl.env(\"LD_PRELOAD\", \"$target\")"
+  if grep -qsF "$target" "$HOME/.config/hypr/hyprland.lua"; then
+    return
+  fi
   if grep -qs "argcshim.so" "$HOME/.config/hypr/hyprland.lua"; then
+    echo
+    echo "~/.config/hypr/hyprland.lua preloads the renderer shim from another path."
+    echo "Point that line here instead, then 'hyprctl reload && omarchy restart shell':"
+    echo "  $line"
     return
   fi
   echo
