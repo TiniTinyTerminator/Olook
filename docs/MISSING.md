@@ -103,6 +103,11 @@ has that this client is better off without.
   moved single occurrence, and the rest are ignored rather than guessed at,
   which gives the plain repetition instead of a wrong one.
 
+- **Reminders are the widget's, not the engine's.** The notification before
+  an appointment comes from the bar widget, so it only fires while the shell
+  is running and only for appointments already fetched into it. Nothing wakes
+  the machine for one, and closing the bar closes the reminders with it.
+
 - **The bar widget replaced the clock's extras with appointments.** Omarchy's
   clock popup also carried ISO week numbers, a year-progress bar and an age
   readout; this one carries the days you have something on and what is on
