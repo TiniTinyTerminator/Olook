@@ -859,6 +859,17 @@ def save_body(conn, account, folder, uid, text, html, parts, headers):
     conn.commit()
 
 
+def uncached_bodies(conn, account, folder, uids):
+    """Which of these messages have no body on disk yet."""
+    wanted = [int(u) for u in uids]
+    if not wanted:
+        return []
+    have = {row["uid"] for row in conn.execute(
+        "SELECT uid FROM bodies WHERE account = ? AND folder = ? AND uid IN (%s)"
+        % ",".join("?" * len(wanted)), [account, folder] + wanted)}
+    return [u for u in wanted if u not in have]
+
+
 def get_body(conn, account, folder, uid):
     row = conn.execute(
         "SELECT * FROM bodies WHERE account = ? AND folder = ? AND uid = ?",

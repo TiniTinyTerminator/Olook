@@ -28,6 +28,32 @@ has that this client is better off without.
 
 ## Mail handling
 
+- **Mail is slow to arrive on screen.** Measured, not guessed. Reading from
+  the cache is fast -- a folder lists in 0.11s and a cached message opens in
+  0.11s, most of which is Python starting. Everything slow is the network,
+  and every engine call pays for its own connection:
+
+  | step | Gmail | Outlook |
+  |---|---|---|
+  | connect and log in | 0.61s | 0.29s |
+  | select a folder | 0.21s | 0.09s |
+  | log out, waited for | 0.26s | 0.25s |
+  | one STATUS per folder | 1.50s (13) | 0.58s (15) |
+  | a whole inbox sync | 3.0s | |
+  | opening a message not yet cached | 1.1s | |
+
+  Three of those are done: Gmail's folder counts come back in one
+  `LIST-STATUS` (1.63s to 0.15s), the log-out is no longer waited for, and
+  the newest fifteen messages of a folder are fetched during the sync, so a
+  first click on one is a read from disk -- 0.88s to 0.11s. An inbox sync
+  went from 3.0s to 1.5s.
+
+  What remains is the connection itself. Every engine call still opens its
+  own, and a click on anything older than the prefetched fifteen pays for
+  one. The real fix is one long-lived connection per account; the `watch`
+  process already holds one for IDLE and could carry the rest. Outlook has no
+  `LIST-STATUS` and still asks each folder in turn.
+
 - **Threading needs a resync to take effect on old mail.** References are
   kept from now on; messages already in the cache have none until the folder
   is fetched again, and fall back to matching on subject until then.

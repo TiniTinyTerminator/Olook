@@ -447,20 +447,56 @@ def cmd_folders(args):
     if args.refresh:
         with mailbox.Session(account) as session:
             folders = session.list_folders()
+            counts = session.status_all(folder["name"] for folder in folders)
             enriched = []
             for folder in folders:
                 info = {"name": folder["name"], "delimiter": folder["delimiter"],
                         "special": folder["special"]}
-                try:
-                    info.update(session.status(folder["name"]))
-                except mailbox.MailError:
-                    pass
+                info.update(counts.get(folder["name"], {}))
                 enriched.append(info)
             store.save_folders(conn, account["id"], enriched)
     emit({"ok": True, "account": account["id"],
           "folders": _ordered_folders(account, store.list_folders(conn, account["id"]))},
          lambda d: "\n".join(f"{f['name']:34} {f['unseen']:>5} unread  {f['total']:>6} total"
                              for f in d["folders"]) or "No folders cached yet.")
+
+
+# How many of the newest messages in a folder get their bodies fetched ahead
+# of being opened, and the largest one worth fetching unasked.
+PREFETCH_COUNT = 15
+PREFETCH_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _prefetch_bodies(session, conn, account, folder, count):
+    """Fetch the top of a folder's bodies while the connection is open anyway.
+
+    Opening a message that is not cached costs a connection of its own --
+    most of a second, against a tenth for one already on disk. The messages
+    at the top of the folder are the ones about to be opened, and the sync
+    has just paid for a connection, so they come down now in one request.
+
+    Large messages are left for when they are asked for: an attachment-heavy
+    inbox should not turn a sync into a download. And a failure here is never
+    the sync's failure -- the headers are in, which is what a sync is for.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT uid, size FROM messages WHERE account = ? AND folder = ? "
+            "ORDER BY uid DESC LIMIT ?", (account["id"], folder, int(count))).fetchall()
+        wanted = [row["uid"] for row in rows
+                  if int(row["size"] or 0) <= PREFETCH_MAX_BYTES]
+        missing = store.uncached_bodies(conn, account["id"], folder, wanted)
+        if not missing:
+            return 0
+        fetched = session.fetch_messages_peek(missing)
+        for uid, raw in fetched.items():
+            extracted = message.extract(raw)
+            _save_inline_images(raw, extracted, account["id"], folder, uid)
+            store.save_body(conn, account["id"], folder, uid, extracted["text"],
+                            extracted["html"], extracted["parts"], extracted["headers"])
+        return len(fetched)
+    except Exception:
+        return 0
 
 
 def cmd_sync(args):
@@ -482,15 +518,17 @@ def cmd_sync(args):
 
                 summary = mailbox.sync_folder(session, conn, folder,
                                               limit=args.limit, full=args.full)
-                # Folder pane counts come from STATUS, which is cheap enough to
-                # refresh for every folder on each sync.
+                summary["prefetched"] = _prefetch_bodies(
+                    session, conn, account, folder, PREFETCH_COUNT)
+                # Folder pane counts come from STATUS, fetched for every folder
+                # at once where the server allows it.
+                counts = session.status_all(entry["name"] for entry in folders)
                 enriched = []
                 for entry in folders:
-                    info = dict(entry)
-                    try:
-                        info.update(session.status(entry["name"]))
-                    except mailbox.MailError:
+                    if entry["name"] not in counts:
                         continue
+                    info = dict(entry)
+                    info.update(counts[entry["name"]])
                     enriched.append(info)
                 if enriched:
                     store.save_folders(conn, account["id"], enriched)

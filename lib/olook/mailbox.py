@@ -297,15 +297,23 @@ class Session:
             self.capabilities = set()
 
     def close(self):
+        """Hang up without waiting to be told goodbye.
+
+        CLOSE and LOGOUT were each a round trip the engine sat through at the
+        end of every call -- a quarter of a second on both providers, spent
+        on nothing. A server treats a dropped connection as a log-out, so
+        the socket is simply shut.
+
+        CLOSE also expunged, silently, anything flagged \\Deleted in a folder
+        selected read-write -- including messages another client had marked
+        and meant to deal with itself. Deleting here expunges exactly the
+        messages it deleted, so nothing is lost by not sending it and
+        something is protected.
+        """
         if not self.imap:
             return
         try:
-            if self.selected:
-                self.imap.close()
-        except Exception:
-            pass
-        try:
-            self.imap.logout()
+            self.imap.shutdown()
         except Exception:
             pass
         self.imap = None
@@ -366,6 +374,70 @@ class Session:
             "uidnext": field(b"UIDNEXT"),
             "uidvalidity": field(b"UIDVALIDITY"),
         }
+
+    def status_all(self, names):
+        """STATUS for many folders, in one round trip where the server can.
+
+        A STATUS per folder is a round trip per folder, and a sync asks for
+        every one: on Gmail that was thirteen of them and a second and a half
+        of every sync. LIST-STATUS (RFC 5819) answers them all in reply to a
+        single LIST. Servers without it get the old loop, unchanged.
+        """
+        wanted = list(names)
+        caps = {c.decode().upper() if isinstance(c, bytes) else str(c).upper()
+                for c in (self.imap.capabilities or ())}
+        if "LIST-STATUS" not in caps:
+            return self._status_each(wanted)
+
+        self.imap.untagged_responses.pop("STATUS", None)
+        try:
+            typ, _ = self.imap._simple_command(
+                "LIST", '""', '"*"', "RETURN",
+                "(STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY))")
+        except Exception:
+            return self._status_each(wanted)
+        if typ != "OK":
+            return self._status_each(wanted)
+
+        found = {}
+        for line in self.imap.untagged_responses.pop("STATUS", []) or []:
+            if isinstance(line, tuple):
+                line = b" ".join(part for part in line if isinstance(part, bytes))
+            if not isinstance(line, bytes):
+                continue
+            match = re.match(rb'^\s*(?:"((?:[^"\\]|\\.)*)"|(\S+))\s+\((.*)\)\s*$', line)
+            if not match:
+                continue
+            raw = match.group(1) if match.group(1) is not None else match.group(2)
+            name = decode_folder(raw.replace(b'\\"', b'"'))
+            if name.upper() == "INBOX":
+                name = "INBOX"
+            blob = match.group(3)
+            def field(key):
+                hit = re.search(rb"\b" + key + rb"\s+(\d+)", blob, re.I)
+                return int(hit.group(1)) if hit else 0
+            found[name] = {
+                "total": field(b"MESSAGES"),
+                "unseen": field(b"UNSEEN"),
+                "uidnext": field(b"UIDNEXT"),
+                "uidvalidity": field(b"UIDVALIDITY"),
+            }
+
+        # Anything the reply left out is asked for the old way rather than
+        # reported as empty.
+        missing = [name for name in wanted if name not in found]
+        if missing:
+            found.update(self._status_each(missing))
+        return {name: found[name] for name in wanted if name in found}
+
+    def _status_each(self, names):
+        out = {}
+        for name in names:
+            try:
+                out[name] = self.status(name)
+            except MailError:
+                continue
+        return out
 
     def select(self, folder, readonly=False):
         if self.selected == (folder, readonly):
@@ -481,6 +553,27 @@ class Session:
                 return email.message_from_bytes(group["literals"][0],
                                                 policy=email.policy.default)
         raise MailError(f"Message {uid} returned no content")
+
+    def fetch_messages_peek(self, uids):
+        """Many whole messages in one round trip, without marking any read.
+
+        BODY.PEEK[] rather than RFC822: the plain form sets \\Seen on every
+        message it fetches, and this is used to fetch ahead of the reader --
+        messages nobody has opened yet, which must stay unread.
+        """
+        uids = [int(u) for u in uids]
+        if not uids:
+            return {}
+        data = self._ok(self.imap.uid("FETCH", uid_ranges(uids), "(UID BODY.PEEK[])"),
+                        "Could not fetch messages")
+        out = {}
+        for group in _group_fetch(data):
+            uid = _uid_of(group["raw"])
+            if not uid or not group["literals"]:
+                continue
+            out[int(uid)] = email.message_from_bytes(group["literals"][0],
+                                                     policy=email.policy.default)
+        return out
 
     # -- writing -----------------------------------------------------------
     def store_flags(self, uids, flags, add=True):
