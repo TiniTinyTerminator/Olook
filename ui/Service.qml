@@ -705,7 +705,9 @@ Item {
 
       var window = root.calendarFrom + ".." + root.calendarTo
       if (root.fetchedMonths[window] || root.calendarSyncing) return
-      if (root.calendarAccounts.length === 0) return
+      // Calendars from a file or a server of their own count too: someone
+      // with no mail calendar at all still wants those read.
+      if (root.calendarAccounts.length === 0 && root.calendars.length === 0) return
       // Marked before the answer comes back and left marked on failure, so
       // one unreachable account cannot turn into a sync on every repaint.
       root.fetchedMonths[window] = true
@@ -713,9 +715,14 @@ Item {
     }, "calendar")
   }
 
+  // CalDAV servers added by hand -- Nextcloud, Fastmail, iCloud -- which
+  // stand beside the mail accounts as calendar accounts of their own.
+  property var calendarServers: []
+
   function loadCalendars() {
     run(["calendars"], function (ok, payload) {
       if (ok && payload) root.calendars = payload.calendars || []
+      if (ok && payload) root.calendarServers = payload.servers || []
     }, "calendar")
   }
 
@@ -881,6 +888,41 @@ Item {
       root.fetchedMonths = ({})
       root.loadCalendar(root.calendarFrom, root.calendarTo)
       if (done) done(true)
+    }, "calendar")
+  }
+
+  function addCalendarServer(name, url, username, password, done) {
+    if (!url || !username || !password) return
+    root.calendarSyncing = true
+    runWithInput(["calendar-server-add", "--name", String(name || ""),
+                  "--url", String(url), "--username", String(username),
+                  "--password", "-"], String(password),
+                 function (ok, payload, stderrText) {
+      root.calendarSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not reach that calendar server")
+        if (done) done(false)
+        return
+      }
+      var count = ((payload && payload.calendars) || []).length
+      root.notice = count + (count === 1 ? " calendar" : " calendars")
+      noticeTimer.restart()
+      root.loadCalendars()
+      root.fetchedMonths = ({})
+      root.syncCalendar(null)
+      if (done) done(true)
+    }, "calendar")
+  }
+
+  function forgetCalendarServer(id) {
+    if (!id) return
+    run(["calendar-server-forget", String(id)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remove that server")
+        return
+      }
+      root.loadCalendars()
+      root.loadCalendar(root.calendarFrom, root.calendarTo)
     }, "calendar")
   }
 

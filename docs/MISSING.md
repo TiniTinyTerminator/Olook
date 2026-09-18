@@ -151,9 +151,13 @@ has that this client is better off without.
   with an application of your own -- the borrowed one has it -- and the 403
   names the API, which the client passes through with the link to turn it on.
 
-- **Only Google and Microsoft have a calendar.** CalDAV was chosen so
-  Nextcloud, Fastmail and iCloud need only a URL and a password rather than
-  new code, but nothing discovers those yet.
+- **A CalDAV server is added by address, not discovered from the mail
+  account.** Nextcloud, Fastmail and iCloud work from the calendar panel with
+  a server address, a user name and an (app) password -- tested against a
+  Radicale server: calendars found through /.well-known/caldav, and an
+  appointment added, changed and deleted. Nothing looks the server up from an
+  address's domain, and the password is a password: none of those three
+  offers the same sign-in the mail uses.
 - **Notifications carry one action, not several.** Clicking the popup opens
   the message it is about. Archive or mark-read buttons on the popup itself
   would be a few more `--action` flags, but Omarchy's notification daemon

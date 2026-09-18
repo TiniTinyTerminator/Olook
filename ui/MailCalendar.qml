@@ -337,6 +337,9 @@ Item {
       // Calendars read from a file belong to no mailbox, so they are grouped
       // under where they came from rather than under an address.
       if (id === "local") return "On this computer"
+      var servers = root.service ? root.service.calendarServers : []
+      for (var n = 0; n < servers.length; n++)
+        if (servers[n].id === id) return servers[n].name || servers[n].url
       for (var j = 0; j < accounts.length; j++)
         if (accounts[j].id === id) return accounts[j].email || accounts[j].name
       return id
@@ -345,7 +348,8 @@ Item {
     var rows = []
     for (var k = 0; k < order.length; k++) {
       if (order.length > 1)
-        rows.push({ "heading": nameOf(order[k]), "calendar": null })
+        rows.push({ "heading": nameOf(order[k]), "calendar": null,
+                    "server": String(order[k]).indexOf("dav-") === 0 ? order[k] : "" })
       var mine = grouped[order[k]]
       for (var m = 0; m < mine.length; m++)
         rows.push({ "heading": "", "calendar": mine[m] })
@@ -356,17 +360,34 @@ Item {
   // Adding a calendar that lives in a file. Held here rather than in the
   // fields so that closing the form and opening it again starts clean.
   property bool addingCalendar: false
+  // "file" for a file or a link, "server" for a CalDAV server.
+  property string addKind: "file"
   property string draftName: ""
   property string draftSource: ""
+  property string draftUser: ""
+  property string draftPassword: ""
 
   function startAddCalendar() {
     root.draftName = ""
     root.draftSource = ""
+    root.draftUser = ""
+    root.draftPassword = ""
+    nameField.text = ""
+    sourceField.text = ""
+    userField.text = ""
+    passwordField.text = ""
     root.addingCalendar = true
   }
 
   function commitCalendar() {
     if (!root.service || root.draftSource.trim() === "") return
+    if (root.addKind === "server") {
+      if (root.draftUser.trim() === "" || root.draftPassword === "") return
+      root.service.addCalendarServer(root.draftName.trim(), root.draftSource.trim(),
+                                     root.draftUser.trim(), root.draftPassword,
+                                     function (ok) { if (ok) root.addingCalendar = false })
+      return
+    }
     root.service.addCalendarFile(root.draftName.trim(), root.draftSource.trim(), "",
                                  function (ok) { if (ok) root.addingCalendar = false })
   }
@@ -647,7 +668,7 @@ Item {
 
               PanelToolTip {
                 visible: addCalendarHover.containsMouse
-                text: "Add a calendar from a file or a link"
+                text: "Add a calendar from a file, a link or a CalDAV server"
                 fontFamily: ui.fontFamily
               }
             }
@@ -659,6 +680,22 @@ Item {
             visible: root.addingCalendar
             spacing: Style.space(5)
 
+            Row {
+              spacing: Style.space(5)
+
+              PanelChip {
+                label: "File or link"
+                accent: root.addKind === "file"
+                onTriggered: root.addKind = "file"
+              }
+
+              PanelChip {
+                label: "Server"
+                accent: root.addKind === "server"
+                onTriggered: root.addKind = "server"
+              }
+            }
+
             CalendarField {
               id: nameField
               width: parent.width
@@ -669,14 +706,33 @@ Item {
             CalendarField {
               id: sourceField
               width: parent.width
-              placeholder: "File path or https:// link"
+              placeholder: root.addKind === "server" ? "Server address"
+                                                     : "File path or https:// link"
               onEdited: function (value) { root.draftSource = value }
+            }
+
+            CalendarField {
+              id: userField
+              width: parent.width
+              visible: root.addKind === "server"
+              placeholder: "User name"
+              onEdited: function (value) { root.draftUser = value }
+            }
+
+            CalendarField {
+              id: passwordField
+              width: parent.width
+              visible: root.addKind === "server"
+              password: true
+              placeholder: "Password or app password"
+              onEdited: function (value) { root.draftPassword = value }
             }
 
             Row {
               spacing: Style.space(5)
 
               PanelChip {
+                visible: root.addKind === "file"
                 label: "Browse…"
                 onTriggered: calendarPicker.open()
               }
@@ -713,13 +769,36 @@ Item {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.bottomMargin: Style.space(3)
-                width: parent.width
+                width: parent.width - (serverForget.visible ? serverForget.width + Style.space(4) : 0)
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 text: calendarRow.modelData.heading
                 color: ui.faint
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.bodySmall
+              }
+
+              // A server added by hand is removed as a whole, from its heading.
+              Text {
+                id: serverForget
+                visible: !!calendarRow.modelData.server
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(2)
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: Style.space(3)
+                text: "Remove"
+                color: serverForgetHover.containsMouse ? ui.urgent : ui.faint
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.caption
+
+                MouseArea {
+                  id: serverForgetHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: if (root.service)
+                    root.service.forgetCalendarServer(calendarRow.modelData.server)
+                }
               }
 
               Rectangle {
@@ -1630,6 +1709,7 @@ Item {
   component CalendarField: Rectangle {
     id: field
     property string placeholder: ""
+    property bool password: false
     property alias text: fieldInput.text
     signal edited(string value)
 
@@ -1651,6 +1731,7 @@ Item {
       selectionColor: Util.alpha(ui.accent, 0.35)
       selectByMouse: true
       clip: true
+      echoMode: field.password ? TextInput.Password : TextInput.Normal
       onTextChanged: field.edited(text)
 
       Text {

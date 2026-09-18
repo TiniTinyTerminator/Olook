@@ -13,6 +13,7 @@ calendar arithmetic that CalDAV will do for you if you ask for the range
 expanded. So this asks.
 """
 
+import base64
 import datetime
 import re
 import urllib.error
@@ -20,7 +21,7 @@ import urllib.parse
 import urllib.request
 from xml.etree import ElementTree
 
-from . import oauth
+from . import config, keyring, oauth
 
 DAV_NS = "DAV:"
 CALDAV_NS = "urn:ietf:params:xml:ns:caldav"
@@ -50,6 +51,8 @@ DAV_SCOPES = ("https://www.googleapis.com/auth/carddav "
 
 def supports(account):
     """Whether this account has a calendar we know how to read."""
+    if account.get("caldav"):
+        return True
     return (account.get("provider") == "gmail"
             and account.get("auth") == "oauth2"
             and not account.get("demo"))
@@ -86,16 +89,108 @@ def grant(account):
     }
 
 
+# --------------------------------------------------------- any other server
+#
+# Nextcloud, Fastmail, iCloud, a university's Zimbra: a URL, a user name and
+# a password (an app password, for the ones with two-factor sign-in). Each is
+# kept as a calendar server of its own rather than hung off a mail account,
+# because the account that has the calendar is rarely the one with the mail.
+# Everything past the sign-in is the same CalDAV the Google path speaks.
+
+SERVER_PREFIX = "dav-"
+
+
+def servers(doc=None):
+    document = doc if doc is not None else config.load()
+    found = document.get("calendarServers")
+    return [entry for entry in found if isinstance(entry, dict)] if found else []
+
+
+def server_account(entry):
+    """A calendar server in the shape the calendar commands take an account."""
+    return {
+        "id": str(entry.get("id")),
+        "name": str(entry.get("name") or "Calendar"),
+        "email": str(entry.get("username") or ""),
+        "enabled": True,
+        "provider": "caldav",
+        "caldav": {"url": str(entry.get("url") or ""),
+                   "username": str(entry.get("username") or "")},
+    }
+
+
+def add_server(name, url, username, password):
+    """Remember a CalDAV server, once it has answered with its calendars."""
+    url = str(url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        url = "https://" + url
+    doc = config.load()
+    existing = {str(e.get("id")) for e in servers(doc)}
+    host = urllib.parse.urlparse(url).hostname or "calendar"
+    base = SERVER_PREFIX + re.sub(r"[^a-z0-9]+", "-", host.lower()).strip("-")
+    ident, n = base, 2
+    while ident in existing:
+        ident, n = f"{base}-{n}", n + 1
+    entry = {"id": ident, "name": str(name or "").strip() or host,
+             "url": url, "username": str(username or "").strip()}
+
+    keyring.set_secret(ident, "password", password)
+    try:
+        found = calendars(server_account(entry))
+    except CalendarError:
+        keyring.clear_secret(ident, "password")
+        raise
+    doc.setdefault("calendarServers", []).append(entry)
+    config.save(doc)
+    return entry, found
+
+
+def remove_server(ident):
+    doc = config.load()
+    before = servers(doc)
+    doc["calendarServers"] = [e for e in before if str(e.get("id")) != ident]
+    if len(doc["calendarServers"]) == len(before):
+        raise CalendarError(f"No calendar server called {ident}.")
+    config.save(doc)
+    keyring.clear_secret(ident, "password")
+
+
 def _root(account):
     return GOOGLE_CALDAV + urllib.parse.quote(account.get("email", "")) + "/"
+
+
+def _authorization(account):
+    generic = account.get("caldav")
+    if generic:
+        password = keyring.get_secret(account["id"], "password") or ""
+        pair = f"{generic.get('username', '')}:{password}".encode("utf-8")
+        return "Basic " + base64.b64encode(pair).decode("ascii")
+    return "Bearer " + oauth.access_token(grant(account))
+
+
+class _KeepMethod(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect without turning a PROPFIND into a GET.
+
+    /.well-known/caldav is a redirect by design, and urllib only follows
+    redirects for GET and HEAD; for anything else it gives up with the 301.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if code not in (301, 302, 303, 307, 308):
+            return None
+        return urllib.request.Request(
+            newurl, data=req.data, method=req.get_method(),
+            headers=dict(req.header_items()))
+
+
+_opener = urllib.request.build_opener(_KeepMethod)
 
 
 # ------------------------------------------------------------------ requests
 
 def _request(account, method, url, body=None, depth="0"):
-    token = oauth.access_token(grant(account))
     headers = {
-        "Authorization": "Bearer " + token,
+        "Authorization": _authorization(account),
         "Depth": depth,
     }
     data = None
@@ -105,10 +200,14 @@ def _request(account, method, url, body=None, depth="0"):
     request = urllib.request.Request(url, data=data, method=method,
                                      headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with _opener.open(request, timeout=45) as response:
             return response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
+        if account.get("caldav") and exc.code in (401, 403):
+            raise CalendarError(
+                "The server did not accept that user name and password. A "
+                "server with two-step sign-in wants an app password.") from exc
         if "caldav.googleapis.com" in detail or "accessNotConfigured" in detail:
             raise CalendarError(
                 "The CalDAV API is not switched on for the application this "
@@ -208,7 +307,15 @@ def calendars(account):
     if not configured(account):
         raise CalendarError("That account has no calendar configured.")
 
-    user_url = _root(account) + "user"
+    if account.get("caldav"):
+        # Ask where the calendars are rather than being told: a bare host
+        # goes through /.well-known/caldav, and a URL with a path is taken
+        # to be somewhere on the server that can say who we are.
+        user_url = account["caldav"]["url"]
+        if urllib.parse.urlparse(user_url).path in ("", "/"):
+            user_url = user_url.rstrip("/") + "/.well-known/caldav"
+    else:
+        user_url = _root(account) + "user"
     principal = ""
     for href, props in _multistatus(
             _request(account, "PROPFIND", user_url, PRINCIPAL_PROPS)):
@@ -539,8 +646,7 @@ def build_event(uid, fields):
 
 
 def _put(account, url, body, headers):
-    token = oauth.access_token(grant(account))
-    sending = {"Authorization": "Bearer " + token,
+    sending = {"Authorization": _authorization(account),
                "Content-Type": "text/calendar; charset=utf-8"}
     sending.update(headers or {})
     request = urllib.request.Request(url, data=body.encode("utf-8"),
@@ -573,9 +679,8 @@ def create_event(account, calendar, fields):
 
 
 def delete_event(account, url):
-    token = oauth.access_token(grant(account))
     request = urllib.request.Request(url, method="DELETE",
-                                     headers={"Authorization": "Bearer " + token})
+                                     headers={"Authorization": _authorization(account)})
     try:
         with urllib.request.urlopen(request, timeout=45):
             return True

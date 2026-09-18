@@ -835,9 +835,17 @@ CALENDAR_ERRORS = (caldav.CalendarError, graph.GraphError, oauth.OAuthError)
 
 # ------------------------------------------------------------------ calendar
 
+def _calendar_account(ident):
+    """A mail account, or a calendar server standing in for one."""
+    for entry in caldav.servers():
+        if str(entry.get("id")) == str(ident):
+            return caldav.server_account(entry)
+    return config.account(ident)
+
+
 def _calendar_accounts(args):
     """The accounts with a calendar this command should touch."""
-    wanted = config.account(args.account)["id"] if args.account else ""
+    wanted = _calendar_account(args.account)["id"] if args.account else ""
     out = []
     for entry in config.accounts():
         if not entry.get("enabled") or entry.get("demo"):
@@ -846,7 +854,34 @@ def _calendar_accounts(args):
             continue
         if calendar_for(entry).configured(entry):
             out.append(entry)
+    for entry in caldav.servers():
+        if not wanted or entry.get("id") == wanted:
+            out.append(caldav.server_account(entry))
     return out
+
+
+def cmd_calendar_server_add(args):
+    """Add a CalDAV server: Nextcloud, Fastmail, iCloud and the like."""
+    password = sys.stdin.read().rstrip("\n") if args.password == "-" else args.password
+    if not password:
+        raise CliError("A calendar server needs a password (or an app password).")
+    try:
+        entry, found = caldav.add_server(args.name, args.url, args.username, password)
+    except caldav.CalendarError as exc:
+        raise CliError(str(exc)) from exc
+    conn = store.connect()
+    store.replace_calendars(conn, entry["id"], found)
+    emit({"ok": True, "server": entry, "calendars": found},
+         lambda d: "Added %s — %d calendars." % (d["server"]["name"], len(d["calendars"])))
+
+
+def cmd_calendar_server_forget(args):
+    caldav.remove_server(args.id)
+    conn = store.connect()
+    for table in ("events", "calendars"):
+        conn.execute(f"DELETE FROM {table} WHERE account = ?", (args.id,))
+    conn.commit()
+    emit({"ok": True, "removed": args.id}, lambda d: "Removed.")
 
 
 def _day_bounds(text, fallback):
@@ -964,7 +999,7 @@ def _find_calendar(conn, account, calendar_id):
 
 def cmd_event_add(args):
     """Put a new appointment in a calendar."""
-    account = config.account(args.account)
+    account = _calendar_account(args.account)
     backend = calendar_for(account)
     if not backend.supports(account):
         raise CliError("That account has no calendar to add to.")
@@ -1002,7 +1037,7 @@ def cmd_event_add(args):
 
 def cmd_event_edit(args):
     """Change an appointment that is already in a calendar."""
-    account = config.account(args.account)
+    account = _calendar_account(args.account)
     backend = calendar_for(account)
     conn = store.connect()
     row = conn.execute("SELECT * FROM events WHERE account = ? AND uid = ? LIMIT 1",
@@ -1043,7 +1078,7 @@ def cmd_event_edit(args):
 
 def cmd_event_remove(args):
     """Take an appointment out of its calendar."""
-    account = config.account(args.account)
+    account = _calendar_account(args.account)
     backend = calendar_for(account)
     conn = store.connect()
     row = conn.execute(
@@ -1090,7 +1125,12 @@ def cmd_calendars(args):
     if not args.account and icsfeed.sources():
         wanted.append(LOCAL_CALENDARS)
     found = store.calendars(conn, wanted or None)
-    payload = {"ok": not trouble or bool(found), "calendars": found}
+    payload = {"ok": not trouble or bool(found), "calendars": found,
+               # Named here so the client can head a server's calendars with
+               # its name rather than its id.
+               "servers": [{"id": e.get("id"), "name": e.get("name"),
+                            "url": e.get("url"), "username": e.get("username")}
+                           for e in caldav.servers()]}
     if trouble:
         payload["problems"] = trouble
     emit(payload, lambda d: "\n".join(
@@ -2209,6 +2249,18 @@ def build_parser():
     p = sub.add_parser("calendar-forget", help="stop showing one of those")
     p.add_argument("id")
     p.set_defaults(func=cmd_calendar_forget)
+
+    p = sub.add_parser("calendar-server-add",
+                       help="add a CalDAV server (Nextcloud, Fastmail, iCloud...)")
+    p.add_argument("--name", default="")
+    p.add_argument("--url", required=True)
+    p.add_argument("--username", required=True)
+    p.add_argument("--password", default="-", help="the password, or - for stdin")
+    p.set_defaults(func=cmd_calendar_server_add)
+
+    p = sub.add_parser("calendar-server-forget", help="remove a CalDAV server")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_calendar_server_forget)
 
     p = sub.add_parser("calendar-auth",
                        help="let the client read this account's calendar")

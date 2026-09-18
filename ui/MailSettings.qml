@@ -589,7 +589,7 @@ Item {
               }
               hint: "Accounts bring their own calendars once signed in for them. "
                 + "Open the calendar and use its calendar list to hide one, or to "
-                + "add a calendar from an .ics file or link."
+                + "add one from an .ics file, a link or a CalDAV server."
             }
 
             InfoRow {
