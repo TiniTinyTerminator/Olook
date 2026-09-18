@@ -92,6 +92,14 @@ Item {
     // A summon naming one message and asking for a popout gets that message
     // in its own window, and the client stays as it was -- closed, or on
     // whatever it was showing. This is how the bar widget opens mail.
+    // An appointment asked for by the bar's calendar gets a window of its own,
+    // and the client stays as it was -- the same as a message from the mail
+    // widget does, just below.
+    if (payload.popout && payload.event) {
+      root.popOutEvent(payload.event)
+      return
+    }
+
     if (payload.popout && payload.uid) {
       root.popOutReader({
         account: payload.account || mail.accountId,
@@ -399,6 +407,47 @@ Item {
   Component {
     id: readerWindowFactory
     MailReaderWindow {}
+  }
+
+  Component {
+    id: eventWindowFactory
+    MailEventWindow {}
+  }
+
+  property var eventWindows: []
+
+  // An appointment in its own window, the way popOutReader does a message.
+  // The bar's calendar uses it so that picking an appointment there does not
+  // bring the whole client up to show one.
+  function popOutEvent(entry) {
+    if (!entry) return null
+    var win = eventWindowFactory.createObject(root, {
+      ui: ui,
+      entry: entry,
+      visible: true
+    })
+    if (!win) {
+      mail.actionFailed("Could not open an appointment window.")
+      return null
+    }
+    root.eventWindows.push(win)
+    win.dismissed.connect(function () {
+      var kept = []
+      for (var i = 0; i < root.eventWindows.length; i++)
+        if (root.eventWindows[i] !== win) kept.push(root.eventWindows[i])
+      root.eventWindows = kept
+      Qt.callLater(function () { win.destroy() })
+    })
+    // From the appointment to where it sits among the rest.
+    win.calendarRequested.connect(function (shown) {
+      root.open(JSON.stringify({
+        view: "calendar",
+        day: String(shown && shown.day || ""),
+        eventUid: String(shown && shown.uid || "")
+      }))
+      win.visible = false
+    })
+    return win
   }
 
   function popOutReader(entry, account) {
