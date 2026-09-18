@@ -585,3 +585,22 @@ def delete_event(account, url):
         raise CalendarError(f"Could not delete the appointment: {exc.code}") from exc
     except urllib.error.URLError as exc:
         raise CalendarError(f"Cannot reach the calendar: {exc.reason}") from exc
+
+
+def update_event(account, url, etag, uid, fields):
+    """Rewrite one appointment in place.
+
+    The etag is the guard against two edits crossing: the write is refused if
+    the appointment moved on since it was read. The UID stays the same, or
+    every device that syncs the calendar would see a new appointment and keep
+    the old one.
+    """
+    headers = {"If-Match": etag} if etag else {}
+    try:
+        _put(account, url, build_event(uid, fields), headers)
+    except CalendarError as exc:
+        if "412" in str(exc):
+            raise CalendarError("That appointment changed somewhere else since "
+                                "it was fetched. Refresh and try again.") from exc
+        raise
+    return uid

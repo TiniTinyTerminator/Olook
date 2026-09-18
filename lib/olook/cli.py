@@ -968,6 +968,47 @@ def cmd_event_add(args):
          lambda d: "Added to %s." % calendar["name"])
 
 
+def cmd_event_edit(args):
+    """Change an appointment that is already in a calendar."""
+    account = config.account(args.account)
+    backend = calendar_for(account)
+    conn = store.connect()
+    row = conn.execute("SELECT * FROM events WHERE account = ? AND uid = ? LIMIT 1",
+                       (account["id"], args.uid)).fetchone()
+    if not row:
+        raise CliError("That appointment is not in the cache; sync first.")
+    if row["read_only"]:
+        raise CliError("That calendar is read-only.")
+    if backend is caldav and row["recurring"]:
+        # Over CalDAV an occurrence shares its series' resource: rewriting it
+        # would replace every Tuesday with this one Tuesday.
+        raise CliError("That is one of a series; change it where the series "
+                       "was made. Olook does not rewrite a whole series yet.")
+
+    all_day = bool(row["all_day"]) if args.all_day is None else args.all_day
+    start = row["start"] if not args.start else _parse_when(args.start, "the start")
+    end = row["end"] if not args.end else _parse_when(args.end, "the end")
+    if args.start and not args.end:
+        end = start + (int(row["end"]) - int(row["start"]))
+    if end <= start:
+        raise CliError("An appointment has to end after it starts.")
+    fields = {
+        "summary": args.title if args.title is not None else row["summary"],
+        "start": start, "end": end, "allDay": all_day,
+        "location": args.location if args.location is not None else row["location"],
+        "description": args.description if args.description is not None else row["description"],
+    }
+    try:
+        if backend is graph:
+            backend.update_event(account, args.uid, fields)
+        else:
+            backend.update_event(account, row["url"], row["etag"], args.uid, fields)
+    except CALENDAR_ERRORS as exc:
+        raise CliError(str(exc)) from exc
+    emit({"ok": True, "uid": args.uid, "start": start, "end": end},
+         lambda d: "Changed.")
+
+
 def cmd_event_remove(args):
     """Take an appointment out of its calendar."""
     account = config.account(args.account)
@@ -2026,6 +2067,18 @@ def build_parser():
     p.add_argument("--location", default="")
     p.add_argument("--description", default="")
     p.set_defaults(func=cmd_event_add)
+
+    p = sub.add_parser("event-edit", help="change an appointment")
+    p.add_argument("--account")
+    p.add_argument("--uid", required=True)
+    p.add_argument("--title", default=None)
+    p.add_argument("--start", default="")
+    p.add_argument("--end", default="")
+    p.add_argument("--all-day", dest="all_day", action="store_true", default=None)
+    p.add_argument("--timed", dest="all_day", action="store_false")
+    p.add_argument("--location", default=None)
+    p.add_argument("--description", default=None)
+    p.set_defaults(func=cmd_event_edit)
 
     p = sub.add_parser("event-remove", help="delete an appointment")
     p.add_argument("--account")

@@ -169,6 +169,8 @@ Item {
   // again starts clean and a half-typed appointment cannot be saved by
   // accident.
   property bool composing: false
+  // Set when the form is changing an appointment rather than making one.
+  property var editingEvent: null
   property bool confirmingDelete: false
   onOpenEventChanged: root.confirmingDelete = false
   property string draftTitle: ""
@@ -194,7 +196,26 @@ Item {
 
   function calendarKey(entry) { return entry.account + "|" + entry.id }
 
+  function startEditing(entry) {
+    if (!entry) return
+    var from = new Date(entry.start * 1000)
+    var until = new Date(entry.end * 1000)
+    root.startComposing(String(entry.day), from.getHours())
+    root.editingEvent = entry
+    root.draftTitle = String(entry.summary || "")
+    root.draftFrom = Model.pad(from.getHours()) + ":" + Model.pad(from.getMinutes())
+    root.draftUntil = Model.pad(until.getHours()) + ":" + Model.pad(until.getMinutes())
+    root.draftAllDay = entry.allDay === true
+    root.draftLocation = String(entry.location || "")
+    root.draftCalendar = String(entry.account) + "|" + String(entry.calendar)
+    // The fields were filled when the form opened; the draft changed since.
+    Qt.callLater(root.refillFields)
+  }
+
+  signal refillFields()
+
   function startComposing(day, hour) {
+    root.editingEvent = null
     root.openEvent = null
     root.draftTitle = ""
     root.draftDay = day || root.selected
@@ -258,12 +279,20 @@ Item {
       "end": root.draftAllDay ? "" : root.draftDay + "T" + pad(root.draftUntil)
     }
     if (!root.service) return
-    root.service.addEvent(fields, function (ok) {
+    var finished = function (ok) {
       if (ok) {
         root.composing = false
+        root.editingEvent = null
         root.selected = root.draftDay
       }
-    })
+    }
+    if (root.editingEvent) {
+      fields.uid = String(root.editingEvent.uid)
+      fields.account = String(root.editingEvent.account)
+      root.service.editEvent(fields, finished)
+    } else {
+      root.service.addEvent(fields, finished)
+    }
   }
 
   function deleteOpenEvent() {
@@ -1024,12 +1053,17 @@ Item {
 
           // The fields are filled when the form opens, not bound: typing
           // breaks a binding, and a broken one would show the last draft.
-          onVisibleChanged: if (visible) {
+          function fill() {
             titleField.text = root.draftTitle
             dayField.text = root.draftDay
             fromField.text = root.draftFrom
             untilField.text = root.draftUntil
             placeField.text = root.draftLocation
+          }
+          onVisibleChanged: if (visible) composeFlick.fill()
+          Connections {
+            target: root
+            function onRefillFields() { composeFlick.fill() }
           }
 
           Column {
@@ -1040,7 +1074,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
-              text: "New appointment"
+              text: root.editingEvent ? "Change appointment" : "New appointment"
               color: ui.foreground
               font.family: ui.fontFamily
               font.pixelSize: Style.font.body
@@ -1101,6 +1135,10 @@ Item {
             Flow {
               width: parent.width
               spacing: Style.space(4)
+              // Moving an appointment between calendars is a delete and a
+              // create on two servers; editing keeps it where it is.
+              enabled: !root.editingEvent
+              opacity: enabled ? 1 : 0.5
 
               Repeater {
                 model: root.writableCalendars
@@ -1273,6 +1311,16 @@ Item {
               font.pixelSize: Style.font.bodySmall
             }
 
+            Row {
+              spacing: Style.space(6)
+              visible: !!(root.openEvent && !root.openEvent.readOnly
+                          && root.openEvent.account !== "local")
+
+            PanelChip {
+              label: "\udb80\udfeb  Edit"
+              onTriggered: root.startEditing(root.openEvent)
+            }
+
             // Only where it can be done: not a calendar read from a file, not
             // one the account may only read.
             PanelChip {
@@ -1287,6 +1335,7 @@ Item {
                   root.confirmingDelete = true
                 }
               }
+            }
             }
           }
         }

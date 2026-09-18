@@ -398,6 +398,32 @@ def create_event(account, calendar, fields):
     return str(made.get("id") or "")
 
 
+def update_event(account, event_id, fields):
+    """Change one appointment. An occurrence of a series changes alone."""
+    _refuse_if_read_only(account, "changing an appointment")
+    start, end = int(fields["start"]), int(fields["end"])
+    body = {"subject": str(fields.get("summary") or "Appointment"),
+            "isAllDay": bool(fields.get("allDay"))}
+    if fields.get("allDay"):
+        first = datetime.datetime.fromtimestamp(start, datetime.timezone.utc).date()
+        last = datetime.datetime.fromtimestamp(end, datetime.timezone.utc).date()
+        if last <= first:
+            last = first + datetime.timedelta(days=1)
+        body["start"] = {"dateTime": first.isoformat() + "T00:00:00", "timeZone": "UTC"}
+        body["end"] = {"dateTime": last.isoformat() + "T00:00:00", "timeZone": "UTC"}
+    else:
+        stamp = "%Y-%m-%dT%H:%M:%S"
+        body["start"] = {"dateTime": datetime.datetime.fromtimestamp(
+            start, datetime.timezone.utc).strftime(stamp), "timeZone": "UTC"}
+        body["end"] = {"dateTime": datetime.datetime.fromtimestamp(
+            end, datetime.timezone.utc).strftime(stamp), "timeZone": "UTC"}
+    body["location"] = {"displayName": str(fields.get("location") or "")}
+    if fields.get("description") is not None:
+        body["body"] = {"contentType": "text", "content": str(fields.get("description") or "")}
+    _call(account, "PATCH", "/me/events/" + urllib.parse.quote(event_id), body=body)
+    return event_id
+
+
 def delete_event(account, event_id):
     _refuse_if_read_only(account, "deleting an appointment")
     try:

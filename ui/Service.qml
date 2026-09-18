@@ -778,6 +778,30 @@ Item {
     }, "calendar")
   }
 
+  function editEvent(fields, done) {
+    if (!fields || !fields.account || !fields.uid) return
+    var args = ["event-edit", "--account", String(fields.account),
+                "--uid", String(fields.uid), "--title", String(fields.title || ""),
+                "--start", String(fields.start),
+                "--location", String(fields.location || "")]
+    if (fields.end) args = args.concat(["--end", String(fields.end)])
+    args.push(fields.allDay ? "--all-day" : "--timed")
+    root.calendarSyncing = true
+    run(args, function (ok, payload, stderrText) {
+      root.calendarSyncing = false
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not change that appointment")
+        if (done) done(false)
+        return
+      }
+      root.notice = "Appointment changed"
+      noticeTimer.restart()
+      root.fetchedMonths = ({})
+      root.syncCalendar(null)
+      if (done) done(true)
+    }, "calendar")
+  }
+
   function removeEvent(account, uid, done) {
     if (!account || !uid) return
     run(["event-remove", "--account", String(account), "--uid", String(uid)],

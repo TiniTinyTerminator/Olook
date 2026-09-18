@@ -109,12 +109,11 @@ has that this client is better off without.
   will list folders that show a stub per item instead, and there is no switch
   to say "show it anyway" or "no, that one is mail".
 
-- **Appointments can be added and deleted, not edited or moved.** A new one
-  goes into Google over CalDAV and Outlook over Graph -- both checked by
-  creating one, reading it back through a sync and deleting it again -- and
-  either can be deleted. Changing one that exists, dragging it to another
-  time, repeating ones, and accepting an invitation that arrives as mail are
-  all still missing.
+- **One occurrence of a Google series cannot be changed on its own.** Over
+  CalDAV an occurrence shares its series' resource, so rewriting it would
+  replace every week with this one; the client refuses rather than doing
+  that. Outlook changes an occurrence alone, and single appointments change
+  on both.
 
 - **Gmail has no picture for the account itself.** A contact's picture comes
   out of the vCard and a Microsoft mailbox's own comes from Graph, but
