@@ -205,8 +205,12 @@ omarchy-shell ttt.olook-window settings                  # settings view
 omarchy-shell ttt.olook-window addAccount                # straight to setup
 ```
 
-`composeWith` takes a draft, for a `mailto:` handler or a "mail me this file"
-script:
+`mailto:` links open a compose window with the link's recipients, subject and
+body filled in: the installer registers `olook-mailto.desktop` as the handler
+and says which one it replaced. By hand: `olook mailto 'mailto:ada@example.com'`,
+or `olook mailto ... --print` to see what it would open.
+
+`composeWith` takes a draft, for a "mail me this file" script:
 
 ```bash
 omarchy-shell ttt.olook-window composeWith \

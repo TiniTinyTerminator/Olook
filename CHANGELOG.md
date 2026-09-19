@@ -16,6 +16,7 @@ The first release.
 - Plain text, Markdown or HTML, with formatting buttons and a live preview;
   drafts autosaved; send later; an outbox for mail written offline.
 - Sending through Microsoft Graph when a tenant has switched SMTP off.
+- `mailto:` links open a compose window, filled in from the link.
 
 **Calendar**
 - Day, work week, week and month views.

@@ -852,6 +852,16 @@ Item {
     }
     // A compose window on its own, without dragging the whole client along.
     function newMessage(): string { root.popOutCompose(null, null); return "ok" }
+    // A compose window on its own, already filled in -- what a mailto: link
+    // opens (`olook mailto`), in the shape composeWith takes.
+    function newMessageWith(draftJson: string): string {
+      var draft = Model.parseJson(draftJson, {}) || {}
+      var filled = { to: [], cc: [], bcc: [], subject: "", body: "",
+                     inReplyTo: "", references: "" }
+      for (var key in draft) filled[key] = draft[key]
+      root.popOutCompose(filled, null)
+      return "ok"
+    }
     // Moves the message being written inline into its own window, for a
     // Hyprland bind that does what the compose header's pop-out button does.
     function popOut(): string { root.popOutCurrentCompose(); return "ok" }

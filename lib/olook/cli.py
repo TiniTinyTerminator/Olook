@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 
 from . import (addressbook, caldav, carddav, config, graph, htmldoc,
                icsfeed, htmlrich, htmltext, keyring,
@@ -1823,6 +1824,54 @@ def _seen_key(account_id):
     return f"seen_uid:{account_id}"
 
 
+def parse_mailto(uri):
+    """A mailto: link (RFC 6068) as a draft the composer can load.
+
+    mailto:a@x.org,b@x.org?cc=c@x.org&subject=Hi%20there&body=Line%0Aline
+    Addresses may also come as to=, and every header may repeat.
+    """
+    text = str(uri or "").strip()
+    if text.lower().startswith("mailto:"):
+        text = text[7:]
+    path, _, query = text.partition("?")
+    fields = {"to": [], "cc": [], "bcc": []}
+
+    def addresses(value):
+        return [a.strip() for a in urllib.parse.unquote(value).split(",") if a.strip()]
+
+    fields["to"].extend(addresses(path))
+    subject, body = "", ""
+    for key, value in urllib.parse.parse_qsl(query, keep_blank_values=True):
+        name = key.lower()
+        if name in fields:
+            fields[name].extend(a.strip() for a in value.split(",") if a.strip())
+        elif name == "subject":
+            subject = value
+        elif name == "body":
+            # Links write line breaks as %0D%0A; the composer wants \n.
+            body = value.replace("\r\n", "\n")
+    return {"to": fields["to"], "cc": fields["cc"], "bcc": fields["bcc"],
+            "subject": subject, "body": body, "format": "plain"}
+
+
+def cmd_mailto(args):
+    """Open a compose window for a mailto: link: the handler for the desktop."""
+    draft = parse_mailto(args.uri)
+    if args.print:
+        emit({"ok": True, "draft": draft}, lambda d: json.dumps(d["draft"], indent=2))
+        return
+    try:
+        done = subprocess.run(["omarchy-shell", "ttt.olook-window", "newMessageWith",
+                               json.dumps(draft)],
+                              capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CliError(f"Could not reach the Omarchy shell: {exc}") from exc
+    if done.returncode != 0 or "ok" not in done.stdout:
+        raise CliError("The Omarchy shell did not open a compose window: "
+                       + (done.stderr.strip() or done.stdout.strip() or "no answer"))
+    emit({"ok": True, "draft": draft}, lambda d: "Compose window opened.")
+
+
 def cmd_seen(args):
     """Mark every inbox as looked at, up to the newest message in it.
 
@@ -2212,6 +2261,12 @@ def build_parser():
     p.add_argument("--folder", required=True)
     p.add_argument("--kind", required=True, choices=("mail", "other", "auto"))
     p.set_defaults(func=cmd_folder_kind)
+
+    p = sub.add_parser("mailto", help="open a compose window for a mailto: link")
+    p.add_argument("uri")
+    p.add_argument("--print", action="store_true",
+                   help="show the draft it would open, and open nothing")
+    p.set_defaults(func=cmd_mailto)
 
     p = sub.add_parser("seen", help="mark every inbox as looked at, for the new-mail dot")
     p.set_defaults(func=cmd_seen)

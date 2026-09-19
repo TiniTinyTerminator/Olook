@@ -20,6 +20,8 @@ PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
 WIDGET_ID="ttt.olook-calendar"
 WIDGET_DIR="$HOME/.config/omarchy/plugins/$WIDGET_ID"
 BIN_DIR="$HOME/.local/bin"
+APPS_DIR="$HOME/.local/share/applications"
+DESKTOP_FILE="$APPS_DIR/olook-mailto.desktop"
 MODE="copy"
 
 for arg in "$@"; do
@@ -75,7 +77,7 @@ build_shim() {
 
 if [[ "$MODE" == "uninstall" ]]; then
   rm -rf "$PLUGIN_DIR" "$WIDGET_DIR"
-  rm -f "$BIN_DIR/olook"
+  rm -f "$BIN_DIR/olook" "$DESKTOP_FILE"
   reload_shell
   echo "Olook removed. Mail cache and accounts were left alone:"
   echo "  ~/.config/olook  ~/.local/state/olook"
@@ -134,6 +136,32 @@ if command -v omarchy >/dev/null 2>&1; then
     echo "  omarchy plugin disable omarchy.clock"
   fi
 fi
+
+# mailto: links open a compose window. The desktop entry is what the rest of
+# the desktop asks; making it the default replaces whichever client had it,
+# so say which one, and how to have it back.
+mkdir -p "$APPS_DIR"
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Olook
+Comment=Write an email in Olook
+Exec=$BIN_DIR/olook mailto %u
+Icon=mail-message-new
+Terminal=false
+NoDisplay=true
+MimeType=x-scheme-handler/mailto;
+Categories=Office;Network;Email;
+EOF
+if command -v xdg-mime >/dev/null 2>&1; then
+  previous="$(xdg-mime query default x-scheme-handler/mailto 2>/dev/null)"
+  if [[ "$previous" != "olook-mailto.desktop" ]]; then
+    xdg-mime default olook-mailto.desktop x-scheme-handler/mailto
+    echo "mailto: links now open Olook's compose window."
+    [[ -n "$previous" ]] && echo "  (was $previous — to go back: xdg-mime default $previous x-scheme-handler/mailto)"
+  fi
+fi
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
