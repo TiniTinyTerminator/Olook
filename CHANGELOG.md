@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0
+
+- Installs with `omarchy plugin add`; **Settings → General → Finish setup**
+  links the `olook` command, builds the HTML renderer library and registers
+  the `mailto:` handler (`olook finish-setup` from a terminal).
+- `mailto:` links open a compose window, filled in from the link.
+- The bar icon shows a dot when new mail arrives -- by message, so an old
+  message marked unread does not count and a shell restart does not forget
+  it -- or the unread count if you choose it.
+- The clock-and-calendar widget moves to its own repository,
+  [olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar).
+
 ## 1.0.0
 
 The first release.
@@ -16,9 +28,6 @@ The first release.
 - Plain text, Markdown or HTML, with formatting buttons and a live preview;
   drafts autosaved; send later; an outbox for mail written offline.
 - Sending through Microsoft Graph when a tenant has switched SMTP off.
-- `mailto:` links open a compose window, filled in from the link.
-- Installs with `omarchy plugin add`; Settings finishes the setup that lives
-  outside the plugin folder.
 
 **Calendar**
 - Day, work week, week and month views.
@@ -31,11 +40,8 @@ The first release.
   removed, with their pictures.
 
 **Bar**
-- `ttt.olook`: the newest mail across every account, with a dot on the icon
-  when new mail arrives, or the unread count if you prefer it.
-- `ttt.olook-calendar`, in its own repository
-  ([olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar)):
-  a clock that stands in for Omarchy's, laid out like
+- `ttt.olook`: unread count and the newest mail across every account.
+- `ttt.olook-calendar`: a clock that stands in for Omarchy's, laid out like
   its popup -- the date, the year's progress, a month with ISO week numbers --
   with the days you have something on marked, the coming week listed, and a
   reminder before each appointment.

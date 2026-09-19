@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ttt.olook",
   "name": "Olook",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "TiniTinyTerminator",
   "license": "MIT",
   "description": "Olook: an Outlook-style mail client for Omarchy — unread count in the bar, a recent-mail panel, and a full reader with Gmail, Outlook.com and Microsoft 365 sign-in.",
