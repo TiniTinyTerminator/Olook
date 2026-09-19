@@ -75,9 +75,9 @@ session; the panel opens on **All** again after a restart.
   `.ics` files or links; appointments added, changed and deleted
 - **People**: contacts from Google (CardDAV) and Microsoft (Graph), added,
   edited and removed from the client, with their pictures
-- A second bar widget, `ttt.olook-calendar`, that replaces Omarchy's clock:
-  the time, a month with the days you have something on, what is next, and a
-  reminder before each appointment
+- A companion bar widget, [olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar),
+  that replaces Omarchy's clock: the time, a month with the days you have
+  something on, what is next, and a reminder before each appointment
 
 **Not yet, and why**
 
@@ -88,26 +88,42 @@ purpose.
 ## Install
 
 ```bash
-git clone https://github.com/TiniTinyTerminator/olook.git
-cd olook
-./install.sh          # copies into ~/.config/omarchy/plugins and enables it
+omarchy plugin add https://github.com/TiniTinyTerminator/olook.git --enable
 ```
+
+Then open Olook, add an account, and go to **Settings → General → Finish
+setup**. It puts the `olook` command on your PATH, builds the small library
+that lets mail render as HTML, and makes Olook the handler for `mailto:`
+links. The one step it leaves to you is the line that preloads that library
+into the shell: it shows the line, with a button to copy it into
+`~/.config/hypr/hyprland.lua`, because Olook does not edit Hyprland's config.
+From a terminal the same is `olook finish-setup`.
+
+Update with `omarchy plugin update ttt.olook`.
 
 Needs Python 3 (developed on 3.14) with nothing beyond the standard library.
 `secret-tool` (libsecret) keeps passwords and tokens in the keyring; without it
-they go to a file readable only by you. `gcc` builds the small shim that lets
-mail render as HTML; without it the reading pane falls back to Qt's rich text.
+they go to a file readable only by you. `gcc` builds the HTML renderer
+library; without it the reading pane falls back to Qt's rich text.
 
-The installer adds the mail bar widget and links the engine to
-`~/.local/bin/olook`. It also installs the calendar widget, which is not put
-on the bar by itself; to have it stand in for the clock:
+**The clock and calendar** is a plugin of its own,
+[olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar):
 
 ```bash
+omarchy plugin add https://github.com/TiniTinyTerminator/olook-calendar.git
 omarchy bar put ttt.olook-calendar --before omarchy.clock
 omarchy plugin disable omarchy.clock
 ```
 
-`./install.sh --uninstall` removes both and leaves your accounts and cached mail
+### From a checkout
+
+```bash
+git clone https://github.com/TiniTinyTerminator/olook.git
+cd olook
+./install.sh          # copies into ~/.config/omarchy/plugins, finishes setup
+```
+
+`./install.sh --uninstall` removes it and leaves your accounts and cached mail
 alone.
 
 **If you edit the plugin**, re-run `./install.sh` — it copies the changed files

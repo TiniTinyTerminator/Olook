@@ -1,27 +1,25 @@
 #!/usr/bin/env bash
-# Install Olook into the running Omarchy shell.
+# Install Olook into the running Omarchy shell from a checkout.
 #
 #   ./install.sh          copy this checkout into ~/.config/omarchy/plugins
 #   ./install.sh --link   symlink it instead (see the note below)
 #   ./install.sh --uninstall
 #
+# Most people want `omarchy plugin add https://github.com/TiniTinyTerminator/olook.git`
+# instead, and then Settings > General > Finish setup. This script is for
+# working on Olook itself.
+#
 # Copy is the default because the shell's file watcher only reloads plugin code
 # it can see change on disk: a symlinked plugin directory means edits land on
 # the checkout's inode, the watcher never fires, and the shell keeps serving
 # the QML it compiled at startup until you restart it. Re-run this script after
-# editing and the change is live without restarting anything.
+# editing and the bar widget is live without restarting anything.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ID="ttt.olook"
 PLUGIN_DIR="$HOME/.config/omarchy/plugins/$PLUGIN_ID"
-# The calendar rides in the bar as a plugin of its own, because a plugin
-# registers one bar widget and Olook's is the mail envelope.
-WIDGET_ID="ttt.olook-calendar"
-WIDGET_DIR="$HOME/.config/omarchy/plugins/$WIDGET_ID"
 BIN_DIR="$HOME/.local/bin"
-APPS_DIR="$HOME/.local/share/applications"
-DESKTOP_FILE="$APPS_DIR/olook-mailto.desktop"
 MODE="copy"
 
 for arg in "$@"; do
@@ -39,45 +37,11 @@ reload_shell() {
   fi
 }
 
-# The reading pane renders mail with QtWebEngine, which refuses to start when
-# QCoreApplication has no arguments -- and Quickshell gives it none. lib/argcshim.c
-# explains the whole story; this builds it. Without it the pane falls back to
-# Qt's rich text, so a machine with no compiler still gets a working client.
-build_shim() {
-  local source="$PLUGIN_DIR/lib/argcshim.c"
-  local target="$PLUGIN_DIR/lib/argcshim.so"
-
-  if ! command -v gcc >/dev/null 2>&1; then
-    echo "No gcc: skipping the HTML renderer shim (mail will use Qt's rich text)."
-    return
-  fi
-  if gcc -shared -fPIC -O2 -o "$target" "$source" -ldl 2>/dev/null; then
-    echo "Built the HTML renderer shim."
-  else
-    echo "Could not build the HTML renderer shim; mail will use Qt's rich text."
-    return
-  fi
-
-  local line="hl.env(\"LD_PRELOAD\", \"$target\")"
-  if grep -qsF "$target" "$HOME/.config/hypr/hyprland.lua"; then
-    return
-  fi
-  if grep -qs "argcshim.so" "$HOME/.config/hypr/hyprland.lua"; then
-    echo
-    echo "~/.config/hypr/hyprland.lua preloads the renderer shim from another path."
-    echo "Point that line here instead, then 'hyprctl reload && omarchy restart shell':"
-    echo "  $line"
-    return
-  fi
-  echo
-  echo "To turn the HTML renderer on, add this to ~/.config/hypr/hyprland.lua"
-  echo "and run 'hyprctl reload && omarchy restart shell':"
-  echo "  $line"
-}
-
 if [[ "$MODE" == "uninstall" ]]; then
-  rm -rf "$PLUGIN_DIR" "$WIDGET_DIR"
-  rm -f "$BIN_DIR/olook" "$DESKTOP_FILE"
+  if [[ -x "$PLUGIN_DIR/bin/olook" ]]; then
+    "$PLUGIN_DIR/bin/olook" finish-setup --remove >/dev/null 2>&1 || true
+  fi
+  rm -rf "$PLUGIN_DIR"
   reload_shell
   echo "Olook removed. Mail cache and accounts were left alone:"
   echo "  ~/.config/olook  ~/.local/state/olook"
@@ -90,8 +54,8 @@ if [[ "$MODE" == "uninstall" ]]; then
   exit 0
 fi
 
-mkdir -p "$(dirname "$PLUGIN_DIR")" "$BIN_DIR"
-rm -rf "$PLUGIN_DIR" "$WIDGET_DIR"
+mkdir -p "$(dirname "$PLUGIN_DIR")"
+rm -rf "$PLUGIN_DIR"
 
 if [[ "$MODE" == "link" ]]; then
   ln -sfn "$SRC" "$PLUGIN_DIR"
@@ -102,17 +66,9 @@ else
   echo "Copied Olook into $PLUGIN_DIR"
 fi
 
-mkdir -p "$WIDGET_DIR"
-cp "$SRC/widget/manifest.json" "$SRC/widget/Panel.qml" "$WIDGET_DIR/"
-# The widget scrolls the way the rest of the client does, and the component
-# that does it lives with the client.
-cp "$SRC/ui/MomentumScroll.qml" "$WIDGET_DIR/"
-echo "Copied the calendar widget into $WIDGET_DIR"
-
-ln -sfn "$PLUGIN_DIR/bin/olook" "$BIN_DIR/olook"
-echo "Linked the engine to $BIN_DIR/olook"
-
-build_shim
+# The command on the PATH, the HTML renderer and the mailto: handler: the same
+# steps Settings offers to someone who installed with omarchy plugin add.
+"$PLUGIN_DIR/bin/olook" finish-setup --text || true
 
 reload_shell
 
@@ -126,48 +82,14 @@ if command -v omarchy >/dev/null 2>&1; then
   fi
 fi
 
-if command -v omarchy >/dev/null 2>&1; then
-  # Not enabled automatically: putting a widget in someone's bar uninvited is
-  # rude, and it would sit beside the clock it is meant to replace.
-  if omarchy plugin list --json 2>/dev/null | grep -q "\"id\":\"$WIDGET_ID\""; then
-    echo "Clock and calendar widget available. To use it instead of the"
-    echo "Omarchy clock:"
-    echo "  omarchy bar put $WIDGET_ID --before omarchy.clock"
-    echo "  omarchy plugin disable omarchy.clock"
-  fi
-fi
-
-# mailto: links open a compose window. The desktop entry is what the rest of
-# the desktop asks; making it the default replaces whichever client had it,
-# so say which one, and how to have it back.
-mkdir -p "$APPS_DIR"
-cat > "$DESKTOP_FILE" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Olook
-Comment=Write an email in Olook
-Exec=$BIN_DIR/olook mailto %u
-Icon=mail-message-new
-Terminal=false
-NoDisplay=true
-MimeType=x-scheme-handler/mailto;
-Categories=Office;Network;Email;
-EOF
-if command -v xdg-mime >/dev/null 2>&1; then
-  previous="$(xdg-mime query default x-scheme-handler/mailto 2>/dev/null)"
-  if [[ "$previous" != "olook-mailto.desktop" ]]; then
-    xdg-mime default olook-mailto.desktop x-scheme-handler/mailto
-    echo "mailto: links now open Olook's compose window."
-    [[ -n "$previous" ]] && echo "  (was $previous — to go back: xdg-mime default $previous x-scheme-handler/mailto)"
-  fi
-fi
-command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
-
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *) echo "Note: $BIN_DIR is not on your PATH; add it to run 'olook' from a terminal." ;;
 esac
 
+echo
+echo "The clock-and-calendar widget is its own plugin:"
+echo "  omarchy plugin add https://github.com/TiniTinyTerminator/olook-calendar.git"
 echo
 echo "Next: olook setup    (add Gmail, Outlook.com, Microsoft 365, or any IMAP account)"
 echo "      Super+M        (once you add the keybinding — see README)"

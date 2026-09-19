@@ -17,7 +17,7 @@ import sys
 import time
 import urllib.parse
 
-from . import (addressbook, caldav, carddav, config, graph, htmldoc,
+from . import (addressbook, hostsetup, caldav, carddav, config, graph, htmldoc,
                icsfeed, htmlrich, htmltext, keyring,
                mailbox, markdown, message, oauth, providers, rules, send, store)
 
@@ -1872,6 +1872,50 @@ def cmd_mailto(args):
     emit({"ok": True, "draft": draft}, lambda d: "Compose window opened.")
 
 
+def _describe_setup(d):
+    state = d["state"]
+    lines = []
+    lines.append(("ok   " if state["cli"]["ok"] else "--   ") + "olook command at " + state["cli"]["path"])
+    r = state["renderer"]
+    if r["active"]:
+        lines.append("ok   HTML renderer active")
+    elif not r["built"]:
+        lines.append("--   HTML renderer not built" + ("" if r["compiler"] else " (needs gcc)"))
+    elif r["configured"]:
+        lines.append("--   HTML renderer ready; restart the shell: omarchy restart shell")
+    else:
+        lines.append("--   HTML renderer built; to turn it on, "
+                     + ("replace the argcshim line in" if r["stale"] else "add to")
+                     + " ~/.config/hypr/hyprland.lua, then hyprctl reload && omarchy restart shell:")
+        lines.append("       " + r["line"])
+    m = state["mailto"]
+    lines.append(("ok   " if m["ok"] else "--   ") + "mailto: links open Olook"
+                 + ("" if m["ok"] else f" (now: {m['current'] or 'nothing'})"))
+    if d.get("replacedMailto"):
+        lines.append(f"     was {d['replacedMailto']}; to go back: "
+                     f"xdg-mime default {d['replacedMailto']} x-scheme-handler/mailto")
+    for problem in d.get("problems") or []:
+        lines.append("!!   " + problem)
+    return "\n".join(lines)
+
+
+def cmd_finish_setup(args):
+    """The command, the HTML renderer and the mailto: handler, outside the plugin."""
+    if args.remove:
+        hostsetup.remove()
+        emit({"ok": True, "removed": True}, lambda d: "Removed the olook command and mailto: handler.")
+        return
+    if args.check:
+        payload = {"ok": True, "state": hostsetup.check()}
+    else:
+        result = hostsetup.run()
+        payload = {"ok": not result["problems"], **result}
+    if args.text:
+        print(_describe_setup(payload))
+        return
+    emit(payload, _describe_setup)
+
+
 def cmd_seen(args):
     """Mark every inbox as looked at, up to the newest message in it.
 
@@ -2267,6 +2311,13 @@ def build_parser():
     p.add_argument("--print", action="store_true",
                    help="show the draft it would open, and open nothing")
     p.set_defaults(func=cmd_mailto)
+
+    p = sub.add_parser("finish-setup",
+                       help="link the command, build the HTML renderer, handle mailto:")
+    p.add_argument("--check", action="store_true", help="only report")
+    p.add_argument("--remove", action="store_true", help="undo it")
+    p.add_argument("--text", action="store_true", help="plain text, for install.sh")
+    p.set_defaults(func=cmd_finish_setup)
 
     p = sub.add_parser("seen", help="mark every inbox as looked at, for the new-mail dot")
     p.set_defaults(func=cmd_seen)

@@ -205,6 +205,36 @@ Item {
 
   // ------------------------------------------------------------------ status
 
+  // ------------------------------------------------------- finish setup
+  //
+  // What an install through `omarchy plugin add` leaves undone: the olook
+  // command, the HTML renderer, the mailto: handler. See lib/olook/hostsetup.py.
+  property var setupState: null
+  property bool settingUp: false
+
+  function checkSetup() {
+    run(["finish-setup", "--check"], function (ok, payload) {
+      if (ok && payload) root.setupState = payload.state || null
+    }, "finish-setup")
+  }
+
+  function finishSetup(done) {
+    root.settingUp = true
+    run(["finish-setup"], function (ok, payload, stderrText) {
+      root.settingUp = false
+      if (payload && payload.state) root.setupState = payload.state
+      var problems = (payload && payload.problems) || []
+      if (problems.length > 0) reportFailure({ error: problems.join("; ") }, stderrText, "")
+      else {
+        root.notice = payload && payload.replacedMailto
+          ? "Set up — mailto: links used to open " + payload.replacedMailto
+          : "Set up"
+        noticeTimer.restart()
+      }
+      if (done) done(problems.length === 0)
+    }, "finish-setup")
+  }
+
   // You have looked: what is there now is no longer new.
   // `always` for a caller that may not have read the count yet.
   function markSeen(always) {

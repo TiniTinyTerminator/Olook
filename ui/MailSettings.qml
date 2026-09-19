@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Quickshell
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -215,7 +216,10 @@ Item {
             width: parent.width
             spacing: Style.space(14)
             visible: root.activeSection === "general"
-            onVisibleChanged: if (visible) service.refreshOutbox()
+            onVisibleChanged: if (visible) {
+              service.refreshOutbox()
+              service.checkSetup()
+            }
 
             Text {
               textFormat: Text.PlainText
@@ -259,6 +263,79 @@ Item {
                 value: "never"
                 label: "Never, always ask"
                 hint: "Every message offers the button and none acts on its own."
+              }
+            }
+
+            // What `omarchy plugin add` does not do: shown until it is done.
+            Column {
+              id: setupBlock
+              readonly property var state: service.setupState
+              readonly property bool renderReady: !!(state && state.renderer.active)
+              readonly property bool complete: !!(state && state.cli.ok
+                                                  && state.renderer.active && state.mailto.ok)
+              width: parent.width
+              spacing: Style.space(6)
+              visible: !!state && !complete
+
+              Text {
+                textFormat: Text.PlainText
+                text: "Finish setup"
+                color: ui.foreground
+                font.family: ui.fontFamily
+                font.pixelSize: Style.font.subtitle
+              }
+
+              SetupLine {
+                done: !!(setupBlock.state && setupBlock.state.cli.ok)
+                label: "The olook command in a terminal"
+              }
+              SetupLine {
+                done: setupBlock.renderReady
+                label: {
+                  var r = setupBlock.state ? setupBlock.state.renderer : null
+                  if (!r || r.active) return "Mail rendered as HTML"
+                  if (!r.built) return "Mail rendered as HTML" + (r.compiler ? "" : " — needs gcc")
+                  if (r.configured) return "Mail rendered as HTML — restart the shell to start it"
+                  return "Mail rendered as HTML — "
+                    + (r.stale ? "replace the argcshim line in" : "add this line to")
+                    + " ~/.config/hypr/hyprland.lua, then restart the shell:"
+                }
+              }
+              // The one step left to you: Olook does not edit Hyprland's
+              // config, so the line is offered to copy.
+              Row {
+                visible: !!(setupBlock.state && setupBlock.state.renderer.built
+                            && !setupBlock.state.renderer.active
+                            && !setupBlock.state.renderer.configured)
+                leftPadding: Style.space(22)
+                spacing: Style.space(8)
+
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.min(implicitWidth, setupBlock.width - Style.space(110))
+                  textFormat: Text.PlainText
+                  elide: Text.ElideMiddle
+                  text: setupBlock.state ? setupBlock.state.renderer.line : ""
+                  color: ui.dim
+                  font.family: ui.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+                SettingsButton {
+                  label: "Copy"
+                  onTriggered: Quickshell.execDetached(["wl-copy", setupBlock.state.renderer.line])
+                }
+              }
+              SetupLine {
+                done: !!(setupBlock.state && setupBlock.state.mailto.ok)
+                label: "mailto: links open Olook"
+              }
+
+              SettingsButton {
+                primary: true
+                glyph: "\uF0AD"
+                label: service.settingUp ? "Setting up…" : "Finish setup"
+                enabled: !service.settingUp
+                onTriggered: service.finishSetup(null)
               }
             }
 
@@ -1342,6 +1419,32 @@ Item {
         font.pixelSize: Style.font.caption
         wrapMode: Text.WordWrap
       }
+    }
+  }
+
+  component SetupLine: Row {
+    id: setupLine
+    property bool done: false
+    property string label: ""
+    width: parent ? parent.width : 0
+    spacing: Style.space(8)
+
+    Text {
+      anchors.top: parent.top
+      width: Style.space(14)
+      text: parent.done ? "\uDB80\uDD32" : "\uDB80\uDD31"
+      color: parent.done ? ui.accent : ui.faint
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.iconSmall
+    }
+    Text {
+      width: setupLine.width - Style.space(22)
+      wrapMode: Text.Wrap
+      textFormat: Text.PlainText
+      text: parent.label
+      color: parent.done ? ui.dim : ui.foreground
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.bodySmall
     }
   }
 
