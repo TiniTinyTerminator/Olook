@@ -20,7 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import oauth
+from . import net, oauth
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -119,7 +119,7 @@ def _call(account, method, path, body=None, params=None, headers=None):
     request = urllib.request.Request(url, data=data, method=method,
                                      headers=sending)
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with net.urlopen(request, timeout=45) as response:
             raw = response.read().decode("utf-8", "replace")
             return json.loads(raw) if raw.strip() else {}
     except urllib.error.HTTPError as exc:
@@ -314,7 +314,7 @@ def events(account, calendar, start, end):
             "Prefer": 'outlook.timezone="UTC"',
         })
         try:
-            with urllib.request.urlopen(request, timeout=45) as response:
+            with net.urlopen(request, timeout=45) as response:
                 payload = json.loads(response.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:200]
@@ -451,7 +451,7 @@ def account_photo(account, size="96x96"):
         request = urllib.request.Request(GRAPH + path, headers={
             "Authorization": "Bearer " + token})
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with net.urlopen(request, timeout=30) as response:
                 kind = response.headers.get("Content-Type") or "image/jpeg"
                 raw = response.read()
         except urllib.error.HTTPError as exc:
@@ -489,7 +489,7 @@ def send_mime(account, raw):
         headers={"Authorization": "Bearer " + token,
                  "Content-Type": "text/plain"})
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with net.urlopen(request, timeout=60) as response:
             response.read()
         return True
     except urllib.error.HTTPError as exc:

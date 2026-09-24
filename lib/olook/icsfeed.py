@@ -26,6 +26,7 @@ WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 # A rule with no COUNT and no UNTIL repeats for ever. The window asked for
 # ends it in practice, but a malformed rule should not spin.
 MAX_OCCURRENCES = 2000
+MAX_FEED_BYTES = 20 * 1024 * 1024
 
 
 class FeedError(Exception):
@@ -115,7 +116,13 @@ def read(entry):
                              "Accept": "text/calendar, */*"})
         try:
             with urllib.request.urlopen(request, timeout=45) as response:
-                return response.read().decode("utf-8", "replace")
+                # A term's timetable is well under a megabyte; a link that
+                # keeps sending is not a calendar.
+                data = response.read(MAX_FEED_BYTES + 1)
+                if len(data) > MAX_FEED_BYTES:
+                    raise FeedError(f"{entry.get('name')}: the link sent more than "
+                                    f"{MAX_FEED_BYTES // (1024 * 1024)} MB.")
+                return data.decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             raise FeedError(
                 f"{entry.get('name')}: the link answered {exc.code}.") from exc

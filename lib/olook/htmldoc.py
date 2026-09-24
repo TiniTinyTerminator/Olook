@@ -20,7 +20,7 @@ from html.parser import HTMLParser
 # Dropped along with everything inside them.
 DROP_TREE = {"script", "noscript", "iframe", "frameset", "object", "applet",
              "form", "button", "select", "textarea", "title", "template",
-             "svg"}
+             "svg", "math", "video", "audio", "canvas", "dialog", "portal"}
 # Dropped themselves, contents kept: their children become our body.
 UNWRAP = {"html", "head", "body"}
 # Dropped as well, but void: no closing tag ever comes to bring a drop counter
@@ -153,6 +153,12 @@ class _Rewriter(HTMLParser):
             # image source behind our back.
             if name.startswith("on") or name in ("srcset", "ping", "formaction"):
                 continue
+            # Whatever the attribute is called -- poster, data, lowsrc, some
+            # name no browser has yet -- a value naming a file on this
+            # machine or a script does not stay. Checked before the
+            # attribute-specific rules below, which only know names.
+            if _names_local_or_script(value) and not (name == "src" and trusted_src):
+                continue
             if name == "src" and trusted_src:
                 pass    # a file this client wrote itself; see _image
             elif name in ("src", "background") and not _safe_image(value):
@@ -192,6 +198,11 @@ class _Rewriter(HTMLParser):
         attrs.pop("src", None)
         attrs.pop("srcset", None)
         self._emit("img", attrs)
+
+
+def _names_local_or_script(value):
+    lowered = "".join(str(value).split()).lower()
+    return lowered.startswith(("file:", "javascript:", "vbscript:", "data:text", "blob:"))
 
 
 def _safe_url(value):

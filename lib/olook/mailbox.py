@@ -115,9 +115,13 @@ def decode_mime(value):
     if not value:
         return ""
     try:
-        return str(make_header(decode_header(str(value)))).strip()
+        text = str(make_header(decode_header(str(value))))
     except Exception:
-        return str(value).strip()
+        text = str(value)
+    # An encoded word can decode to a line break. Kept, it would make any
+    # reply to the message fail -- a header may not contain one -- and it
+    # has no business in a subject or a name anyway.
+    return " ".join(text.replace("\r", " ").replace("\n", " ").split())
 
 
 def split_addresses(value):

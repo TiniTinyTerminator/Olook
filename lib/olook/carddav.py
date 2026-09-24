@@ -23,7 +23,7 @@ import urllib.request
 import uuid
 from xml.etree import ElementTree
 
-from . import caldav, oauth
+from . import caldav, net, oauth
 
 DAV_NS = "DAV:"
 CARDDAV_NS = "urn:ietf:params:xml:ns:carddav"
@@ -80,7 +80,7 @@ def _request(account, method, url, body=None, depth="0", headers=None,
     request = urllib.request.Request(url, data=data, method=method,
                                      headers=sending)
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with net.urlopen(request, timeout=45) as response:
             return (response.read().decode("utf-8", "replace"),
                     dict(response.headers))
     except urllib.error.HTTPError as exc:
@@ -216,8 +216,12 @@ def _photo(params, value):
     neither is a card with no picture.
     """
     value = value.strip()
-    if value.lower().startswith(("http://", "https://", "data:")):
+    # A URL is fetched when the contact is looked at, so only over https;
+    # inline data only as an image.
+    if value.lower().startswith(("https://", "data:image/")):
         return value
+    if value.lower().startswith(("http://", "data:")):
+        return ""
     encoding = (params.get("ENCODING") or "").upper()
     if encoding not in ("B", "BASE64") and not params.get("TYPE"):
         return ""

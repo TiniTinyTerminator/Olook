@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from xml.etree import ElementTree
 
-from . import config, keyring, oauth
+from . import config, keyring, net, oauth
 
 DAV_NS = "DAV:"
 CALDAV_NS = "urn:ietf:params:xml:ns:caldav"
@@ -173,24 +173,6 @@ def _authorization(account):
     return "Bearer " + oauth.access_token(grant(account))
 
 
-class _KeepMethod(urllib.request.HTTPRedirectHandler):
-    """Follow a redirect without turning a PROPFIND into a GET.
-
-    /.well-known/caldav is a redirect by design, and urllib only follows
-    redirects for GET and HEAD; for anything else it gives up with the 301.
-    """
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if code not in (301, 302, 303, 307, 308):
-            return None
-        return urllib.request.Request(
-            newurl, data=req.data, method=req.get_method(),
-            headers=dict(req.header_items()))
-
-
-_opener = urllib.request.build_opener(_KeepMethod)
-
-
 # ------------------------------------------------------------------ requests
 
 def _request(account, method, url, body=None, depth="0"):
@@ -205,7 +187,7 @@ def _request(account, method, url, body=None, depth="0"):
     request = urllib.request.Request(url, data=data, method=method,
                                      headers=headers)
     try:
-        with _opener.open(request, timeout=45) as response:
+        with net.urlopen(request, timeout=45) as response:
             return response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
@@ -657,7 +639,7 @@ def _put(account, url, body, headers):
     request = urllib.request.Request(url, data=body.encode("utf-8"),
                                      method="PUT", headers=sending)
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with net.urlopen(request, timeout=45) as response:
             return dict(response.headers)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
@@ -687,7 +669,7 @@ def delete_event(account, url):
     request = urllib.request.Request(url, method="DELETE",
                                      headers={"Authorization": _authorization(account)})
     try:
-        with urllib.request.urlopen(request, timeout=45):
+        with net.urlopen(request, timeout=45):
             return True
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

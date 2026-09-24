@@ -2621,10 +2621,46 @@ def build_parser():
     return parser
 
 
+def _value_options(parser):
+    """Every --option, in any command, that takes a value."""
+    found = set()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for sub in action.choices.values():
+                found |= _value_options(sub)
+        elif action.nargs != 0 and action.option_strings:
+            found.update(o for o in action.option_strings if o.startswith("--"))
+    return found
+
+
+def _glue(argv, value_options):
+    """Join `--folder -x` into `--folder=-x`.
+
+    Folder names, search text and appointment UIDs come from other people,
+    and argparse takes a value that starts with a dash for an option: the
+    command then fails, so that folder could not be opened or that
+    appointment changed. Attached with "=" it is only ever a value.
+    """
+    out = []
+    items = list(argv)
+    i = 0
+    while i < len(items):
+        token = items[i]
+        if token in value_options and i + 1 < len(items) \
+                and str(items[i + 1]).startswith("-"):
+            out.append(f"{token}={items[i + 1]}")
+            i += 2
+            continue
+        out.append(token)
+        i += 1
+    return out
+
+
 def main(argv=None):
     global JSON_OUT
     parser = build_parser()
-    args = parser.parse_args(argv)
+    argv = sys.argv[1:] if argv is None else argv
+    args = parser.parse_args(_glue(argv, _value_options(parser)))
     JSON_OUT = bool(getattr(args, "json", False))
     os.umask(0o077)
     try:

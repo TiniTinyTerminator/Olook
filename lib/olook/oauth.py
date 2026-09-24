@@ -240,11 +240,17 @@ def device_flow(account, emit, poll_deadline=600):
 
 class _CodeHandler(http.server.BaseHTTPRequestHandler):
     result = {}
+    # Any program on this machine can reach the port. Only an answer carrying
+    # the state this sign-in sent counts; anything else could end the wait
+    # with a made-up error.
+    expected_state = ""
 
     def do_GET(self):  # noqa: N802 - http.server API
         query = urllib.parse.urlparse(self.path).query
         params = {k: v[0] for k, v in urllib.parse.parse_qs(query).items()}
-        ok = "code" in params
+        ok = "code" in params and params.get("state") == _CodeHandler.expected_state
+        if params.get("state") != _CodeHandler.expected_state:
+            params = {}
         # Browsers also ask this port for /favicon.ico the moment the page
         # renders. Only a request that actually carries the grant may be
         # recorded, or that stray one overwrites the code with nothing and
@@ -308,6 +314,7 @@ def loopback_flow(account, emit, wait=300):
     url = config["auth"] + "?" + urllib.parse.urlencode(params)
 
     _CodeHandler.result = {}
+    _CodeHandler.expected_state = state
     server = http.server.HTTPServer(("127.0.0.1", port), _CodeHandler)
     thread = threading.Thread(target=_serve_until, args=(server,), daemon=True)
     thread.start()

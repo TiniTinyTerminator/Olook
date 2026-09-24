@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import oauth, providers, store
+from . import net, oauth, providers, store
 
 PEOPLE_URL = "https://people.googleapis.com/v1/people/me/connections"
 FIELDS = "names,emailAddresses,phoneNumbers,organizations,photos"
@@ -106,7 +106,7 @@ def fetch(account, limit=2000):
             PEOPLE_URL + "?" + urllib.parse.urlencode(query),
             headers={"Authorization": "Bearer " + token})
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with net.urlopen(request, timeout=30) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", "replace")[:200]
@@ -125,6 +125,11 @@ def fetch(account, limit=2000):
             break
 
     return [_flatten(person) for person in people]
+
+
+def _https_only(url):
+    """A picture is fetched when the contact is shown: never in the clear."""
+    return url if str(url).lower().startswith("https://") else ""
 
 
 def _first(values, key):
@@ -147,7 +152,7 @@ def _flatten(person):
         "emails": emails,
         "phones": phones,
         "organisation": _first(person.get("organizations") or [], "name"),
-        "photo": _first(person.get("photos") or [], "url"),
+        "photo": _https_only(_first(person.get("photos") or [], "url")),
     }
 
 
@@ -196,7 +201,7 @@ def _call(account, method, url, body=None):
         "Content-Type": "application/json",
     })
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with net.urlopen(request, timeout=30) as response:
             raw = response.read().decode("utf-8")
             return json.loads(raw) if raw.strip() else {}
     except urllib.error.HTTPError as exc:
