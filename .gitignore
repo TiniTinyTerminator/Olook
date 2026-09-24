@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 lib/*.so
+
+# Local helpers, not part of the plugin
+tools/

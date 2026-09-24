@@ -67,9 +67,7 @@ session; the panel opens on **All** again after a restart.
 | ![Writing in Markdown, with the formatting buttons](docs/screenshots/compose.png) | ![People, from the mail you exchange](docs/screenshots/people.png) |
 | ![The bar panel: the newest mail across every inbox](docs/screenshots/bar-mail.png) | ![The clock and calendar in the bar, from olook-calendar](docs/screenshots/bar-calendar.png) |
 
-The screenshots are demo data (`olook demo` and two sample calendars), taken
-by [`tools/screenshots.sh`](tools/screenshots.sh) in a throwaway nested
-session; running it again regenerates them.
+The screenshots are demo data: `olook demo` and two sample calendars.
 
 **Not yet, and why**
 
