@@ -38,6 +38,9 @@ Item {
   // Off unless the reader has asked for the message's remote images. The
   // document's own policy has to agree as well, so this alone opens nothing.
   property bool allowRemote: false
+  // Set by reload() for the one navigation loadHtml makes; see
+  // onNavigationRequested.
+  property bool loadPending: false
 
   // A page that sizes itself to the viewport would grow every time we grew to
   // match it, so the measurement only ever climbs, and stops somewhere sane.
@@ -67,6 +70,7 @@ Item {
     view.zoomFactor = 1
     settle.ticks = 0
     settle.restart()
+    root.loadPending = true
     view.loadHtml(root.document, root.baseUrl)
   }
 
@@ -144,6 +148,12 @@ Item {
     settings.pdfViewerEnabled: false
     settings.autoLoadImages: true
     settings.unknownUrlSchemePolicy: WebEngineSettings.DisallowUnknownUrlSchemes
+    // A file dropped on the message would otherwise be opened in its place,
+    // and link targets are not looked up ahead of a click -- a DNS lookup
+    // for a sender's domain says the message was opened.
+    settings.navigateOnDropEnabled: false
+    settings.dnsPrefetchEnabled: false
+    settings.hyperlinkAuditingEnabled: false
 
     onContentsSizeChanged: root.measure()
 
@@ -154,7 +164,13 @@ Item {
       if (request.navigationType === WebEngineNavigationRequest.LinkClickedNavigation) {
         request.action = WebEngineNavigationRequest.IgnoreRequest
         root.linkActivated(target)
-      } else if (target.startsWith("http://") || target.startsWith("https://")) {
+      } else if (root.loadPending && target.startsWith("data:text/html")) {
+        // The document reload() just handed over, which loadHtml delivers
+        // as a data: URL. Exactly one is expected per load.
+        root.loadPending = false
+      } else {
+        // Anything else -- the web, a file on this machine, a second
+        // document -- is somewhere the message is trying to take the view.
         request.action = WebEngineNavigationRequest.IgnoreRequest
       }
     }

@@ -164,6 +164,19 @@ def _root(account):
     return GOOGLE_CALDAV + urllib.parse.quote(account.get("email", "")) + "/"
 
 
+def _check_target(account, url):
+    """A server added by hand gets its password sent only to itself.
+
+    The addresses of calendars and appointments come from the server, and it
+    may name absolute ones. An address on another site, or plain http from an
+    https server, would take the password somewhere it was never given.
+    """
+    generic = account.get("caldav")
+    if generic and not net.keeps_credentials(generic.get("url") or "", url):
+        raise CalendarError(f"The calendar server pointed at {url}, which is not "
+                            "part of it; not sending it the password.")
+
+
 def _authorization(account):
     generic = account.get("caldav")
     if generic:
@@ -176,6 +189,7 @@ def _authorization(account):
 # ------------------------------------------------------------------ requests
 
 def _request(account, method, url, body=None, depth="0"):
+    _check_target(account, url)
     headers = {
         "Authorization": _authorization(account),
         "Depth": depth,
@@ -633,6 +647,7 @@ def build_event(uid, fields):
 
 
 def _put(account, url, body, headers):
+    _check_target(account, url)
     sending = {"Authorization": _authorization(account),
                "Content-Type": "text/calendar; charset=utf-8"}
     sending.update(headers or {})
@@ -666,6 +681,7 @@ def create_event(account, calendar, fields):
 
 
 def delete_event(account, url):
+    _check_target(account, url)
     request = urllib.request.Request(url, method="DELETE",
                                      headers={"Authorization": _authorization(account)})
     try:

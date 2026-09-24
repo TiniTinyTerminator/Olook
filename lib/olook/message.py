@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-from . import config, htmltext, mailbox
+from . import config, htmltext, mailbox, net
 
 
 def _decode_part(part):
@@ -86,7 +86,7 @@ def extract(msg):
     }
 
 
-def authentication(headers):
+def authentication(headers, account=None):
     """What the receiving server made of the sender's identity.
 
     DKIM says the message really came from the domain that signed it and has
@@ -95,29 +95,79 @@ def authentication(headers):
 
     None of it says the sender is honest -- a spammer signs their own mail
     correctly -- so this is an answer to "who is this", not "is this safe".
+
+    Two things keep it from being an answer the sender wrote themselves:
+
+    - The Authentication-Results header counts only when the account's own
+      provider wrote it. Anyone can put one in a message; the receiving
+      server adds its own on top, and this reads the topmost -- but a server
+      that adds none would leave the sender's forgery on top. So Gmail's has
+      to say mx.google.com, and a server Olook knows nothing about has to
+      name a host of its own domain.
+    - "Verified" means the From line is vouched for: DMARC passed, which
+      tests exactly that, or DKIM passed for the From address's own domain.
+      A valid signature from some other domain vouches for that domain only.
     """
-    line = str(headers.get("Authentication-Results") or "").lower()
+    line = str(headers.get("Authentication-Results") or "")
     signed = bool(headers.get("DKIM-Signature"))
+    if line and account is not None and not _written_by_provider(line, account):
+        line = ""
+    lowered = line.lower()
 
     def verdict(name):
-        found = re.search(name + r"=(\w+)", line)
+        found = re.search(r"\b" + name + r"=(\w+)", lowered)
         return found.group(1) if found else ""
 
     domain = ""
-    signer = re.search(r"header\.i=@?([\w.-]+)", line) or \
-        re.search(r"header\.d=([\w.-]+)", line)
+    signer = re.search(r"header\.d=([\w.-]+)", lowered) or \
+        re.search(r"header\.i=[^@\s;]*@([\w.-]+)", lowered)
     if signer:
-        domain = signer.group(1)
+        domain = signer.group(1).rstrip(".")
 
+    sender = _from_domain(headers.get("From"))
     dkim, dmarc = verdict("dkim"), verdict("dmarc")
+    aligned = bool(domain and sender and net.site(domain) == net.site(sender))
     return {
         "dkim": dkim, "spf": verdict("spf"), "dmarc": dmarc,
         "signedBy": domain,
         "checked": bool(line) or signed,
-        # Enough to say the From line is not a forgery: DKIM alone if the
-        # signing domain is the sender's, DMARC because that is what it tests.
-        "verified": dkim == "pass" or dmarc == "pass",
+        "verified": dmarc == "pass" or (dkim == "pass" and aligned),
     }
+
+
+# Where each provider's receiving servers sign their verdict.
+_PROVIDER_AUTHSERV = {
+    "gmail": ("mx.google.com",),
+    "icloud": ("mx.icloud.com", "icloud.com"),
+    "yahoo": ("atlas", "yahoo.com"),
+    "fastmail": ("mx.messagingengine.com", "messagingengine.com", "fastmail.com"),
+    "zoho": ("mx.zohomail.com", "zohomail.com", "zoho.com"),
+}
+
+
+def _written_by_provider(line, account):
+    provider = str(account.get("provider") or "")
+    if provider == "demo":
+        return True
+    # Exchange Online writes its verdict without an authserv-id, and on top
+    # of whatever arrived with the message; the topmost is its own.
+    if provider == "microsoft":
+        return True
+    first = line.split(";", 1)[0].strip().lower()
+    if not first or "=" in first:
+        return False
+    authserv = first.split()[0]
+    known = _PROVIDER_AUTHSERV.get(provider)
+    if known:
+        return any(authserv == k or authserv.endswith("." + k) for k in known)
+    host = str((account.get("imap") or {}).get("host") or "")
+    return bool(host) and net.site(authserv) == net.site(host)
+
+
+def _from_domain(value):
+    found = mailbox.split_addresses(value)
+    address = found[0]["address"] if found else ""
+    return address.rsplit("@", 1)[1].lower() if "@" in address else ""
 
 
 def _tidy(text):

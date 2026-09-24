@@ -111,6 +111,10 @@ def quote(name):
 
 # ------------------------------------------------------------------ helpers
 
+_DIRECTION_CONTROLS = dict.fromkeys(
+    list(range(0x202A, 0x202F)) + list(range(0x2066, 0x206A)) + [0x200E, 0x200F, 0x061C])
+
+
 def decode_mime(value):
     if not value:
         return ""
@@ -121,6 +125,10 @@ def decode_mime(value):
     # An encoded word can decode to a line break. Kept, it would make any
     # reply to the message fail -- a header may not contain one -- and it
     # has no business in a subject or a name anyway.
+    # Direction overrides and isolates go too. They are invisible and make
+    # text display in another order than it is: "invoice\u202efdp.exe"
+    # shows as "invoiceexe.pdf", and a name can be turned around the same way.
+    text = text.translate(_DIRECTION_CONTROLS)
     return " ".join(text.replace("\r", " ").replace("\n", " ").split())
 
 

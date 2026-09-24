@@ -1360,7 +1360,12 @@ def _auto_images(body, summary):
     anyone could put your bank's address in a From line and inherit the
     permission you gave your bank.
     """
-    auth = message.authentication((body or {}).get("headers") or {})
+    account = None
+    try:
+        account = config.account((summary or {}).get("account") or None)
+    except config.ConfigError:
+        pass
+    auth = message.authentication((body or {}).get("headers") or {}, account)
     sender = str((summary or {}).get("fromAddr") or "").strip().lower()
     trusted = bool(sender) and sender in config.trusted_senders()
     policy = config.image_policy()
