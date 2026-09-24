@@ -206,6 +206,9 @@ omarchy-shell shell summon ttt.olook '{"compose":true}'  # open composing
 omarchy-shell ttt.olook toggle                           # bar panel
 omarchy-shell ttt.olook sync                             # check for mail
 
+omarchy-shell shell summon ttt.olook '{"view":"calendar","calendarView":"week"}'
+omarchy-shell shell summon ttt.olook '{"view":"people"}'
+
 omarchy-shell ttt.olook-window newMessage                # compose window only
 omarchy-shell ttt.olook-window settings                  # settings view
 omarchy-shell ttt.olook-window addAccount                # straight to setup
@@ -319,17 +322,30 @@ To delete a draft rather than keep it, delete it from the Drafts folder.
 
 Mail that arrives as HTML is rendered, not flattened: a **Formatted** /
 **Plain text** toggle sits above the body, and formatted is the default when a
-message has an HTML part.
+message has an HTML part. Formatted mail is drawn on a light card rather than
+the dark theme, because mail HTML is written for a white background and picks
+its own text colours.
 
-The HTML is rewritten before it is displayed. Scripts, styles, frames and forms
-are dropped; attributes are cut down to structure and colour; and **remote
-images are never fetched** — a remote image in mail is usually a tracking pixel,
-so they are replaced by their alt text and counted in a "*n* remote images
-blocked" note. Images the message actually carries (`cid:` parts) are extracted
-to the cache and shown.
+**Pictures.** A remote picture in mail is usually a tracking pixel, so none is
+fetched until something says it may be. Settings → General chooses what:
 
-Formatted mail is drawn on a light card rather than the dark theme, because mail
-HTML is written for a white background and picks its own text colours.
+- *When the sender is known* (the default): pictures load for mail your
+  provider verified as really coming from the address in its From line, and
+  for senders you have named.
+- *Only senders I have named*, with **Always from this sender** above a message.
+- *Never*: every message asks, with **Show images**.
+
+**Who sent it.** Under the sender's name, *Verified as example.com* means your
+provider checked the message's DKIM or DMARC and it passed for the From
+address's own domain. A message whose From line the provider could not vouch
+for says so in red. It is an answer to "is this really them", not "is this
+safe": a spammer signs their own mail correctly.
+
+**What the message may do.** The HTML is rewritten before it is shown:
+scripts, frames, forms, SVG and media are removed, and so is anything that
+points at a file on your computer. It is shown with JavaScript off, a strict
+content-security policy, and a private profile that keeps no cookies or cache.
+A link opens in your browser only if it is `http`, `https` or `mailto`.
 
 ### Hyprland
 
@@ -400,12 +416,22 @@ removes them.
 |---|---|
 | `~/.config/olook/accounts.json` | Accounts and server settings (0600, no secrets) |
 | `~/.local/state/olook/mail.db` | SQLite cache of headers and fetched bodies |
+| `~/.local/state/olook/outbox/` | Mail waiting for a connection or a send-later time |
 | `~/.cache/olook/attachments/` | Attachments you have opened |
 | `~/.cache/olook/attachments/inline/` | Images a message carries, extracted so the reading pane can show them |
 | system keyring | Passwords and OAuth refresh tokens (`secret-tool`, service `olook`) |
 
 Secrets go to the Secret Service keyring. If no keyring is available, they fall
-back to `~/.local/state/olook/secrets.json` with 0600 permissions.
+back to `~/.local/state/olook/secrets.json` with 0600 permissions. All three
+folders are private to you (0700). Olook never takes a password or secret as a
+command-line argument, where other programs could read it: the `olook`
+commands read them from stdin.
+
+## Security
+
+Found a vulnerability? Please report it privately through GitHub: the
+repository's **Security** tab → **Report a vulnerability**. See
+[SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
@@ -417,8 +443,8 @@ compiled once per shell process. `omarchy restart shell`. See the note under
 [Install](#install).
 
 **A message looks blank or has `[logo]` where a picture should be** — remote
-images are blocked on purpose. The count under the header tells you how many;
-there is no "load images anyway" button yet.
+pictures are blocked until you allow them; see [Reading](#reading). **Show
+images** above the message loads them for that message.
 
 **"IMAP rejected the OAuth token"** — the grant was revoked or the password
 changed. `olook auth <account-id>` signs in again.

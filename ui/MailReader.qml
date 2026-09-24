@@ -235,7 +235,7 @@ Item {
             Row {
               width: parent.width
               spacing: Style.space(5)
-              visible: !!root.authentication && root.authentication.checked
+              visible: !!(root.authentication && root.authentication.checked)
 
               Text {
                 textFormat: Text.PlainText
@@ -394,6 +394,64 @@ Item {
           // What our own chrome insets itself by, so it does not sit against
           // the edge the message is allowed to use.
           readonly property real gutter: Style.space(20)
+
+          // The message's own controls, on a line of their own above it.
+          // They used to float over the top corner of the message to save
+          // this line, and in a narrow pane the row ran across the whole
+          // width and covered the first lines of the mail. A Flow, so a
+          // narrow pane wraps them instead.
+          Flow {
+            id: controlRow
+            x: bodyColumn.gutter
+            width: bodyColumn.width - 2 * bodyColumn.gutter
+            spacing: Style.space(8)
+            topPadding: Style.space(10)
+            visible: root.hasRich && !root.loadingBody
+            height: visible ? implicitHeight : 0
+
+            ViewToggle {
+              label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
+              onTriggered: root.formatted = !root.formatted
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              height: Style.space(26)
+              verticalAlignment: Text.AlignVCenter
+              visible: root.blockedImages > 0
+              text: root.blockedImages === 1
+                ? "1 remote image blocked"
+                : root.blockedImages + " remote images blocked"
+              color: ui.dim
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            // Fetching a message's pictures tells the sender the mail was
+            // opened -- that is what the tracking pixel among them is for.
+            // So it stays the reader's decision, one message at a time.
+            ViewToggle {
+              label: "󰋩  Show images"
+              visible: root.blockedImages > 0 && root.formatted
+              onTriggered: {
+                root.remoteImages = true
+                root.showImagesRequested()
+              }
+            }
+
+            // The standing version of the same permission. Verified mail
+            // already loads by itself, so what reaches this button is mail
+            // whose sender the server could not vouch for -- which is exactly
+            // when the From line is only a claim. A decision about a name,
+            // not about a proof.
+            ViewToggle {
+              label: "󰀓  Always from this sender"
+              visible: root.blockedImages > 0 && root.formatted
+                && !root.senderTrusted && root.senderAddress !== ""
+              onTriggered: root.trustSenderRequested(root.senderAddress)
+            }
+          }
+
 
           // The rest of this conversation.
           Column {
@@ -606,84 +664,12 @@ Item {
 
         MomentumScroll { id: bodyScroll; view: bodyFlick }
       }
-
-      // Pinned to the corner of the message rather than sitting on a row of
-      // its own above it. These controls belong to the message being shown,
-      // and a whole row of height to say "Formatted" is height the message
-      // could have used instead. They stay put while it scrolls under them,
-      // which also keeps them in reach at the bottom of a long mail.
-      // No ground of its own: the message shows through. The ink is the
-      // paper's rather than the theme's, though -- these sit on the light card
-      // the message is drawn on, where the dim grey the rest of the app uses
-      // would barely be there at all.
-      Row {
-        id: controlRow
-        anchors.right: bodyFlick.right
-        anchors.top: bodyFlick.top
-        anchors.rightMargin: Style.space(14)
-        anchors.topMargin: Style.space(10)
-        spacing: Style.space(8)
-        visible: root.hasRich && !root.loadingBody
-        z: 1
-
-        readonly property color ink: "#5a616b"
-        readonly property color edge: Qt.rgba(0, 0, 0, 0.14)
-
-        ViewToggle {
-          label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
-          ink: controlRow.ink
-          edge: controlRow.edge
-          onTriggered: root.formatted = !root.formatted
-        }
-
-        Text {
-          textFormat: Text.PlainText
-          anchors.verticalCenter: parent.verticalCenter
-          visible: root.blockedImages > 0
-          text: root.blockedImages === 1
-            ? "1 remote image blocked"
-            : root.blockedImages + " remote images blocked"
-          color: controlRow.ink
-          font.family: ui.fontFamily
-          font.pixelSize: Style.font.caption
-        }
-
-        // Fetching a message's pictures tells the sender the mail was
-        // opened -- that is what the tracking pixel among them is for. So
-        // it stays the reader's decision, one message at a time.
-        ViewToggle {
-          label: "󰋩  Show images"
-          visible: root.blockedImages > 0 && root.formatted
-          ink: controlRow.ink
-          edge: controlRow.edge
-          onTriggered: {
-            root.remoteImages = true
-            root.showImagesRequested()
-          }
-        }
-
-        // The standing version of the same permission. Signed mail already
-        // loads by itself, so what reaches this button is the mail whose
-        // sender the server could not vouch for -- which is exactly the case
-        // where the address in the From line is only a claim. Worth having,
-        // worth knowing: it is a decision about a name, not about a proof.
-        ViewToggle {
-          label: "󰀓  Always from this sender"
-          visible: root.blockedImages > 0 && root.formatted
-            && !root.senderTrusted && root.senderAddress !== ""
-          ink: controlRow.ink
-          edge: controlRow.edge
-          onTriggered: root.trustSenderRequested(root.senderAddress)
-        }
-      }
     }
   }
 
   component ViewToggle: Rectangle {
     id: viewToggle
     property string label: ""
-    // Defaults are the app's own. The pair floating over a message override
-    // them, because there the background is the sender's, not the theme's.
     property color ink: ui.dim
     property color edge: ui.border
     signal triggered()

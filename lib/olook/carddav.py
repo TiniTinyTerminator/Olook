@@ -16,6 +16,7 @@ parameters are all the same -- so the reader lives in caldav and is used from
 here.
 """
 
+import html
 import re
 import urllib.error
 import urllib.parse
@@ -120,19 +121,68 @@ QUERY = """<?xml version="1.0" encoding="utf-8"?>
 </card:addressbook-query>"""
 
 
+LIST = """<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop><d:getetag/><d:resourcetype/></d:prop>
+</d:propfind>"""
+
+MULTIGET = """<?xml version="1.0" encoding="utf-8"?>
+<card:addressbook-multiget xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+  <d:prop>
+    <d:getetag/>
+    <card:address-data/>
+  </d:prop>
+%s
+</card:addressbook-multiget>"""
+
+# Cards asked for per multiget: small enough for any server's request limit.
+BATCH = 100
+
+
 def fetch(account, limit=5000):
-    """Every contact in the account's address book, as flat records."""
+    """Every contact in the account's address book, as flat records.
+
+    One addressbook-query first, which returns every card in one answer
+    where a server supports it. Google stopped answering it in September
+    2026 -- an empty multistatus, no error -- so when it comes back empty
+    the cards are listed and fetched by address instead, the way any CardDAV
+    server has to allow.
+    """
     if not configured(account):
         raise AddressBookError("That account has no address book here.")
     url = _collection(account)
     xml, _ = _request(account, "REPORT", url, QUERY, depth="1")
+    out = _cards(url, _parse(xml), limit)
+    if out:
+        return out
 
+    listed, _ = _request(account, "PROPFIND", url, LIST, depth="1")
+    hrefs = []
+    for response in _parse(listed).findall("{%s}response" % DAV_NS):
+        href = response.findtext("{%s}href" % DAV_NS) or ""
+        if href and urllib.parse.urljoin(url, href).rstrip("/") != url.rstrip("/"):
+            hrefs.append(href)
+    for start in range(0, min(len(hrefs), limit), BATCH):
+        batch = hrefs[start:start + BATCH]
+        body = MULTIGET % "\n".join(
+            "  <d:href>%s</d:href>" % html.escape(href) for href in batch)
+        xml, _ = _request(account, "REPORT", url, body, depth="1")
+        out.extend(_cards(url, _parse(xml), limit - len(out)))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _parse(xml):
     try:
-        tree = ElementTree.fromstring(xml)
+        return ElementTree.fromstring(xml)
     except ElementTree.ParseError as exc:
         raise AddressBookError(
             "The address book sent back something unreadable.") from exc
 
+
+def _cards(url, tree, limit):
+    """The contacts in a multistatus answer carrying address-data."""
     out = []
     for response in tree.findall("{%s}response" % DAV_NS):
         href = response.findtext("{%s}href" % DAV_NS) or ""

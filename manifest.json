@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "ttt.olook",
   "name": "Olook",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "TiniTinyTerminator",
   "license": "MIT",
-  "description": "Olook: an Outlook-style mail client for Omarchy — unread count in the bar, a recent-mail panel, and a full reader with Gmail, Outlook.com and Microsoft 365 sign-in.",
+  "description": "Olook: an Outlook-style mail client for Omarchy — Gmail, Outlook.com, Microsoft 365 and any IMAP server, with calendar and contacts, a mail panel in the bar, and pictures blocked until you allow them.",
   "kinds": [
     "bar-widget",
     "overlay"
@@ -17,7 +17,7 @@
   },
   "barWidget": {
     "displayName": "Olook",
-    "description": "Unread count, a peek at recent mail, and one click into Olook.",
+    "description": "New mail at a glance, the latest messages from every inbox, and one click into Olook.",
     "category": "Communication",
     "aliases": [
       "olook",

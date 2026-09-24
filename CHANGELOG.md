@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.2.0
+
+**Security.** Three reviews of everything that handles mail from other
+people; each finding was reproduced before it was fixed.
+
+- Credentials no longer follow a redirect to another site. A bearer token or
+  CalDAV password was sent wherever a server redirected, even onto plain http.
+- "Verified sender" now means DMARC passed, or DKIM passed for the From
+  address's own domain, as judged by your provider. Before, any valid
+  signature counted, so mail signed by one domain could be shown as verified
+  while claiming to be from another -- and its pictures loaded by themselves.
+- No password or token over an unencrypted connection: a server with neither
+  SSL nor STARTTLS is refused unless it runs on this machine; CalDAV must be
+  https.
+- Message links open only when they are http, https or mailto; the rewritten
+  HTML keeps nothing that points at a file on your computer; the message view
+  can no longer be navigated away from the message.
+- Names, subjects and folder names can no longer be read as HTML, which let an
+  `<img>` in a subject fetch a tracking pixel in the message list.
+- Secrets are never command-line arguments; CLI output cannot drive the
+  terminal; notifications escape what they show; invisible direction
+  overrides are stripped from names and attachment names; background mail
+  watchers end with the shell.
+
+**Fixed**
+- Gmail contacts sync again: Google stopped answering the address-book query,
+  so cards are now listed and fetched by address.
+- The message's own controls (Formatted, Show images, ...) have a line of
+  their own and no longer cover the first lines of a message in a narrow pane.
+- A folder, search or appointment whose name starts with "-" works.
+- Replying to a message whose subject hid a line break works.
+
+**New**
+- The window can be summoned into People, Settings or a calendar view.
+- SECURITY.md: how to report a vulnerability.
+
 ## 1.1.0
 
 - Installs with `omarchy plugin add`; **Settings → General → Finish setup**
