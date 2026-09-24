@@ -166,6 +166,7 @@ Item {
         anchors.topMargin: Style.space(2)
 
         Text {
+          textFormat: Text.PlainText
           width: root.gutter
           horizontalAlignment: Text.AlignRight
           rightPadding: Style.space(6)
@@ -264,6 +265,7 @@ Item {
             height: root.hourHeight
 
             Text {
+              textFormat: Text.PlainText
               anchors.right: parent.left
               anchors.rightMargin: -root.gutter + Style.space(6)
               anchors.top: parent.top

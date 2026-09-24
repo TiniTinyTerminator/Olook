@@ -143,7 +143,9 @@ FloatingWindow {
         linkColor: window.ui ? window.ui.accent : "#89b4fa"
         font.family: window.ui ? window.ui.fontFamily : Style.font.family
         font.pixelSize: Style.font.bodySmall
-        onLinkActivated: function (link) { Qt.openUrlExternally(link) }
+        onLinkActivated: function (link) {
+          if (Model.isSafeLink(link)) Qt.openUrlExternally(link)
+        }
 
         HoverHandler {
           cursorShape: descriptionText.hoveredLink !== ""
@@ -196,6 +198,7 @@ FloatingWindow {
     spacing: Style.space(2)
 
     Text {
+      textFormat: Text.PlainText
       text: parent.label
       color: window.ui ? window.ui.faint : "#777"
       font.family: window.ui ? window.ui.fontFamily : Style.font.family
@@ -228,6 +231,7 @@ FloatingWindow {
 
     Text {
       id: buttonText
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: button.label
       color: window.ui ? window.ui.foreground : "white"

@@ -13,7 +13,7 @@ import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
-from . import graph, htmldoc, htmltext, keyring, mailbox, markdown, oauth
+from . import config, graph, htmldoc, htmltext, keyring, mailbox, markdown, oauth
 
 
 class SendError(Exception):
@@ -133,6 +133,10 @@ def send(account, draft, save_to_sent=True):
         raise SendError("No SMTP host configured for this account.")
     context = ssl.create_default_context()
     username = account.get("username") or account["email"]
+    if not settings.get("ssl") and not settings.get("starttls", True) \
+            and not config.is_loopback(host):
+        raise SendError(f"{host} is set up without encryption (neither SSL nor "
+                        "STARTTLS). Olook will not send your password in the clear.")
 
     try:
         if settings.get("ssl"):

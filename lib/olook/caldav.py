@@ -124,6 +124,11 @@ def add_server(name, url, username, password):
     url = str(url or "").strip()
     if not url.lower().startswith(("http://", "https://")):
         url = "https://" + url
+    # The password goes with every request, as Basic auth.
+    if url.lower().startswith("http://") and \
+            not config.is_loopback(urllib.parse.urlparse(url).hostname):
+        raise CalendarError("That server address is not https: the password would "
+                            "travel unencrypted. Use its https:// address.")
     doc = config.load()
     existing = {str(e.get("id")) for e in servers(doc)}
     host = urllib.parse.urlparse(url).hostname or "calendar"

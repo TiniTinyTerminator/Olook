@@ -17,6 +17,7 @@ Item {
     spacing: Style.space(12)
 
     Text {
+      textFormat: Text.PlainText
       anchors.horizontalCenter: parent.horizontalCenter
       text: root.glyph
       color: ui.faint

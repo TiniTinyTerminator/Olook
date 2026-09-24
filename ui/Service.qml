@@ -937,8 +937,8 @@ Item {
     if (!url || !username || !password) return
     root.calendarSyncing = true
     runWithInput(["calendar-server-add", "--name", String(name || ""),
-                  "--url", String(url), "--username", String(username),
-                  "--password", "-"], String(password),
+                  "--url", String(url), "--username", String(username)],
+                 String(password),
                  function (ok, payload, stderrText) {
       root.calendarSyncing = false
       if (!ok) {

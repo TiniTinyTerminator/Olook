@@ -158,6 +158,7 @@ Item {
         spacing: Style.space(8)
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: "󰝒"
           color: ui.background
@@ -324,6 +325,7 @@ Item {
         spacing: Style.space(6)
 
         Text {
+          textFormat: Text.PlainText
           visible: !root.collapsed
           anchors.verticalCenter: parent.verticalCenter
           width: Style.space(14)
@@ -343,6 +345,7 @@ Item {
                          0.45, 0.45, 1.0)
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             // The initials are the fallback, not the thing being replaced:
             // a picture that fails to load leaves them showing rather than a
@@ -427,6 +430,7 @@ Item {
 
         Text {
           id: accountBadge
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           visible: !root.collapsed && !section.expanded
             && !!(section.account && section.account.unread > 0)
@@ -555,6 +559,7 @@ Item {
 
         Text {
           id: folderGlyph
+          textFormat: Text.PlainText
           text: Model.folderGlyph(folderRow.folder)
           color: folderRow.current ? ui.accent : ui.dim
           font.family: ui.fontFamily
@@ -590,6 +595,7 @@ Item {
 
       Text {
         id: unreadLabel
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: !root.collapsed && !!(folderRow.folder && folderRow.folder.unseen > 0)
         text: folderRow.folder ? Model.badgeText(folderRow.folder.unseen) : ""

@@ -44,12 +44,20 @@ class ConfigError(Exception):
     pass
 
 
+def is_loopback(host):
+    """A server on this machine, like Proton's Bridge, where no network sees
+    the traffic and plain IMAP is what it offers."""
+    return str(host or "").strip().lower() in ("127.0.0.1", "::1", "localhost")
+
+
 def ensure_dirs():
     for path in (CONFIG_DIR, STATE_DIR, ATTACHMENT_DIR, OUTBOX_DIR):
         path.mkdir(parents=True, exist_ok=True)
     try:
-        os.chmod(CONFIG_DIR, 0o700)
-        os.chmod(STATE_DIR, 0o700)
+        # Mail, tokens and saved attachments: this user's alone, whatever the
+        # umask or the home directory's own mode.
+        for private in (CONFIG_DIR, STATE_DIR, CACHE_DIR, ATTACHMENT_DIR, OUTBOX_DIR):
+            os.chmod(private, 0o700)
     except OSError:
         pass
 

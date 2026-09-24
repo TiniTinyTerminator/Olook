@@ -35,11 +35,23 @@ def emit(payload, human=None):
         json.dump(payload, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
     elif human is not None:
-        print(human(payload) if callable(human) else human)
+        print(_printable(human(payload) if callable(human) else human))
     else:
         json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
     sys.stdout.flush()
+
+
+# Control characters shown as their visible symbols. Subjects, names and
+# folder names come from other people, and an escape sequence printed as-is
+# can rewrite the clipboard (OSC 52), retitle the terminal, or hide text.
+_CONTROL = {c: 0x2400 + c for c in range(0x20) if c not in (0x09, 0x0A)}
+_CONTROL[0x7F] = 0x2421
+_CONTROL.update({c: 0xFFFD for c in range(0x80, 0xA0)})
+
+
+def _printable(text):
+    return str(text).translate(_CONTROL)
 
 
 def emit_event(payload):
@@ -246,15 +258,15 @@ def cmd_set(args):
     if args.client_id is not None:
         account.setdefault("oauth", {})["client_id"] = args.client_id
         changed.append("oauth.client_id")
-    if args.client_secret is not None:
-        account.setdefault("oauth", {})["client_secret"] = args.client_secret
+    if args.client_secret_stdin:
+        account.setdefault("oauth", {})["client_secret"] = _secret_from_stdin("Client secret")
         changed.append("oauth.client_secret")
     if args.contacts_client_id is not None:
         account.setdefault("contactsOauth", {})["client_id"] = args.contacts_client_id
         changed.append("contactsOauth.client_id")
-    if args.contacts_client_secret is not None:
+    if args.contacts_client_secret_stdin:
         account.setdefault("contactsOauth", {})["client_secret"] = \
-            args.contacts_client_secret
+            _secret_from_stdin("Contacts client secret")
         changed.append("contactsOauth.client_secret")
     if args.contacts_scopes is not None:
         account.setdefault("contactsOauth", {})["scopes"] = \
@@ -393,6 +405,14 @@ def _open_url(url):
             except OSError:
                 continue
     return False
+
+
+def _secret_from_stdin(label):
+    """A secret from stdin: typed without echo on a terminal, piped otherwise."""
+    if sys.stdin.isatty():
+        import getpass
+        return getpass.getpass(label + ": ")
+    return sys.stdin.read().rstrip("\n")
 
 
 def _copy_clipboard(text):
@@ -863,7 +883,7 @@ def _calendar_accounts(args):
 
 def cmd_calendar_server_add(args):
     """Add a CalDAV server: Nextcloud, Fastmail, iCloud and the like."""
-    password = sys.stdin.read().rstrip("\n") if args.password == "-" else args.password
+    password = _secret_from_stdin("Password")
     if not password:
         raise CliError("A calendar server needs a password (or an app password).")
     try:
@@ -1606,7 +1626,9 @@ def cmd_search(args):
         return
     with mailbox.Session(account) as session:
         session.select(args.folder or "INBOX", readonly=True)
-        escaped = args.query.replace('"', '\\"')
+        # Quoted as IMAP wants it, and on one line: a line break would end the
+        # command early and start another one.
+        escaped = " ".join(args.query.split()).replace("\\", "\\\\").replace('"', '\\"')
         uids = session.search_uids(f'TEXT "{escaped}"', limit=args.limit)
         rows = [mailbox.header_row(account["id"], args.folder or "INBOX", item)
                 for item in session.fetch_headers(uids)]
@@ -1979,8 +2001,28 @@ def cmd_status(args):
          lambda d: f"{d['unread']} unread across {len(d['accounts'])} account(s)")
 
 
+def _die_with_parent():
+    """Ask the kernel to end this process when its parent goes.
+
+    `watch` holds an IMAP connection open for as long as it runs; one left
+    behind by a shell that crashed would hold it for good, next to the one
+    the new shell starts.
+    """
+    try:
+        import ctypes
+        import signal
+        libc = ctypes.CDLL(None, use_errno=True)
+        PR_SET_PDEATHSIG = 1
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM, 0, 0, 0)
+        if os.getppid() == 1:   # the parent was already gone
+            sys.exit(0)
+    except (OSError, AttributeError):
+        pass
+
+
 def cmd_watch(args):
     """Long-lived IDLE loop; prints one JSON line per event."""
+    _die_with_parent()
     account = config.account(args.account)
     conn = store.connect()
     folder = args.folder or "INBOX"
@@ -2253,10 +2295,14 @@ def build_parser():
     p.add_argument("account")
     p.add_argument("--name"), p.add_argument("--username")
     p.add_argument("--client-id", help="your own OAuth application")
-    p.add_argument("--client-secret")
+    # Secrets come on stdin, never as arguments: anything on the command line
+    # is readable by every process on the machine through /proc.
+    p.add_argument("--client-secret-stdin", action="store_true",
+                   help="read your application's client secret from stdin")
     p.add_argument("--contacts-client-id",
                    help="an OAuth application of your own, for contacts only")
-    p.add_argument("--contacts-client-secret")
+    p.add_argument("--contacts-client-secret-stdin", action="store_true",
+                   help="read the contacts application's secret from stdin")
     p.add_argument("--contacts-scopes",
                    help="what your application may do: contacts, "
                         "contacts.readonly, calendar, calendar.readonly")
@@ -2397,7 +2443,7 @@ def build_parser():
     p.add_argument("--name", default="")
     p.add_argument("--url", required=True)
     p.add_argument("--username", required=True)
-    p.add_argument("--password", default="-", help="the password, or - for stdin")
+    # The password comes on stdin only; see --client-secret-stdin.
     p.set_defaults(func=cmd_calendar_server_add)
 
     p = sub.add_parser("calendar-server-forget", help="remove a CalDAV server")

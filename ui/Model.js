@@ -252,3 +252,19 @@ function sortFolders(folders) {
   })
   return list
 }
+
+
+// Whether a link from a message or an appointment -- somebody else's text --
+// may be opened. Only the web and mail: a file:// link would hand a path on
+// this machine to xdg-open, and other schemes start whatever app registered
+// them.
+function isSafeLink(url) {
+  return /^(https?:|mailto:)/i.test(String(url || "").trim())
+}
+
+// Text for a notification body, which the notification server reads as
+// markup: a subject like "<a href=...>" would otherwise become a link.
+function notifyText(text) {
+  return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}

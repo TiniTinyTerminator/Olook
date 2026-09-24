@@ -207,7 +207,7 @@ Item {
   }
 
   function openVerification() {
-    if (root.verificationUri !== "") Qt.openUrlExternally(root.verificationUri)
+    if (Model.isSafeLink(root.verificationUri)) Qt.openUrlExternally(root.verificationUri)
   }
 
   readonly property bool succeeded: step === "done" && errorText === ""
@@ -238,6 +238,7 @@ Item {
         spacing: Style.space(6)
 
         Text {
+          textFormat: Text.PlainText
           text: root.succeeded ? "󰄬" : "󰇮"
           color: root.succeeded ? ui.accent : ui.faint
           font.family: ui.fontFamily
@@ -516,6 +517,7 @@ Item {
 
           Text {
             id: setupCode
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: root.userCode
             color: ui.accent

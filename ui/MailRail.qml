@@ -85,6 +85,7 @@ Item {
 
     Text {
       id: railGlyph
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: railButton.glyph
       color: railButton.current ? ui.accent
@@ -106,6 +107,7 @@ Item {
 
       Text {
         id: railBadge
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: Model.badgeText(railButton.badge)
         color: ui.background

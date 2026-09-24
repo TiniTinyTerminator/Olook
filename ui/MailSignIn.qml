@@ -55,7 +55,7 @@ Item {
   }
 
   function openVerification() {
-    if (root.verificationUri !== "") Qt.openUrlExternally(root.verificationUri)
+    if (Model.isSafeLink(root.verificationUri)) Qt.openUrlExternally(root.verificationUri)
   }
 
   Rectangle {
@@ -69,6 +69,7 @@ Item {
     spacing: Style.space(16)
 
     Text {
+      textFormat: Text.PlainText
       anchors.horizontalCenter: parent.horizontalCenter
       text: root.configured ? "󰌾" : "󰇮"
       color: ui.faint
@@ -132,6 +133,7 @@ Item {
 
         Text {
           id: codeText
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.userCode
           color: ui.accent

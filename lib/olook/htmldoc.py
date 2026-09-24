@@ -34,6 +34,8 @@ VOID = {"area", "br", "col", "hr", "img", "source", "track", "wbr"}
 REMOTE_URL = re.compile(r"url\(\s*['\"]?\s*(?!data:|file:|cid:|#)[^)]*\)",
                         re.IGNORECASE)
 AT_IMPORT = re.compile(r"@import[^;]*;", re.IGNORECASE)
+# A url() naming a file on this machine, which a message never has cause to.
+LOCAL_URL = re.compile(r"url\(\s*['\"]?\s*file:[^)]*\)", re.IGNORECASE)
 
 def _csp(allow_remote):
     """The policy the document carries with it.
@@ -136,10 +138,10 @@ class _Rewriter(HTMLParser):
 
     # ------------------------------------------------------------- helpers
 
-    def _emit(self, tag, attrs):
-        self.out.append(f"<{tag}{self._attrs(attrs)}>")
+    def _emit(self, tag, attrs, trusted_src=False):
+        self.out.append(f"<{tag}{self._attrs(attrs, trusted_src)}>")
 
-    def _attrs(self, attrs):
+    def _attrs(self, attrs, trusted_src=False):
         parts = []
         for name, value in attrs.items():
             name = str(name).lower()
@@ -151,8 +153,11 @@ class _Rewriter(HTMLParser):
             # image source behind our back.
             if name.startswith("on") or name in ("srcset", "ping", "formaction"):
                 continue
-            if name in ("href", "action", "cite", "background", "src") \
-                    and not _safe_url(value):
+            if name == "src" and trusted_src:
+                pass    # a file this client wrote itself; see _image
+            elif name in ("src", "background") and not _safe_image(value):
+                continue
+            elif name in ("href", "action", "cite") and not _safe_url(value):
                 continue
             if name == "style":
                 value = _clean_css(value, self.allow_remote)
@@ -171,12 +176,12 @@ class _Rewriter(HTMLParser):
                 if not local.startswith(("file:", "data:")):
                     local = "file://" + local
                 attrs["src"] = local
-                self._emit("img", attrs)
+                self._emit("img", attrs, trusted_src=True)
                 return
         elif lowered.startswith("data:image/"):
             self._emit("img", attrs)
             return
-        if self.allow_remote and _safe_url(source):
+        if self.allow_remote and lowered.startswith(("http://", "https://")):
             # Asked for. The count stays at zero so the reading pane stops
             # offering to do what it has already done.
             self._emit("img", attrs)
@@ -190,18 +195,29 @@ class _Rewriter(HTMLParser):
 
 
 def _safe_url(value):
+    """Where a link in a message may point.
+
+    Live links are fine to keep: the view hands them to the browser instead
+    of following them, and the policy blocks a silent fetch. A file:// link
+    is not -- it would hand a path on this machine to xdg-open on one click,
+    and a sender has no business pointing at your files.
+    """
     lowered = str(value).strip().lower()
-    if lowered.startswith(("http://", "https://")):
-        # Live links are fine to keep: the view hands them to the browser
-        # instead of following them, and the policy blocks a silent fetch.
-        return True
-    return lowered.startswith(("mailto:", "tel:", "#", "file://", "data:image/"))
+    return lowered.startswith(("http://", "https://", "mailto:", "tel:", "#"))
+
+
+def _safe_image(value):
+    """An image source a message may name itself: inline data, or the web
+    (which the CSP still blocks until pictures are allowed). Its own
+    attachments are pointed at by cid: and resolved in _image."""
+    lowered = str(value).strip().lower()
+    return lowered.startswith(("data:image/", "http://", "https://"))
 
 
 def _clean_css(text, allow_remote=False):
     # @import always goes: it pulls in a whole stylesheet, which is not an
     # image and is not what the reader agreed to.
-    text = AT_IMPORT.sub("", str(text))
+    text = LOCAL_URL.sub("none", AT_IMPORT.sub("", str(text)))
     if allow_remote:
         return text
     return REMOTE_URL.sub("none", text)

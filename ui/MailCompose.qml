@@ -510,6 +510,7 @@ Item {
             spacing: Style.space(7)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: service && service.busy ? "󰔟" : "󰒊"
               color: root.canSend ? ui.background : ui.faint
@@ -546,6 +547,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "\uDB80\uDCF0"
             color: root.canSend ? ui.dim : ui.faint
@@ -695,6 +697,7 @@ Item {
 
                   Text {
                     id: laterGoText
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: "Schedule"
                     color: laterPopup.typedOk ? ui.background : ui.faint
@@ -725,6 +728,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "󰏢"
             color: root.attachments.length > 0 ? ui.accent : ui.dim
@@ -761,6 +765,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "󰏋"
             color: ui.dim
@@ -792,6 +797,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "󰅖"
             color: ui.dim
@@ -858,6 +864,7 @@ Item {
           KeyNavigation.tab: ccField
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             visible: toField.text === ""
             text: "Recipients, separated by commas"
@@ -894,6 +901,7 @@ Item {
 
         Text {
           id: bccToggle
+          textFormat: Text.PlainText
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           visible: !root.showBcc
@@ -940,6 +948,7 @@ Item {
           KeyNavigation.tab: subjectField
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             visible: bccField.text === ""
             text: "Blind copies — nobody else sees these"
@@ -1133,6 +1142,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.top: parent.top
               anchors.left: parent.left
               visible: bodyField.text === ""
@@ -1162,6 +1172,7 @@ Item {
             border.color: ui.border
 
             Text {
+              textFormat: Text.PlainText
               anchors.centerIn: parent
               text: "\u00b7\u00b7\u00b7"
               color: ui.dim
@@ -1314,6 +1325,7 @@ Item {
       spacing: Style.space(6)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: "󰏢"
         color: ui.dim
@@ -1331,6 +1343,7 @@ Item {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: "󰅖"
         color: removeHover.containsMouse ? ui.urgent : ui.faint

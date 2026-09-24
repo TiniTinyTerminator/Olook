@@ -580,6 +580,7 @@ Item {
                 spacing: Style.space(8)
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   text: rulesPage.markRead ? "\uDB80\uDD32" : "\uDB80\uDD31"
                   color: rulesPage.markRead ? ui.accent : ui.dim
@@ -742,6 +743,7 @@ Item {
       spacing: Style.space(8)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: navItem.glyph
         color: navItem.current ? ui.accent : ui.dim
@@ -793,6 +795,7 @@ Item {
              && navAccount.row.email) || "")) / 360, 0.45, 0.42, 1.0)
 
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: Model.initials(String((navAccount.row && (navAccount.row.name
               || navAccount.row.email)) || ""))
@@ -892,6 +895,7 @@ Item {
                          0.45, 0.42, 1.0)
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: Model.initials(String((cardRoot.row && (cardRoot.row.name
                   || cardRoot.row.email)) || ""))
@@ -1247,7 +1251,7 @@ Item {
             primary: true
             glyph: "󰖟"
             label: "Open sign-in page"
-            onTriggered: Qt.openUrlExternally(root.signInUri)
+            onTriggered: if (Model.isSafeLink(root.signInUri)) Qt.openUrlExternally(root.signInUri)
           }
         }
       }
@@ -1328,6 +1332,7 @@ Item {
       spacing: Style.space(10)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: choice.current ? "󰄲" : "󰄱"
         color: choice.current ? ui.accent : ui.dim
@@ -1430,6 +1435,7 @@ Item {
     spacing: Style.space(8)
 
     Text {
+      textFormat: Text.PlainText
       anchors.top: parent.top
       width: Style.space(14)
       text: parent.done ? "\uDB80\uDD32" : "\uDB80\uDD31"
@@ -1545,6 +1551,7 @@ Item {
       spacing: Style.space(6)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: settingsButton.glyph !== ""
         text: settingsButton.glyph

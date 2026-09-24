@@ -478,6 +478,7 @@ Item {
 
           Text {
             id: todayText
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "Today"
             color: ui.foreground
@@ -495,6 +496,7 @@ Item {
         }
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: root.headingText
           color: ui.foreground
@@ -519,6 +521,7 @@ Item {
 
           Text {
             id: newLabel
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "\udb81\udc15  New"
             color: ui.accent
@@ -585,6 +588,7 @@ Item {
         border.color: ui.border
 
         Text {
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.service && root.service.calendarSyncing ? "󰔟" : "󰑐"
           color: ui.dim
@@ -632,6 +636,7 @@ Item {
             height: Style.space(18)
 
             Text {
+              textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
               text: "Calendars"
@@ -650,6 +655,7 @@ Item {
               color: addCalendarHover.containsMouse ? ui.hover : "transparent"
 
               Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 text: "\udb81\udc15"
                 color: ui.dim
@@ -781,6 +787,7 @@ Item {
               // A server added by hand is removed as a whole, from its heading.
               Text {
                 id: serverForget
+                textFormat: Text.PlainText
                 visible: !!calendarRow.modelData.server
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(2)
@@ -868,6 +875,7 @@ Item {
                     ? Util.alpha(ui.urgent, 0.22) : "transparent"
 
                   Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: "\u00d7"
                     color: forgetHover.containsMouse ? ui.urgent : ui.faint
@@ -940,6 +948,7 @@ Item {
                 height: parent.height
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.centerIn: parent
                   text: parent.modelData
                   color: ui.faint
@@ -1024,6 +1033,7 @@ Item {
                     color: cell.key === root.today ? ui.accent : "transparent"
 
                     Text {
+                      textFormat: Text.PlainText
                       anchors.centerIn: parent
                       text: String(cell.date.getDate())
                       color: cell.key === root.today ? ui.background
@@ -1153,6 +1163,7 @@ Item {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               text: root.editingEvent ? "Change appointment" : "New appointment"
               color: ui.foreground
               font.family: ui.fontFamily
@@ -1205,6 +1216,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               text: "Calendar"
               color: ui.faint
               font.family: ui.fontFamily
@@ -1232,6 +1244,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               visible: root.writableCalendars.length === 0
               wrapMode: Text.Wrap
@@ -1242,6 +1255,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               visible: root.draftProblem !== ""
               wrapMode: Text.Wrap
@@ -1291,6 +1305,7 @@ Item {
               spacing: Style.space(6)
 
               Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "\udb80\udd41"
                 color: ui.dim
@@ -1306,6 +1321,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Back to the day"
                 color: ui.dim
@@ -1436,6 +1452,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: root.eventsOn(root.selected).length === 0
             wrapMode: Text.Wrap
@@ -1573,6 +1590,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.allDay ? "All day" : root.clock(modelData)
                   color: ui.dim
@@ -1680,6 +1698,7 @@ Item {
     spacing: Style.space(1)
 
     Text {
+      textFormat: Text.PlainText
       text: parent.label
       color: ui.faint
       font.family: ui.fontFamily
@@ -1735,6 +1754,7 @@ Item {
       onTextChanged: field.edited(text)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: fieldInput.text === ""
         text: field.placeholder
@@ -1791,6 +1811,7 @@ Item {
     border.color: ui.border
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: step.glyph
       color: ui.dim

@@ -130,11 +130,15 @@ and calendar scopes are only *sensitive*, so they publish without one.
    ```
    olook set ACCOUNT \
      --contacts-client-id  YOUR_CLIENT_ID \
-     --contacts-client-secret YOUR_CLIENT_SECRET \
+     --contacts-client-secret-stdin \
      --contacts-scopes "contacts calendar"
 
    olook contacts-auth --account ACCOUNT
    ```
+
+   It asks for the client secret without showing it. Secrets are never taken
+   as arguments: anything on a command line is visible to every process on
+   the machine.
 
    `--contacts-scopes` takes the short names — `contacts`,
    `contacts.readonly`, `calendar`, `calendar.readonly` — and must match what
@@ -184,7 +188,7 @@ again when contacts go quiet. It is a weekly annoyance, not a broken feature.
 ## Undoing it
 
 ```
-olook set ACCOUNT --contacts-client-id "" --contacts-client-secret ""
+echo -n | olook set ACCOUNT --contacts-client-id "" --contacts-client-secret-stdin
 ```
 
 The address book already fetched stays in the cache until the next sync; the

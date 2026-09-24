@@ -198,11 +198,13 @@ Panel {
       // notification is answered and prints the action that answered it.
       // That is the only way to learn the popup was clicked.
       var process = notifier.createObject(root, {
+        // "--" first: the sender picks their own name, and one starting with
+        // a dash would otherwise be read as an option.
         command: ["notify-send", "--app-name=Mail", "--icon=mail-unread",
-                  "--action=default=Open",
+                  "--action=default=Open", "--",
                   Model.senderLabel(message),
-                  String(message.subject || "")
-                    + (count > 1 ? "\nand " + (count - 1) + " more" : "")],
+                  Model.notifyText(String(message.subject || "")
+                    + (count > 1 ? "\nand " + (count - 1) + " more" : ""))],
         target: {
           account: String(message.account || ""),
           folder: String(message.folder || ""),
@@ -265,6 +267,7 @@ Panel {
       Item {
         Text {
           id: glyph
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.hasUnread ? "󰇮" : "󰇮"
           color: root.barIconColor
@@ -299,6 +302,7 @@ Panel {
 
           Text {
             id: badgeText
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: Model.badgeText(mail.unread)
             color: Color.background
@@ -379,6 +383,7 @@ Panel {
             fontFamily: root.fontFamily
             iconComponent: Component {
               Text {
+                textFormat: Text.PlainText
                 text: "󰇮"
                 color: root.foreground
                 font.family: root.fontFamily
@@ -578,6 +583,7 @@ Panel {
                      0.45, 0.45, 1.0)
 
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: Model.initials(chip.account ? chip.account.name : "",
                              chip.account ? chip.account.email : "")
@@ -801,6 +807,7 @@ Panel {
       spacing: Style.space(6)
 
       Text {
+        textFormat: Text.PlainText
         text: footerAction.glyph
         color: root.foreground
         font.family: root.fontFamily

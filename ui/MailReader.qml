@@ -134,6 +134,7 @@ Item {
             spacing: Style.space(6)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: "󰅁"
               color: ui.dim
@@ -187,6 +188,7 @@ Item {
                            0.45, 0.45, 1.0)
 
             Text {
+              textFormat: Text.PlainText
               anchors.centerIn: parent
               text: Model.initials(root.message ? root.message.fromName : "",
                                    root.message ? root.message.fromAddr : "")
@@ -236,6 +238,7 @@ Item {
               visible: !!root.authentication && root.authentication.checked
 
               Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.verifiedSender ? "󰄴" : "󰀦"
                 color: root.verifiedSender ? ui.accent : ui.urgent
@@ -303,6 +306,7 @@ Item {
             border.color: ui.border
 
             Text {
+              textFormat: Text.PlainText
               anchors.centerIn: parent
               text: "󰏋"
               color: ui.dim
@@ -524,7 +528,9 @@ Item {
 
               Connections {
                 target: htmlView.item
-                function onLinkActivated(link) { Qt.openUrlExternally(link) }
+                function onLinkActivated(link) {
+                  if (Model.isSafeLink(link)) Qt.openUrlExternally(link)
+                }
                 function onWheeled(angleY, pixelY) {
                   if (pixelY !== 0)
                     bodyScroll.slideBy(pixelY)
@@ -551,7 +557,9 @@ Item {
               readOnly: true
               selectByMouse: true
               selectionColor: Util.alpha(ui.accent, 0.35)
-              onLinkActivated: function (link) { Qt.openUrlExternally(link) }
+              onLinkActivated: function (link) {
+                if (Model.isSafeLink(link)) Qt.openUrlExternally(link)
+              }
 
               MouseArea {
                 anchors.fill: parent
@@ -757,6 +765,7 @@ Item {
       spacing: Style.space(4)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: segment.glyph
         color: segment.highlighted ? ui.urgent : ui.dim
@@ -807,6 +816,7 @@ Item {
       spacing: Style.space(8)
 
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: "󰏢"
         color: ui.dim

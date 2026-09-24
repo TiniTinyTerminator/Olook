@@ -955,6 +955,7 @@ Item {
             spacing: Style.space(10)
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: "󰇮"
               color: ui.accent
@@ -1010,6 +1011,7 @@ Item {
 
             Text {
               id: searchGlyph
+              textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.leftMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
@@ -1048,6 +1050,7 @@ Item {
               Keys.onReturnPressed: keyCatcher.forceActiveFocus()
 
               Text {
+                textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 visible: searchField.text === ""
                 // The refiners are only useful if they are discoverable, and
@@ -1594,6 +1597,7 @@ Item {
                 }
 
                 Text {
+                  textFormat: Text.PlainText
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(10)
                   anchors.verticalCenter: parent.verticalCenter
@@ -1688,6 +1692,7 @@ Item {
                     spacing: Style.space(8)
 
                     Text {
+                      textFormat: Text.PlainText
                       text: modelData.glyph
                       color: ui.dim
                       font.family: ui.fontFamily
@@ -1744,6 +1749,7 @@ Item {
     color: hoverArea.containsMouse && mailButton.enabled ? ui.hover : "transparent"
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: mailButton.glyph
       color: mailButton.enabled ? ui.foreground : ui.faint

@@ -342,6 +342,7 @@ Item {
                   spacing: Style.space(5)
 
                   Text {
+                    textFormat: Text.PlainText
                     visible: !!(rowItem.modelData && rowItem.modelData.attachments > 0)
                     text: "󰏢"
                     color: ui.faint
@@ -349,6 +350,7 @@ Item {
                     font.pixelSize: Style.font.iconSmall
                   }
                   Text {
+                    textFormat: Text.PlainText
                     visible: !!(rowItem.modelData && rowItem.modelData.answered)
                     text: "󰑚"
                     color: ui.faint
@@ -356,6 +358,7 @@ Item {
                     font.pixelSize: Style.font.iconSmall
                   }
                   Text {
+                    textFormat: Text.PlainText
                     visible: !!(rowItem.modelData && rowItem.modelData.flagged)
                     text: "󰈻"
                     color: ui.urgent
@@ -410,6 +413,7 @@ Item {
         visible: root.rows.length === 0
 
         Text {
+          textFormat: Text.PlainText
           anchors.horizontalCenter: parent.horizontalCenter
           text: root.service && (root.service.loading || root.service.syncing)
             ? "󰔟" : "󰇮"
@@ -459,6 +463,7 @@ Item {
     color: bulkHover.containsMouse ? ui.hover : "transparent"
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: bulk.glyph
       color: bulkHover.containsMouse ? ui.foreground : ui.dim

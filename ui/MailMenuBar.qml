@@ -108,6 +108,7 @@ Item {
 
   Text {
     id: titleProbe
+    textFormat: Text.PlainText
     visible: false
     font.family: ui.fontFamily
     font.pixelSize: Style.font.bodySmall
@@ -206,9 +207,10 @@ Item {
       border.width: 1
       border.color: ui.border
 
-      Text { id: probe; visible: false; font.family: ui.fontFamily }
+      Text { id: probe; textFormat: Text.PlainText; visible: false; font.family: ui.fontFamily }
       Text {
         id: shortcutProbe
+        textFormat: Text.PlainText
         visible: false
         font.family: ui.fontFamily
         font.pixelSize: Style.font.caption
@@ -327,6 +329,7 @@ Item {
 
       Text {
         id: rowGlyph
+        textFormat: Text.PlainText
         anchors.left: parent.left
         anchors.leftMargin: Style.space(8)
         anchors.verticalCenter: parent.verticalCenter

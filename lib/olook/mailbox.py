@@ -242,6 +242,14 @@ class Session:
         if not host:
             raise MailError("No IMAP host configured for this account.")
         context = ssl.create_default_context()
+        # A password or token over an unencrypted connection is readable by
+        # anyone on the network between here and the server, so a connection
+        # that neither starts encrypted nor upgrades is refused -- unless the
+        # server is on this machine.
+        if not settings.get("ssl", True) and not settings.get("starttls", True) \
+                and not config.is_loopback(host):
+            raise MailError(f"{host} is set up without encryption (neither SSL nor "
+                            "STARTTLS). Olook will not send your password in the clear.")
         try:
             if settings.get("ssl", True):
                 self.imap = imaplib.IMAP4_SSL(host, port, ssl_context=context,

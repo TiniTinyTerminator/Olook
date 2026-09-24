@@ -314,7 +314,9 @@ def _server_node(node):
         port = 0
     socket_type = (node.findtext("socketType") or "").strip().upper()
     use_ssl = socket_type == "SSL"
-    starttls = socket_type == "STARTTLS"
+    # "plain", or nothing at all, would mean logging in unencrypted; ask for
+    # STARTTLS instead, which a server that cannot do it refuses out loud.
+    starttls = not use_ssl
     if not port:
         port = 993 if use_ssl else 143
     return {"host": host, "port": port, "ssl": use_ssl, "starttls": starttls}

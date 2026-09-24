@@ -192,6 +192,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               visible: searchField.text === ""
               text: "Search people…"
@@ -213,6 +214,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: "󰐕"
             color: ui.dim
@@ -248,6 +250,7 @@ Item {
           border.color: ui.border
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: root.service && root.service.contactsSyncing ? "󰔟" : "󰑐"
             color: ui.dim
@@ -302,6 +305,7 @@ Item {
               color: Qt.hsla((modelData.address.length % 12) / 12, 0.45, 0.45, 1.0)
 
               Text {
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 visible: rowPicture.status !== Image.Ready
                 text: Model.initials(modelData.name, modelData.address)
@@ -360,6 +364,7 @@ Item {
 
             Text {
               id: countLabel
+              textFormat: Text.PlainText
               anchors.right: parent.right
               anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
@@ -429,6 +434,7 @@ Item {
               : ui.surface
 
             Text {
+              textFormat: Text.PlainText
               anchors.centerIn: parent
               visible: bigPicture.status !== Image.Ready
               text: root.current
@@ -681,6 +687,7 @@ Item {
         onTextChanged: field.edited(text)
 
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           visible: fieldInput.text === ""
           text: field.placeholder
