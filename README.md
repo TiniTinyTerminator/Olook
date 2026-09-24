@@ -12,25 +12,7 @@ header narrows it to a single account — the address it is showing is spelled
 out beneath the row, and the unread count follows the choice. It lasts for the
 session; the panel opens on **All** again after a restart.
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ ✉ Olook  Mail          [ Search mail ]                        ⟳    ✕     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ File   View   Message   Help                                             │
-├────┬──────────────┬──────────────────────────┬───────────────────────────┤
-│ ✉3 │  + New mail  │  All  Unread  Flagged    │  Notes on the Analytical… │
-│ 📅 │ ⌄ Personal   │  ── Today ───────────────│  AL  Ada Lovelace         │
-│ 👤 │   Inbox   2  │ ▏Ada Lovelace      19:15 │  ↩ Reply  ↩↩ All  ↪ Fwd   │
-│    │   Drafts     │  Notes on the Analyt…    │  ─────────────────────    │
-│    │   Sent Items │  The engine can arra…    │  The engine can arrange   │
-│    │   Archive    │ ▏Omarchy           18:15 │  and combine numerical…   │
-│    │   Junk    1  │  Omarchy 4.0 is out      │                           │
-│    │ › Work    1  │  ── Yesterday ───────────│                           │
-│    │              │  GitHub       Yesterday  │                           │
-├────┴──────────────┴──────────────────────────┴───────────────────────────┤
-│ 5 messages,  2 unread                                    Updated 19:15   │
-└──────────────────────────────────────────────────────────────────────────┘
-```
+![Olook reading a message, with the folder pane and message list beside it](docs/screenshots/mail.png)
 
 **What works today**
 
@@ -78,6 +60,16 @@ session; the panel opens on **All** again after a restart.
 - A companion bar widget, [olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar),
   that replaces Omarchy's clock: the time, a month with the days you have
   something on, what is next, and a reminder before each appointment
+
+| | |
+|---|---|
+| ![The week view, with two calendars](docs/screenshots/calendar.png) | ![The month view](docs/screenshots/calendar-month.png) |
+| ![Writing in Markdown, with the formatting buttons](docs/screenshots/compose.png) | ![People, from the mail you exchange](docs/screenshots/people.png) |
+| ![The bar panel: the newest mail across every inbox](docs/screenshots/bar-mail.png) | ![The clock and calendar in the bar, from olook-calendar](docs/screenshots/bar-calendar.png) |
+
+The screenshots are demo data (`olook demo` and two sample calendars), taken
+by [`tools/screenshots.sh`](tools/screenshots.sh) in a throwaway nested
+session; running it again regenerates them.
 
 **Not yet, and why**
 

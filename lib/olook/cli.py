@@ -2126,7 +2126,7 @@ def cmd_demo(args):
             "account": account_id, "folder": "INBOX", "uid": 1000 + index,
             "message_id": f"<demo-{index}@omarchy>", "subject": subject,
             "from_name": name, "from_addr": address,
-            "to_addrs": ["you@example.com"], "cc_addrs": [],
+            "to_addrs": ["you@gmail.com"], "cc_addrs": [],
             "date": now - hours * 3600, "size": 4096 + index * 900,
             "seen": index > 1, "flagged": index == 3, "answered": False,
             "draft": False, "attachments": attachments, "preview": preview,
@@ -2141,7 +2141,7 @@ def cmd_demo(args):
                         else row["preview"] + "\n\n-- \nSent from Olook",
                         html_body,
                         [], {"From": f"{row['from_name']} <{row['from_addr']}>",
-                             "Subject": row["subject"], "To": "you@example.com"})
+                             "Subject": row["subject"], "To": "you@gmail.com"})
     store.save_folders(conn, account_id, [
         {"name": "INBOX", "special": "inbox", "total": len(rows), "unseen": 2},
         {"name": "Archive", "special": "archive", "total": 128, "unseen": 0},

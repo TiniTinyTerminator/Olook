@@ -134,7 +134,10 @@ Item {
     }
 
     root.opened = true
-    root.view = payload.view === "calendar" ? "calendar" : "mail"
+    // The rail's views are all summonable, so a keybinding can open the
+    // calendar or the address book directly.
+    root.view = (payload.view === "calendar" || payload.view === "people"
+                 || payload.view === "settings") ? payload.view : "mail"
     root.composing = false
     root.draft = null
 
@@ -145,6 +148,10 @@ Item {
     if (payload.uid) pendingUid = Number(payload.uid)
     // A summon naming a day opens the calendar on it, and on the appointment
     // itself when one is named. This is how the bar widget opens one.
+    // Which of the calendar's views: day, workweek, week or month.
+    if (payload.view === "calendar" && ["day", "workweek", "week", "month"]
+          .indexOf(String(payload.calendarView || "")) !== -1)
+      calendarPane.view = String(payload.calendarView)
     if (payload.view === "calendar" && payload.day)
       Qt.callLater(function () {
         calendarPane.openByUid(String(payload.day), String(payload.eventUid || ""))
