@@ -6,50 +6,70 @@ down to http. So a bearer token or a CalDAV password would go wherever a
 server -- or anything able to answer in its place -- pointed it. This is the
 opener every credentialed request goes through instead.
 
-A redirect keeps the credential only when it stays with the same site: the
-same host, or a host under the same registrable domain (iCloud answers
-/.well-known/caldav on caldav.icloud.com and serves the calendars from
-p12-caldav.icloud.com), and never from https to http. Any other redirect is
-followed without it, which is what a browser does with a password it was
-only given for one site. The method is kept, because a PROPFIND that turns
-into a GET on the way is not the request that was made.
+A redirect keeps the credential only when it stays with the same origin --
+the same host and port, and https unless it was http already (an upgrade to
+https on the same host is fine). "The same site" is not good enough: on
+shared hosting like github.io, alice.github.io and attacker.github.io are
+different owners, and telling them apart needs the public suffix list,
+which this client does not carry. The one exception is a short list of
+providers known to hand a request between their own hosts, spelled out:
+iCloud answers /.well-known/caldav on caldav.icloud.com and serves the
+calendars from p12-caldav.icloud.com.
+
+Any other redirect is followed without the credential, which is what a
+browser does with a password it was only given for one origin. The method is
+kept, because a PROPFIND that turns into a GET on the way is not the request
+that was made.
 """
 
 import urllib.parse
 import urllib.request
 
-# The last label here is a country code and the one before it a generic
-# second level -- co.uk, com.au, ac.nz -- so the registrable domain is one
-# label longer. Not the public suffix list, but it is the shape that matters
-# for mail and calendar hosts, and the error it can make is the safe one:
-# treating two sites as different.
-_SECOND_LEVEL = {"co", "com", "net", "org", "ac", "gov", "edu", "ne", "or", "go"}
+# Providers whose own hosts pass a credentialed request between them, over
+# https on the default port. Each entry is a domain only that provider can
+# have hosts under.
+_PROVIDER_DOMAINS = ("icloud.com",)
 
 
-def site(host):
-    """The registrable domain of a host, as well as can be told without the
-    public suffix list."""
-    labels = [part for part in str(host or "").lower().rstrip(".").split(".") if part]
-    if len(labels) <= 2:
-        return ".".join(labels)
-    if len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+def _origin(url):
+    parts = urllib.parse.urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if port is None:
+        port = {"https": 443, "http": 80}.get(scheme)
+    return scheme, (parts.hostname or "").lower(), port
 
 
-def _loopback(host):
-    return str(host or "").lower() in ("127.0.0.1", "::1", "localhost")
+def _provider_domain(host):
+    for domain in _PROVIDER_DOMAINS:
+        if host == domain or host.endswith("." + domain):
+            return domain
+    return ""
 
 
 def keeps_credentials(old_url, new_url):
-    """Whether a redirect from one URL to another may take the credential."""
-    old = urllib.parse.urlsplit(old_url)
-    new = urllib.parse.urlsplit(new_url)
-    if old.scheme == "https" and new.scheme != "https" and not _loopback(new.hostname):
+    """Whether a request to new_url may carry what old_url was given."""
+    old_scheme, old_host, old_port = _origin(old_url)
+    new_scheme, new_host, new_port = _origin(new_url)
+    if not old_host or not new_host:
         return False
-    if (old.hostname or "") == (new.hostname or ""):
-        return True
-    return bool(site(old.hostname)) and site(old.hostname) == site(new.hostname)
+    if new_scheme not in ("http", "https"):
+        return False
+    if new_scheme == "http":
+        # Never onto plain http -- only staying where an http server already
+        # was (a local one; see caldav.add_server).
+        return (old_scheme, old_host, old_port) == (new_scheme, new_host, new_port)
+    if new_host == old_host:
+        if (new_scheme, new_port) == (old_scheme, old_port):
+            return True
+        # http -> https on the same host, default ports: an upgrade.
+        return (old_scheme, old_port, new_scheme, new_port) == ("http", 80, "https", 443)
+    provider = _provider_domain(old_host)
+    return bool(provider) and provider == _provider_domain(new_host) \
+        and old_scheme == new_scheme == "https" and old_port == new_port == 443
 
 
 class _Redirect(urllib.request.HTTPRedirectHandler):

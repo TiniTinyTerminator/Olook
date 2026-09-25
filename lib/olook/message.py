@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-from . import config, htmltext, mailbox, net
+from . import config, htmltext, mailbox
 
 
 def _decode_part(part):
@@ -111,7 +111,9 @@ def authentication(headers, account=None):
     line = str(headers.get("Authentication-Results") or "")
     signed = bool(headers.get("DKIM-Signature"))
     if line and account is not None and not _written_by_provider(line, account):
-        line = ""
+        # Nothing trustworthy to go on: say nothing rather than "could not be
+        # verified", which on such a server would be every message.
+        line, signed = "", False
     lowered = line.lower()
 
     def verdict(name):
@@ -126,7 +128,11 @@ def authentication(headers, account=None):
 
     sender = _from_domain(headers.get("From"))
     dkim, dmarc = verdict("dkim"), verdict("dmarc")
-    aligned = bool(domain and sender and net.site(domain) == net.site(sender))
+    # The signing domain is the From domain, or a parent of it: only the
+    # owner of bank.com can sign as bank.com, for itself or mail.bank.com.
+    # Anything looser -- "the same last two labels" -- would make
+    # attacker.github.io vouch for alice.github.io.
+    aligned = bool(domain and sender and (sender == domain or sender.endswith("." + domain)))
     return {
         "dkim": dkim, "spf": verdict("spf"), "dmarc": dmarc,
         "signedBy": domain,
@@ -160,8 +166,11 @@ def _written_by_provider(line, account):
     known = _PROVIDER_AUTHSERV.get(provider)
     if known:
         return any(authserv == k or authserv.endswith("." + k) for k in known)
-    host = str((account.get("imap") or {}).get("host") or "")
-    return bool(host) and net.site(authserv) == net.site(host)
+    # A server Olook knows nothing about: its verdict counts only when it is
+    # signed with the IMAP server's own name. Anything looser could be
+    # matched by a header the sender wrote.
+    host = str((account.get("imap") or {}).get("host") or "").lower()
+    return bool(host) and authserv == host
 
 
 def _from_domain(value):

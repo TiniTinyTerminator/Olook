@@ -57,7 +57,7 @@ session; the panel opens on **All** again after a restart.
   `.ics` files or links; appointments added, changed and deleted
 - **People**: contacts from Google (CardDAV) and Microsoft (Graph), added,
   edited and removed from the client, with their pictures
-- A companion bar widget, [olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar),
+- A companion bar widget, [olook-calendar](https://github.com/TiniTinyTerminator/Olook-calendar),
   that replaces Omarchy's clock: the time, a month with the days you have
   something on, what is next, and a reminder before each appointment
 
@@ -78,7 +78,7 @@ purpose.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/TiniTinyTerminator/olook.git --enable
+omarchy plugin add https://github.com/TiniTinyTerminator/Olook.git --enable
 ```
 
 Then open Olook, add an account, and go to **Settings → General → Finish
@@ -97,10 +97,10 @@ they go to a file readable only by you. `gcc` builds the HTML renderer
 library; without it the reading pane falls back to Qt's rich text.
 
 **The clock and calendar** is a plugin of its own,
-[olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar):
+[olook-calendar](https://github.com/TiniTinyTerminator/Olook-calendar):
 
 ```bash
-omarchy plugin add https://github.com/TiniTinyTerminator/olook-calendar.git
+omarchy plugin add https://github.com/TiniTinyTerminator/Olook-calendar.git
 omarchy bar put ttt.olook-calendar --before omarchy.clock
 omarchy plugin disable omarchy.clock
 ```
@@ -108,7 +108,7 @@ omarchy plugin disable omarchy.clock
 ### From a checkout
 
 ```bash
-git clone https://github.com/TiniTinyTerminator/olook.git
+git clone https://github.com/TiniTinyTerminator/Olook.git
 cd olook
 ./install.sh          # copies into ~/.config/omarchy/plugins, finishes setup
 ```

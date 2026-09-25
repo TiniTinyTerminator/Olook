@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.1
+
+**Security**
+- Credentials follow a redirect only to the same origin: the same host and
+  port, never onto plain http. 1.2.0 kept them within "the same site", judged
+  by the last two labels of the host name, which made separate tenants of a
+  shared host (alice.github.io and attacker.github.io) one site and ignored a
+  change of port. iCloud's hand-off between its own CalDAV hosts is the one
+  named exception.
+- The same looseness is gone from sender verification: a DKIM signature
+  vouches for the From address only when it is from that domain or a parent
+  of it, and a server Olook does not know is believed only when its verdict
+  carries the IMAP server's own name -- otherwise nothing is claimed either way.
+- Mail notifications are bounded: at most three wait for a click at once, the
+  oldest letting go first, and each lets go after ten minutes.
+
 ## 1.2.0
 
 **Security.** Three reviews of everything that handles mail from other
@@ -46,7 +62,7 @@ people; each finding was reproduced before it was fixed.
   message marked unread does not count and a shell restart does not forget
   it -- or the unread count if you choose it.
 - The clock-and-calendar widget moves to its own repository,
-  [olook-calendar](https://github.com/TiniTinyTerminator/olook-calendar).
+  [olook-calendar](https://github.com/TiniTinyTerminator/Olook-calendar).
 
 ## 1.0.0
 

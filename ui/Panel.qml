@@ -28,6 +28,8 @@ Panel {
     return isFinite(value) ? Math.max(3, Math.min(20, value)) : 8
   }
   readonly property bool hideWhenRead: setting("unreadOnlyBadge", false) === true
+  // notify-send processes waiting for their popup to be answered; see onNewMail.
+  property var liveNotifications: []
 
   // What the icon carries: a dot for mail that arrived since the panel was
   // last opened, the unread count, or nothing. The dot is the default
@@ -197,6 +199,14 @@ Panel {
       // Run rather than detached, because notify-send stays alive until the
       // notification is answered and prints the action that answered it.
       // That is the only way to learn the popup was clicked.
+      // At most a few waiting at once: each notify-send lives until its popup
+      // is answered, and a day of unanswered mail would otherwise be a day
+      // of processes. The oldest one lets go first; the newest mail is the
+      // one worth a click.
+      while (root.liveNotifications.length >= 3) {
+        var oldest = root.liveNotifications.shift()
+        if (oldest) oldest.running = false
+      }
       var process = notifier.createObject(root, {
         // "--" first: the sender picks their own name, and one starting with
         // a dash would otherwise be read as an option.
@@ -211,7 +221,9 @@ Panel {
           uid: Number(message.uid || 0)
         }
       })
-      if (process) process.running = true
+      if (!process) return
+      root.liveNotifications = root.liveNotifications.concat([process])
+      process.running = true
     }
   }
 
@@ -238,7 +250,20 @@ Panel {
           })
         }
       }
-      onExited: Qt.callLater(function () { notifyProc.destroy() })
+      onExited: {
+        root.liveNotifications = root.liveNotifications.filter(function (item) {
+          return item !== notifyProc
+        })
+        Qt.callLater(function () { notifyProc.destroy() })
+      }
+
+      // An unanswered notification lets go after a while: the popup stays
+      // with the notification server, only the wait for a click ends.
+      property Timer lifetime: Timer {
+        interval: 10 * 60 * 1000
+        running: notifyProc.running
+        onTriggered: notifyProc.running = false
+      }
     }
   }
 

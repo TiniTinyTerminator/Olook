@@ -5,7 +5,7 @@
 #   ./install.sh --link   symlink it instead (see the note below)
 #   ./install.sh --uninstall
 #
-# Most people want `omarchy plugin add https://github.com/TiniTinyTerminator/olook.git`
+# Most people want `omarchy plugin add https://github.com/TiniTinyTerminator/Olook.git`
 # instead, and then Settings > General > Finish setup. This script is for
 # working on Olook itself.
 #
@@ -89,7 +89,7 @@ esac
 
 echo
 echo "The clock-and-calendar widget is its own plugin:"
-echo "  omarchy plugin add https://github.com/TiniTinyTerminator/olook-calendar.git"
+echo "  omarchy plugin add https://github.com/TiniTinyTerminator/Olook-calendar.git"
 echo
 echo "Next: olook setup    (add Gmail, Outlook.com, Microsoft 365, or any IMAP account)"
 echo "      Super+M        (once you add the keybinding — see README)"
