@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Olook is in the app menu: Finish setup installs a launcher entry and an
+  icon, with **New message** among its actions.
+
 ## 1.2.1
 
 **Security**

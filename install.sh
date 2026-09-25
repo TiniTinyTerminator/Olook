@@ -62,7 +62,7 @@ if [[ "$MODE" == "link" ]]; then
   echo "Linked $SRC -> $PLUGIN_DIR"
 else
   mkdir -p "$PLUGIN_DIR"
-  cp -r "$SRC/manifest.json" "$SRC/ui" "$SRC/bin" "$SRC/lib" "$PLUGIN_DIR/"
+  cp -r "$SRC/manifest.json" "$SRC/ui" "$SRC/bin" "$SRC/lib" "$SRC/assets" "$PLUGIN_DIR/"
   echo "Copied Olook into $PLUGIN_DIR"
 fi
 

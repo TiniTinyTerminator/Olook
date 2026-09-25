@@ -83,8 +83,8 @@ omarchy plugin add https://github.com/TiniTinyTerminator/Olook.git --enable
 
 Then open Olook, add an account, and go to **Settings → General → Finish
 setup**. It puts the `olook` command on your PATH, builds the small library
-that lets mail render as HTML, and makes Olook the handler for `mailto:`
-links. The one step it leaves to you is the line that preloads that library
+that lets mail render as HTML, makes Olook the handler for `mailto:` links,
+and adds Olook to the app menu (with **New message** among its actions). The one step it leaves to you is the line that preloads that library
 into the shell: it shows the line, with a button to copy it into
 `~/.config/hypr/hyprland.lua`, because Olook does not edit Hyprland's config.
 From a terminal the same is `olook finish-setup`.

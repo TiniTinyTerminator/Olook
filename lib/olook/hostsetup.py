@@ -1,11 +1,11 @@
 """The parts of an install that live outside the plugin folder.
 
 `omarchy plugin add` clones the repository into the plugins folder and stops
-there, which is enough for mail to work. Three things are left that make it
+there, which is enough for mail to work. Four things are left that make it
 feel installed: the `olook` command on the PATH, the small library that lets
-the reading pane render HTML, and being the desktop's handler for mailto:
-links. This does all three, from Settings or from install.sh, and reports
-what it found either way.
+the reading pane render HTML, being the desktop's handler for mailto: links,
+and an entry in the app menu. This does all four, from Settings or from
+install.sh, and reports what it found either way.
 
 The one step it will not take is editing Hyprland's config: the renderer only
 works when the shell starts with the library preloaded, and that line belongs
@@ -28,6 +28,9 @@ APPS_DIR = HOME / ".local" / "share" / "applications"
 DESKTOP_NAME = "olook-mailto.desktop"
 DESKTOP_FILE = APPS_DIR / DESKTOP_NAME
 HYPR_CONFIG = HOME / ".config" / "hypr" / "hyprland.lua"
+LAUNCHER_FILE = APPS_DIR / "olook.desktop"
+ICON_SOURCE = PLUGIN_DIR / "assets" / "olook.svg"
+ICON_FILE = HOME / ".local" / "share" / "icons" / "hicolor" / "scalable" / "apps" / "olook.svg"
 
 
 def _hypr_text():
@@ -96,6 +99,9 @@ def check():
             "ok": _mailto_default() == DESKTOP_NAME,
             "current": _mailto_default(),
         },
+        "launcher": {
+            "ok": LAUNCHER_FILE.exists() and ICON_FILE.exists(),
+        },
     }
 
 
@@ -140,6 +146,45 @@ def _register_mailto():
     return previous if previous != DESKTOP_NAME else ""
 
 
+def _register_launcher():
+    """Olook in the app menu: the window, and a new message from its actions.
+
+    The menu lists desktop entries, and until now the only one was the
+    hidden mailto: handler -- so the app could be opened from the bar, a
+    keybinding or a terminal, but not found by name.
+    """
+    APPS_DIR.mkdir(parents=True, exist_ok=True)
+    ICON_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if ICON_SOURCE.exists():
+        ICON_FILE.write_bytes(ICON_SOURCE.read_bytes())
+    # omarchy-shell adds the empty payload a three-word summon needs.
+    LAUNCHER_FILE.write_text(
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=Olook\n"
+        "GenericName=Mail\n"
+        "Comment=Mail, calendar and contacts\n"
+        "Exec=omarchy-shell shell summon ttt.olook\n"
+        "Icon=olook\n"
+        "Terminal=false\n"
+        "StartupNotify=false\n"
+        "Categories=Network;Email;\n"
+        "Keywords=mail;email;inbox;calendar;contacts;outlook;\n"
+        "Actions=compose;\n"
+        "\n"
+        "[Desktop Action compose]\n"
+        "Name=New message\n"
+        "Exec=omarchy-shell ttt.olook-window newMessage\n", encoding="utf-8")
+    # Written under the engine's private umask; a menu entry and an icon are
+    # not secrets, and other tools read them.
+    for path in (LAUNCHER_FILE, ICON_FILE):
+        if path.exists():
+            os.chmod(path, 0o644)
+    if shutil.which("update-desktop-database"):
+        subprocess.run(["update-desktop-database", str(APPS_DIR)],
+                       capture_output=True, timeout=30)
+
+
 def run():
     """Do every step that is ours to do, and report what is left."""
     problems = []
@@ -148,12 +193,13 @@ def run():
     if trouble:
         problems.append(trouble)
     replaced = _register_mailto()
+    _register_launcher()
     state = check()
     return {"state": state, "problems": problems, "replacedMailto": replaced}
 
 
 def remove():
     """Undo what run() put outside the plugin folder."""
-    for path in (BIN_LINK, DESKTOP_FILE):
+    for path in (BIN_LINK, DESKTOP_FILE, LAUNCHER_FILE, ICON_FILE):
         if path.is_symlink() or path.exists():
             path.unlink()

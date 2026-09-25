@@ -1921,6 +1921,8 @@ def _describe_setup(d):
     if d.get("replacedMailto"):
         lines.append(f"     was {d['replacedMailto']}; to go back: "
                      f"xdg-mime default {d['replacedMailto']} x-scheme-handler/mailto")
+    launcher = state.get("launcher") or {}
+    lines.append(("ok   " if launcher.get("ok") else "--   ") + "Olook in the app menu")
     for problem in d.get("problems") or []:
         lines.append("!!   " + problem)
     return "\n".join(lines)

@@ -272,7 +272,8 @@ Item {
               readonly property var state: service.setupState
               readonly property bool renderReady: !!(state && state.renderer.active)
               readonly property bool complete: !!(state && state.cli.ok
-                                                  && state.renderer.active && state.mailto.ok)
+                                                  && state.renderer.active && state.mailto.ok
+                                                  && (!state.launcher || state.launcher.ok))
               width: parent.width
               spacing: Style.space(6)
               visible: !!state && !complete
@@ -328,6 +329,11 @@ Item {
               SetupLine {
                 done: !!(setupBlock.state && setupBlock.state.mailto.ok)
                 label: "mailto: links open Olook"
+              }
+              SetupLine {
+                done: !!(setupBlock.state && setupBlock.state.launcher
+                         && setupBlock.state.launcher.ok)
+                label: "Olook in the app menu"
               }
 
               SettingsButton {
