@@ -1,4 +1,4 @@
-"""Interactive account setup.
+"""Interactive account setup: the `olook setup` wizard.
 
 Uses gum when it is there (it ships with Omarchy) so the wizard matches the
 rest of the system's prompts, and falls back to plain input() when it isn't.

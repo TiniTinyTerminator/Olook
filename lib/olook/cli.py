@@ -2274,7 +2274,7 @@ def cmd_demo(args):
 # ---------------------------------------------------------------------- setup
 
 def cmd_setup(args):
-    from .setup import run_setup
+    from .wizard import run_setup
     run_setup(args)
 
 

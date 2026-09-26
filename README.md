@@ -366,8 +366,8 @@ o.window({ title = "^(Olook)$" }, { float = true, size = "1440 900", center = tr
 ## The engine
 
 The UI never speaks IMAP itself. `bin/olook` is a Python 3 program (standard
-library only — no pip install) that does the network work and keeps a SQLite
-cache, and the QML calls it for everything. That is why the panel paints
+library only, nothing else to install) that does the network work and keeps a
+SQLite cache, and the QML calls it for everything. That is why the panel paints
 instantly: opening a folder is a local query, not a round trip.
 
 ```
