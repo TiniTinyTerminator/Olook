@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ttt.olook",
   "name": "Olook",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": "TiniTinyTerminator",
   "license": "MIT",
   "description": "Olook: an Outlook-style mail client for Omarchy — Gmail, Outlook.com, Microsoft 365 and any IMAP server, with calendar and contacts, a mail panel in the bar, and pictures blocked until you allow them.",

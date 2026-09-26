@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.2
 
 - Olook is in the app menu: Finish setup installs a launcher entry and an
   icon, with **New message** among its actions.
@@ -9,6 +9,9 @@
   overwritten and deleted whatever was there; now each is fingerprinted when
   written, and a file of yours, one you edited, or a symlink is left alone and
   reported.
+- `olook calendar --max-events N --brief` answers with a bounded number of
+  appointments and cuts long text fields, for readers that must stay small,
+  like the bar's calendar.
 
 ## 1.2.1
 

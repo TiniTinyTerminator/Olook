@@ -1159,6 +1159,23 @@ def cmd_calendars(args):
         for c in d["calendars"]) or "No calendars. Run: olook calendars --sync")
 
 
+_BRIEF_LIMITS = {"summary": 300, "location": 300, "organiser": 200,
+                 "calendarName": 120, "description": 2000}
+
+
+def _brief_event(event):
+    """An appointment with its free text cut to a length a bar can show."""
+    out = dict(event)
+    for key, limit in _BRIEF_LIMITS.items():
+        value = out.get(key)
+        if isinstance(value, str) and len(value) > limit:
+            out[key] = value[:limit].rstrip() + "…"
+    for key, value in list(out.items()):
+        if isinstance(value, str) and key not in _BRIEF_LIMITS and len(value) > 500:
+            out[key] = value[:500]
+    return out
+
+
 def cmd_calendar(args):
     """What is on the calendar between two dates."""
     conn = store.connect()
@@ -1209,8 +1226,16 @@ def cmd_calendar(args):
     hidden = {c["id"] for c in store.calendars(conn) if c["hidden"]}
     rows = [e for e in store.events(conn, scope or None, start, end)
             if e["calendar"] not in hidden]
+    total = len(rows)
+    # For a reader that must stay small -- the bar's calendar lives in the
+    # shell for the whole session. Calendars come from whoever publishes them,
+    # so the answer is bounded by count and by the length of each text.
+    if args.max_events and args.max_events > 0:
+        rows = rows[:args.max_events]
+    if args.brief:
+        rows = [_brief_event(e) for e in rows]
     payload = {"ok": not trouble or bool(rows), "events": rows,
-               "count": len(rows), "start": start, "end": end}
+               "count": len(rows), "total": total, "start": start, "end": end}
     if trouble:
         payload["problems"] = trouble
         if not rows:
@@ -2484,6 +2509,10 @@ def build_parser():
     p.add_argument("--sync", action="store_true", help="fetch the range first")
     p.add_argument("--start", default="", help="YYYY-MM-DD, default a week ago")
     p.add_argument("--end", default="", help="YYYY-MM-DD, default six weeks out")
+    p.add_argument("--max-events", type=int, default=0,
+                   help="answer with at most this many appointments")
+    p.add_argument("--brief", action="store_true",
+                   help="cut long text fields, for the bar's calendar")
     p.set_defaults(func=cmd_calendar)
 
     p = sub.add_parser("contact-save",
