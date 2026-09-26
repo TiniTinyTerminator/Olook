@@ -1957,9 +1957,13 @@ def cmd_finish_setup(args):
     """The command, the HTML renderer and the mailto: handler, outside the plugin."""
     if args.remove:
         kept = hostsetup.remove()
-        emit({"ok": True, "removed": True, "keptBecauseNotOlooks": kept},
-             lambda d: "\n".join(["Removed what Olook had put outside its folder."]
-                                  + ["!!   " + k for k in d["keptBecauseNotOlooks"]]))
+        payload = {"ok": True, "removed": True, "keptBecauseNotOlooks": kept}
+        describe = lambda d: "\n".join(["Removed what Olook had put outside its folder."]
+                                       + ["!!   " + k for k in d["keptBecauseNotOlooks"]])
+        if args.text:
+            print(describe(payload))
+        else:
+            emit(payload, describe)
         return
     if args.check:
         payload = {"ok": True, "state": hostsetup.check()}
