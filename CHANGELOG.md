@@ -4,6 +4,11 @@
 
 - Olook is in the app menu: Finish setup installs a launcher entry and an
   icon, with **New message** among its actions.
+- Finish setup and uninstall only touch files that are still Olook's. The
+  command link, the mailto: and app-menu entries and the icon used to be
+  overwritten and deleted whatever was there; now each is fingerprinted when
+  written, and a file of yours, one you edited, or a symlink is left alone and
+  reported.
 
 ## 1.2.1
 
