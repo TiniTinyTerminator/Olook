@@ -1182,25 +1182,28 @@ Item {
               readonly property bool shown: String(modelData.kind || "mail") === "mail"
               readonly property bool guessed: String(modelData.kind || "mail")
                 === String(modelData.guessedKind || modelData.kind || "mail")
+              readonly property bool heading: !!modelData.virtual
               width: parent.width
               height: Style.space(34)
 
               Text {
                 textFormat: Text.PlainText
                 anchors.left: parent.left
+                anchors.leftMargin: Style.space(14) * Math.min(Number(modelData.depth || 0), 6)
                 anchors.right: folderToggle.left
                 anchors.rightMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
                 text: Model.folderLabel(modelData)
-                  + (shown ? "" : (guessed ? "  — not mail, left out" : "  — hidden"))
-                color: shown ? ui.foreground : ui.faint
+                  + (shown || heading ? "" : (guessed ? "  — not mail, left out" : "  — hidden"))
+                color: heading ? ui.dim : shown ? ui.foreground : ui.faint
                 font.family: ui.fontFamily
                 font.pixelSize: Style.font.bodySmall
               }
 
               SettingsButton {
                 id: folderToggle
+                visible: !heading
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 label: shown ? "Hide" : "Show"

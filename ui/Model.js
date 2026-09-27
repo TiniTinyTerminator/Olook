@@ -178,10 +178,13 @@ function folderGlyph(folder) {
   if (role === "junk") return "󰀦"                        // alert
   if (role === "archive" || role === "all") return "󰀼"   // archive box
   if (role === "flagged") return "󰈻"                     // flag
+  if (folder && folder.isLabel) return folder.virtual ? "󰓻" : "󰓹"  // tags, tag
   return "󰉋"                                             // folder
 }
 
 function folderLabel(folder) {
+  // Set by sortFolders, which knows the rest of the account's folders.
+  if (folder && folder.label) return String(folder.label)
   var name = String(folder && folder.name ? folder.name : "")
   var role = folder && folder.special ? folder.special : ""
   var pretty = {
@@ -217,7 +220,8 @@ function badgeText(count) {
 
 // Outlook orders its folder pane by role, not alphabetically: Inbox first,
 // then the folders it created, then everything the user made.
-var FOLDER_ORDER = ["inbox", "drafts", "sent", "archive", "all", "junk", "trash"]
+var FOLDER_ORDER = ["inbox", "drafts", "sent", "archive", "all", "junk", "trash",
+                    "flagged", "important"]
 
 // Folders that hold mail. Exchange lists a mailbox's calendar, contacts and
 // tasks beside its mail and IMAP cannot tell them apart, so the engine marks
@@ -250,7 +254,88 @@ function sortFolders(folders) {
     if (ra !== rb) return ra - rb
     return folderLabel(a).localeCompare(folderLabel(b))
   })
-  return list
+  return folderTree(list)
+}
+
+// The folders as a tree, in the order sortFolders chose among siblings:
+// each folder followed by its subfolders, with a depth to indent by.
+//
+// A server may leave a parent out of the list because it holds no mail of
+// its own -- Proton's Bridge puts every folder under "Folders/" and every
+// label under "Labels/", neither of which can be opened. Such a parent is
+// put back as a heading ("virtual"), so folders and labels stay apart
+// instead of mixing at the top. Folders with a role -- Sent, Trash, Gmail's
+// "[Gmail]/Sent Mail" -- stay at the top where the standing order put them.
+function folderTree(sorted) {
+  var byName = ({})
+  var hasArchive = false
+  for (var i = 0; i < sorted.length; i++) {
+    byName[String(sorted[i].name)] = sorted[i]
+    if (String(sorted[i].special || "") === "archive") hasArchive = true
+  }
+  var children = ({ "": [] })
+  var nodes = ({})
+  // A parent that holds system folders -- Gmail's "[Gmail]" -- is the
+  // server's own bookkeeping, not something the user made: what is in it
+  // stays at the top, as before, instead of under a "[Gmail]" heading.
+  var system = ({})
+  for (var s = 0; s < sorted.length; s++) {
+    if (String(sorted[s].special || "") === "") continue
+    var d = String(sorted[s].delimiter || "")
+    if (d === "" || d === "NIL") d = "/"
+    var path = String(sorted[s].name).split(d)
+    for (var n = 1; n < path.length; n++) system[path.slice(0, n).join(d)] = true
+  }
+
+  function delimiterOf(folder) {
+    var d = String(folder.delimiter || "")
+    return d === "" || d === "NIL" ? "/" : d
+  }
+
+  function register(name, folder, delimiter) {
+    if (nodes[name]) return nodes[name]
+    var node = ({})
+    if (folder) for (var key in folder) node[key] = folder[key]
+    else node = { name: name, special: "", unseen: 0, total: 0, kind: "mail",
+                  virtual: true, delimiter: delimiter }
+    var parts = name.split(delimiter)
+    var parent = ""
+    if (!(folder && String(folder.special || "") !== "") && parts.length > 1) {
+      parent = parts.slice(0, parts.length - 1).join(delimiter)
+      // The engine calls the inbox INBOX; its subfolders may still be
+      // listed as Inbox/...
+      if (parent.toUpperCase() === "INBOX" && byName["INBOX"]) parent = "INBOX"
+      if (!byName[parent] && system[parent]) parent = ""
+      else register(parent, byName[parent] || null, delimiter)
+    }
+    node.parentName = parent
+    node.label = folder && String(folder.special || "") !== ""
+      ? (folder.special === "all" && hasArchive ? "All Mail" : "")
+      : parts[parts.length - 1]
+    if (node.label === "") delete node.label
+    nodes[name] = node
+    if (!children[parent]) children[parent] = []
+    children[parent].push(name)
+    return node
+  }
+  for (var j = 0; j < sorted.length; j++)
+    register(String(sorted[j].name), sorted[j], delimiterOf(sorted[j]))
+
+  var out = []
+  function walk(parent, depth, inLabels) {
+    var list = children[parent] || []
+    for (var k = 0; k < list.length; k++) {
+      var node = nodes[list[k]]
+      var labels = inLabels || (depth === 0 && !!node.virtual
+                                && String(node.label || "").toLowerCase() === "labels")
+      node.depth = depth
+      if (labels) node.isLabel = true
+      out.push(node)
+      walk(list[k], depth + 1, labels)
+    }
+  }
+  walk("", 0, false)
+  return out
 }
 
 

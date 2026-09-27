@@ -676,9 +676,13 @@ def _inbox_folder(conn, account):
 
 
 def _role_folder(conn, account, role):
-    for entry in store.list_folders(conn, account["id"]):
-        if entry["special"] == role or (role == "archive" and entry["special"] == "all"):
-            return entry["name"]
+    # All Mail stands in for Archive only where there is no Archive (Gmail);
+    # see Session.resolve_role.
+    folders = store.list_folders(conn, account["id"])
+    for wanted in ((role, "all") if role == "archive" else (role,)):
+        for entry in folders:
+            if entry["special"] == wanted:
+                return entry["name"]
     return (account.get("folders") or {}).get(role, role)
 
 

@@ -531,9 +531,12 @@ Item {
     property bool isAll: false
     property int position: -1
     property var owner: null
+    // A heading for folders the server lists under a parent it cannot open
+    // (Proton's "Folders" and "Labels"): shown, but holding no mail itself.
+    readonly property bool heading: !!(folder && folder.virtual)
     // The All row belongs to nothing and so cannot be moved within it.
     readonly property bool draggable: !folderRow.isAll && !!folderRow.owner
-                                      && !root.collapsed
+                                      && !root.collapsed && !folderRow.heading
     readonly property bool current: folderRow.isAll
       ? !!(root.service && Model.isAllFolder(root.service.folder))
       : !!(root.service
@@ -545,10 +548,14 @@ Item {
     color: folderRow.current ? ui.selected
       : (folderHover.containsMouse ? ui.hover : "transparent")
 
+    // Subfolders indented under their parent.
+    readonly property int indent: root.collapsed || !folder
+      ? 0 : Style.space(14) * Math.min(Number(folder.depth || 0), 6)
+
     Row {
       x: root.collapsed
-        ? Math.round((parent.width - implicitWidth) / 2) : Style.space(24)
-      width: root.collapsed ? implicitWidth : parent.width - Style.space(32)
+        ? Math.round((parent.width - implicitWidth) / 2) : Style.space(24) + folderRow.indent
+      width: root.collapsed ? implicitWidth : parent.width - Style.space(32) - folderRow.indent
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.space(8)
 
@@ -586,7 +593,7 @@ Item {
         width: root.collapsed ? 0 : parent.width - Style.space(30)
           - (unreadLabel.visible ? unreadLabel.implicitWidth : 0)
         text: Model.folderLabel(folderRow.folder)
-        color: ui.foreground
+        color: folderRow.heading ? ui.dim : ui.foreground
         font.family: ui.fontFamily
         font.pixelSize: Style.font.bodySmall
         font.bold: !!(folderRow.folder && folderRow.folder.unseen > 0)
@@ -610,7 +617,7 @@ Item {
       id: folderHover
       anchors.fill: parent
       hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
+      cursorShape: folderRow.heading ? Qt.ArrowCursor : Qt.PointingHandCursor
       drag.target: folderRow.draggable ? dragProxy : null
       drag.threshold: Style.space(6)
       onPressed: function (mouse) {
@@ -619,8 +626,11 @@ Item {
                        folderRow.owner)
       }
       drag.onActiveChanged: root.endDrag(folderHover.drag.active)
-      onClicked: root.folderChosen(folderRow.accountId,
-                                   folderRow.folder ? folderRow.folder.name : "")
+      onClicked: {
+        if (folderRow.heading) return
+        root.folderChosen(folderRow.accountId,
+                          folderRow.folder ? folderRow.folder.name : "")
+      }
     }
 
     DropArea {

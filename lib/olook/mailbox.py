@@ -483,12 +483,13 @@ class Session:
         if role in ("", "inbox"):
             return "INBOX"
         folders = folders if folders is not None else self.list_folders()
-        wanted = {role}
-        if role == "archive":
-            wanted.add("all")  # Gmail archives into All Mail
-        for entry in folders:
-            if entry.get("special") in wanted:
-                return entry["name"]
+        # Gmail archives into All Mail, having no Archive; Proton has both,
+        # and a message "moved" into its All Mail goes nowhere. So All Mail
+        # only when there is no Archive, whichever the server lists first.
+        for wanted in ((role, "all") if role == "archive" else (role,)):
+            for entry in folders:
+                if entry.get("special") == wanted:
+                    return entry["name"]
         configured = (self.account.get("folders") or {}).get(role)
         if configured:
             for entry in folders:

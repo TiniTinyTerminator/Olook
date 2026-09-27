@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.4
+
+- Folders are shown as a tree: subfolders indented under their parent,
+  for every IMAP account.
+- Proton Mail's folders and labels are kept apart, under **Folders** and
+  **Labels** headings, instead of mixed at the top; labels have a tag icon.
+  ([#1](https://github.com/TiniTinyTerminator/Olook/issues/1))
+- All Mail is called All Mail where there is also an Archive, and Archive
+  moves mail into the Archive -- on Proton it could pick All Mail, where a
+  moved message goes nowhere. Gmail, which has no Archive, still archives
+  into All Mail.
+- Starred and Important sit with the other system folders.
+- `olook setup` no longer crashes at the first question with gum 2.0, and
+  Settings opens it in your own terminal, not always Alacritty (thanks
+  @nagualcode, #2 and #3).
+
 ## 1.2.3
 
 - Proton Mail works: Bridge signs its own certificate, which the ordinary
