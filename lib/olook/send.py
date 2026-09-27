@@ -13,7 +13,7 @@ import ssl
 from email.message import EmailMessage
 from pathlib import Path
 
-from . import config, graph, htmldoc, htmltext, keyring, mailbox, markdown, oauth
+from . import config, graph, htmldoc, htmltext, keyring, mailbox, markdown, oauth, tls
 
 
 class SendError(Exception):
@@ -127,31 +127,10 @@ def send(account, draft, save_to_sent=True):
     if not targets:
         raise SendError("No recipients.")
 
-    settings = account["smtp"]
-    host, port = settings["host"], int(settings["port"])
-    if not host:
-        raise SendError("No SMTP host configured for this account.")
-    context = ssl.create_default_context()
     username = account.get("username") or account["email"]
-    if not settings.get("ssl") and not settings.get("starttls", True) \
-            and not config.is_loopback(host):
-        raise SendError(f"{host} is set up without encryption (neither SSL nor "
-                        "STARTTLS). Olook will not send your password in the clear.")
+    server = smtp_connect(account)
 
     try:
-        if settings.get("ssl"):
-            server = smtplib.SMTP_SSL(host, port, context=context, timeout=45)
-        else:
-            server = smtplib.SMTP(host, port, timeout=45)
-    except (OSError, smtplib.SMTPException) as exc:
-        raise SendError(f"Cannot reach {host}:{port} — {exc}") from exc
-
-    try:
-        server.ehlo()
-        if not settings.get("ssl") and settings.get("starttls", True):
-            server.starttls(context=context)
-            server.ehlo()
-
         if account.get("auth") == "oauth2":
             token = oauth.access_token(account)
             try:
@@ -185,6 +164,45 @@ def send(account, draft, save_to_sent=True):
     if save_to_sent:
         stored = _append_to_sent(account, msg)
     return {"messageId": msg["Message-ID"], "recipients": targets, "sentFolder": stored}
+
+
+def smtp_connect(account, timeout=45):
+    """An SMTP connection to the account's server, encrypted, not logged in.
+
+    Encryption is required unless the server is on this machine, and a pinned
+    certificate is checked before anything else is said. Sending and the
+    connection test both come through here, so neither can do less.
+    """
+    settings = account["smtp"]
+    host, port = settings["host"], int(settings["port"])
+    if not host:
+        raise SendError("No SMTP host configured for this account.")
+    if not settings.get("ssl") and not settings.get("starttls", True) \
+            and not config.is_loopback(host):
+        raise SendError(f"{host} is set up without encryption (neither SSL nor "
+                        "STARTTLS). Olook will not send your password in the clear.")
+    context, pin = tls.context(account)
+    server = None
+    try:
+        if settings.get("ssl"):
+            server = smtplib.SMTP_SSL(host, port, context=context, timeout=timeout)
+            tls.check(server.sock, pin)
+        else:
+            server = smtplib.SMTP(host, port, timeout=timeout)
+        server.ehlo()
+        if not settings.get("ssl") and settings.get("starttls", True):
+            server.starttls(context=context)
+            tls.check(server.sock, pin)
+            server.ehlo()
+        return server
+    except (OSError, ssl.SSLError, smtplib.SMTPException) as exc:
+        if server is not None:
+            try:
+                server.close()
+            except Exception:
+                pass
+        raise SendError(f"Cannot reach {host}:{port} — "
+                        f"{tls.explain(host, account, exc)}") from exc
 
 
 def _smtp_switched_off(exc):

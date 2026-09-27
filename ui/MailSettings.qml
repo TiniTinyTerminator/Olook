@@ -1072,9 +1072,38 @@ Item {
           wrapMode: Text.WordWrap
         }
 
+        // A server on this machine with a certificate of its own: what it
+        // presents, to be compared with what Bridge shows, before trusting it.
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          readonly property var offer: cardRoot.row ? root.certOffers[cardRoot.row.id] : null
+          visible: !!offer
+          text: !offer ? "" : offer.error !== "" ? offer.error
+            : "The server on this machine presents a certificate with SHA-256 fingerprint\n"
+              + offer.pretty + "\nTrust exactly this certificate for this account?"
+          color: offer && offer.error !== "" ? ui.urgent : ui.dim
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WrapAnywhere
+        }
+
         Flow {
           width: parent.width
           spacing: Style.space(6)
+
+          SettingsButton {
+            readonly property var result: cardRoot.row ? root.testResults[cardRoot.row.id] : null
+            readonly property var offer: cardRoot.row ? root.certOffers[cardRoot.row.id] : null
+            visible: !!(result && result.canTrust) || !!(offer && offer.fingerprint !== "")
+            primary: !!(offer && offer.fingerprint !== "")
+            glyph: "󰒃"
+            label: offer && offer.fingerprint !== "" ? "Trust it" : "Trust this certificate"
+            onTriggered: {
+              if (offer && offer.fingerprint !== "") root.trustCertificate(cardRoot.row.id, offer.fingerprint)
+              else root.showCertificate(cardRoot.row.id)
+            }
+          }
 
           SettingsButton {
             primary: cardRoot.dirty
@@ -1303,6 +1332,38 @@ Item {
     }, accountId)
   }
 
+  // account id -> { fingerprint, pretty, error }: a certificate shown to the
+  // user and waiting for their yes.
+  property var certOffers: ({})
+
+  function setCertOffer(accountId, offer) {
+    var next = ({})
+    for (var key in root.certOffers) next[key] = root.certOffers[key]
+    if (offer) next[accountId] = offer
+    else delete next[accountId]
+    root.certOffers = next
+  }
+
+  function showCertificate(accountId) {
+    service.trustCertificate(accountId, "", function (ok, result) {
+      root.setCertOffer(accountId, ok
+        ? { fingerprint: String(result.fingerprint || ""), pretty: String(result.pretty || ""), error: "" }
+        : { fingerprint: "", pretty: "", error: String((result && result.error) || "failed") })
+    })
+  }
+
+  function trustCertificate(accountId, fingerprint) {
+    service.trustCertificate(accountId, fingerprint, function (ok, result) {
+      if (!ok) {
+        root.setCertOffer(accountId, { fingerprint: "", pretty: "",
+                                       error: String((result && result.error) || "failed") })
+        return
+      }
+      root.setCertOffer(accountId, null)
+      root.test(accountId)
+    })
+  }
+
   function test(accountId) {
     root.testingId = accountId
     service.testAccount(accountId, function (ok, result) {
@@ -1311,7 +1372,8 @@ Item {
       next[accountId] = {
         ok: ok,
         imap: String((result && result.imap) || "no answer"),
-        smtp: String((result && result.smtp) || "no answer")
+        smtp: String((result && result.smtp) || "no answer"),
+        canTrust: !!(result && result.canTrustCertificate)
       }
       root.testResults = next
       root.testingId = ""

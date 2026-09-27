@@ -8,10 +8,13 @@ UI can show the reason instead of a blank panel.
 
 import argparse
 import datetime
+import imaplib
 import json
 import os
 import pathlib
 import shutil
+import smtplib
+import ssl
 import subprocess
 import sys
 import time
@@ -19,7 +22,7 @@ import urllib.parse
 
 from . import (addressbook, hostsetup, caldav, carddav, config, graph, htmldoc,
                icsfeed, htmlrich, htmltext, keyring,
-               mailbox, markdown, message, oauth, providers, rules, send, store)
+               mailbox, markdown, message, oauth, providers, rules, send, store, tls)
 
 JSON_OUT = False
 
@@ -272,6 +275,16 @@ def cmd_set(args):
         account.setdefault("contactsOauth", {})["scopes"] = \
             providers.expand_scope(args.contacts_scopes)
         changed.append("contactsOauth.scopes")
+    # A server that signs its own certificate: that one certificate, and no
+    # other, is accepted for this account. See tls.py.
+    if args.tls_cert:
+        try:
+            put("tlsPin", tls.fingerprint_of_file(args.tls_cert))
+        except (OSError, ValueError) as exc:
+            raise CliError(f"Cannot read a certificate from {args.tls_cert}: {exc}")
+    elif args.forget_tls_cert:
+        account.pop("tlsPin", None)
+        changed.append("tlsPin")
 
     saved = config.upsert(account)
     emit({"ok": True, "account": saved, "changed": changed},
@@ -2086,6 +2099,62 @@ def cmd_watch(args):
             backoff = min(backoff * 2, 300)
 
 
+def cmd_trust_cert(args):
+    """Pin the certificate a server on this machine presents.
+
+    Proton Mail Bridge signs its own certificate, so the ordinary check can
+    never pass. Its servers run on this machine, where nothing between Olook
+    and them can swap the certificate, so what they present is what Bridge
+    made -- provided the user sees the fingerprint first and says yes. Without
+    --fingerprint this only shows it; with it, exactly that certificate is
+    pinned, so what was shown is what gets trusted even if the server changed
+    in between. A remote server is refused: there the certificate on the wire
+    is exactly what cannot be taken on trust, so it takes the file
+    (olook set --tls-cert).
+    """
+    account = config.account(args.account)
+    servers = [("imap", account["imap"]), ("smtp", account["smtp"])]
+    for kind, settings in servers:
+        if not config.is_loopback(settings.get("host")):
+            raise CliError(
+                f"{settings.get('host')} is not on this machine, so the certificate it "
+                "presents cannot be taken on trust. Pin the server's certificate file "
+                f"instead: olook set {account['id']} --tls-cert /path/to/cert.pem")
+    seen = {}
+    for kind, settings in servers:
+        try:
+            seen[kind] = tls.presented(settings["host"], int(settings["port"]), kind,
+                                       bool(settings.get("ssl")),
+                                       settings.get("starttls", True) is not False)
+        except (OSError, ValueError, imaplib.IMAP4.error, smtplib.SMTPException) as exc:
+            raise CliError(f"Cannot reach {kind.upper()} at {settings['host']}:"
+                             f"{settings['port']} — {exc}. Is Bridge running?")
+    if seen["imap"] != seen["smtp"]:
+        raise CliError("IMAP and SMTP present different certificates, so there is no "
+                         "one certificate to pin. Pin Bridge's exported file instead: "
+                         f"olook set {account['id']} --tls-cert /path/to/cert.pem")
+    pin = seen["imap"]
+    result = {"ok": True, "account": account["id"], "fingerprint": pin,
+              "pretty": tls.pretty(pin), "pinned": False}
+    wanted = str(args.fingerprint or "").replace(":", "").strip().lower()
+    if not wanted and sys.stdin.isatty() and sys.stdout.isatty() and not JSON_OUT:
+        print(f"{account['imap']['host']} presents a certificate with SHA-256 "
+              f"fingerprint\n  {tls.pretty(pin)}")
+        if input("Trust exactly this certificate for this account? [y/N] ").strip().lower() \
+                in ("y", "yes"):
+            wanted = pin
+    if wanted:
+        if wanted != pin:
+            raise CliError("The server now presents a different certificate from the "
+                             "one you were shown; nothing was pinned.")
+        account["tlsPin"] = pin
+        config.upsert(account)
+        result["pinned"] = True
+    emit(result, lambda d: (f"Pinned {d['pretty']} for {d['account']}." if d["pinned"]
+                            else f"Presented: {d['pretty']}\nNot pinned. Run again with "
+                                 f"--fingerprint {d['fingerprint']} to trust it."))
+
+
 def cmd_test(args):
     """Verify IMAP and SMTP both accept the stored credentials."""
     account = config.account(args.account)
@@ -2096,6 +2165,13 @@ def cmd_test(args):
              lambda d: "Demo account: nothing to connect to.")
         return
     result = {"ok": True, "account": account["id"], "imap": "", "smtp": ""}
+
+    def unverified(exc):
+        # Refused only because the server signs its own certificate, and the
+        # servers are on this machine: Settings can offer trust-cert.
+        cause = exc.__cause__ if exc.__cause__ is not None else exc
+        return isinstance(cause, ssl.SSLCertVerificationError) and all(
+            config.is_loopback(account[kind].get("host")) for kind in ("imap", "smtp"))
     try:
         with mailbox.Session(account) as session:
             info = session.status("INBOX")
@@ -2103,20 +2179,12 @@ def cmd_test(args):
     except Exception as exc:
         result["ok"] = False
         result["imap"] = f"failed — {exc}"
+        if unverified(exc):
+            result["canTrustCertificate"] = True
     try:
-        import smtplib
-        import ssl as ssl_module
-        settings = account["smtp"]
-        context = ssl_module.create_default_context()
-        if settings.get("ssl"):
-            server = smtplib.SMTP_SSL(settings["host"], int(settings["port"]),
-                                      context=context, timeout=20)
-        else:
-            server = smtplib.SMTP(settings["host"], int(settings["port"]), timeout=20)
-            server.ehlo()
-            if settings.get("starttls", True):
-                server.starttls(context=context)
-        server.ehlo()
+        # The same connection sending opens: encryption required, a pinned
+        # certificate checked. The test used to build its own, without either.
+        server = send.smtp_connect(account, timeout=20)
         username = account.get("username") or account["email"]
         if account["auth"] == "oauth2":
             send._smtp_xoauth2(server, username, oauth.access_token(account))
@@ -2137,6 +2205,8 @@ def cmd_test(args):
         else:
             result["ok"] = False
             result["smtp"] = f"failed — {exc}"
+            if unverified(exc):
+                result["canTrustCertificate"] = True
     emit(result, lambda d: f"IMAP: {d['imap']}\nSMTP: {d['smtp']}")
 
 
@@ -2353,7 +2423,20 @@ def build_parser():
                    help="leave this account out of syncs")
     p.add_argument("--imap-host"), p.add_argument("--imap-port", type=int)
     p.add_argument("--smtp-host"), p.add_argument("--smtp-port", type=int)
+    p.add_argument("--tls-cert", metavar="PEM",
+                   help="accept this server certificate, and only it (for a server "
+                        "that signs its own, like Proton Mail Bridge)")
+    p.add_argument("--forget-tls-cert", action="store_true",
+                   help="go back to checking the certificate the ordinary way")
     p.set_defaults(func=cmd_set)
+
+    p = sub.add_parser("trust-cert",
+                       help="pin the certificate a server on this machine presents "
+                            "(Proton Mail Bridge)")
+    p.add_argument("account")
+    p.add_argument("--fingerprint",
+                   help="pin only if the server presents this SHA-256 fingerprint")
+    p.set_defaults(func=cmd_trust_cert)
 
     p = sub.add_parser("test", help="check IMAP and SMTP credentials")
     p.add_argument("account", nargs="?")

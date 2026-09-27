@@ -1794,6 +1794,19 @@ Item {
     }, "test")
   }
 
+  // A server on this machine that signs its own certificate (Proton Mail
+  // Bridge). Without a fingerprint this only asks what the server presents;
+  // with one, exactly that certificate is pinned -- so what was shown to the
+  // user is what gets trusted.
+  function trustCertificate(accountId, fingerprint, handler) {
+    if (!accountId) return
+    var args = ["trust-cert", String(accountId)]
+    if (fingerprint) args.push("--fingerprint=" + String(fingerprint))
+    run(args, function (ok, payload, stderrText) {
+      if (handler) handler(ok, payload || { error: String(stderrText || "failed") })
+    }, "trust-cert")
+  }
+
   // A first sync for a freshly added account, independent of which account
   // the window happens to be showing.
   function syncAccount(accountId, handler) {

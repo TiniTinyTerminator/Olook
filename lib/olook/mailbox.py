@@ -18,7 +18,7 @@ import ssl
 import time
 from email.header import decode_header, make_header
 
-from . import config, htmltext, keyring, oauth, rules, store
+from . import config, htmltext, keyring, oauth, rules, store, tls
 
 imaplib._MAXLINE = 10_000_000  # some servers send very long BODYSTRUCTURE lines
 
@@ -253,7 +253,7 @@ class Session:
         host, port = settings["host"], int(settings["port"])
         if not host:
             raise MailError("No IMAP host configured for this account.")
-        context = ssl.create_default_context()
+        context, pin = tls.context(self.account)
         # A password or token over an unencrypted connection is readable by
         # anyone on the network between here and the server, so a connection
         # that neither starts encrypted nor upgrades is refused -- unless the
@@ -266,12 +266,21 @@ class Session:
             if settings.get("ssl", True):
                 self.imap = imaplib.IMAP4_SSL(host, port, ssl_context=context,
                                               timeout=self.timeout)
+                tls.check(self.imap.sock, pin)
             else:
                 self.imap = imaplib.IMAP4(host, port, timeout=self.timeout)
                 if settings.get("starttls", True):
                     self.imap.starttls(context)
+                    tls.check(self.imap.sock, pin)
         except (OSError, ssl.SSLError, imaplib.IMAP4.error) as exc:
-            raise MailError(f"Cannot reach {host}:{port} — {exc}") from exc
+            if self.imap is not None:
+                try:
+                    self.imap.shutdown()
+                except OSError:
+                    pass
+                self.imap = None
+            raise MailError(f"Cannot reach {host}:{port} — "
+                            f"{tls.explain(host, self.account, exc)}") from exc
 
         self._authenticate()
         self._read_capabilities()

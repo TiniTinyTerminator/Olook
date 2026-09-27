@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.3
+
+- Proton Mail works: Bridge signs its own certificate, which the ordinary
+  check turns down. An account can now pin one certificate -- that exact
+  certificate, by its SHA-256 fingerprint, and no other. **Trust this
+  certificate** in Settings (or `olook trust-cert`) shows the fingerprint
+  first and is only offered for servers on this machine; any server can be
+  pinned from its certificate file with `olook set ACCOUNT --tls-cert`.
+  ([#1](https://github.com/TiniTinyTerminator/Olook/issues/1))
+- The connection test opened its own SMTP connection, without the refusal to
+  send a password unencrypted; it now uses the same connection as sending.
+
 ## 1.2.2
 
 - Olook is in the app menu: Finish setup installs a launcher entry and an

@@ -453,6 +453,21 @@ changed. `olook auth <account-id>` signs in again.
 device-code grant. Try `olook auth <id> --flow loopback`. If IMAP is disabled
 tenant-wide, no client can connect until an admin enables it.
 
+**Proton Mail: "certificate verify failed: self-signed certificate"** —
+Proton Mail Bridge runs on your machine and signs its own certificate, which
+no system trusts. (Bridge is how any mail program reaches Proton, and Proton
+keeps it for paid plans; sign in to Bridge first, and give Olook the mailbox
+password Bridge shows, not your Proton password.) Olook does not switch the check off; it pins Bridge's
+certificate, so that one and no other is accepted. In **Settings → the
+account → Test**, then **Trust this certificate**: it shows the fingerprint
+before anything is trusted. From a terminal, `olook trust-cert <account-id>`
+does the same, or pin the file Bridge exports (**Settings → Advanced settings
+→ Export TLS certificates**): `olook set <account-id> --tls-cert cert.pem`.
+If Bridge makes a new certificate, trust it again; `--forget-tls-cert` goes
+back to the ordinary check. The same works for a self-hosted server, but only
+from its certificate file -- a certificate on the wire from another machine
+is not taken on trust.
+
 **Sync is slow the first time** — the initial pass fetches headers for the last
 200 messages. Later syncs only fetch what is new.
 
