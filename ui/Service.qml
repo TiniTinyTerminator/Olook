@@ -1965,8 +1965,12 @@ Item {
   }
 
   function openSetupTerminal() {
-    Quickshell.execDetached(["uwsm-app", "--", "alacritty", "-e",
-                             cliPath, "setup"])
+    // The wizard asks its questions on a TTY, so it needs a terminal -- but
+    // not a particular one. omarchy-launch-terminal hands the command to
+    // xdg-terminal-exec, which runs it in whichever terminal this person
+    // chose; naming alacritty here meant the menu entry failed for everyone
+    // on foot, kitty or ghostty. It also does the uwsm-app wrapping itself.
+    Quickshell.execDetached(["omarchy-launch-terminal", cliPath, "setup"])
   }
 
   Timer {
