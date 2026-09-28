@@ -14,20 +14,17 @@ GUM = shutil.which("gum")
 
 
 def _input(prompt, placeholder="", password=False):
-    if GUM:
-        command = [GUM, "input", "--prompt", prompt + " "]
-        if placeholder:
-            command += ["--placeholder", placeholder]
-        if password:
-            command.append("--password")
-        done = subprocess.run(command, text=True, capture_output=True)
-        if done.returncode != 0:
-            raise KeyboardInterrupt
-        return done.stdout.strip()
+    # gum's text prompt draws itself on whatever terminal stdout is, and it
+    # panics outright when that is a pipe -- which is what reading its answer
+    # back would mean. So the answer is read here, and gum is left to the
+    # prompts that draw in place and need no answer read back.
+    label = prompt + " "
+    if placeholder:
+        label += "(" + placeholder + ") "
     if password:
         import getpass
-        return getpass.getpass(prompt + " ")
-    return input(prompt + " ").strip()
+        return getpass.getpass(label)
+    return input(label).strip()
 
 
 def _confirm(question, default=True):
