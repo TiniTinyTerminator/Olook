@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.5
 
 - Settings → **Bar widget** and **Calendar** change the bar widgets'
   settings: how often to check for mail, notifications, the badge, and for
