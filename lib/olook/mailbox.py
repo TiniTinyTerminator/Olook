@@ -391,7 +391,13 @@ class Session:
         return folders
 
     def status(self, folder):
-        result = self.imap.status(quote(folder), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)")
+        # imaplib raises on a BAD reply rather than returning it; a folder the
+        # server will not count (Bridge mid-sync, an odd name) is a MailError
+        # like any other refusal, so one folder cannot end the whole sync.
+        try:
+            result = self.imap.status(quote(folder), "(MESSAGES UNSEEN UIDNEXT UIDVALIDITY)")
+        except imaplib.IMAP4.error as exc:
+            raise MailError(f"Could not read status of {folder}: {exc}") from exc
         data = self._ok(result, f"Could not read status of {folder}")
         blob = b" ".join(x for x in data if isinstance(x, bytes))
         def field(key):

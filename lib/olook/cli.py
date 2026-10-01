@@ -494,11 +494,15 @@ def cmd_folders(args):
         with mailbox.Session(account) as session:
             folders = session.list_folders()
             counts = session.status_all(folder["name"] for folder in folders)
+            known = {f["name"]: f for f in store.list_folders(conn, account["id"])}
             enriched = []
             for folder in folders:
                 info = {"name": folder["name"], "delimiter": folder["delimiter"],
                         "special": folder["special"]}
-                info.update(counts.get(folder["name"], {}))
+                previous = known.get(folder["name"]) or {}
+                info.update(counts.get(folder["name"]) or {
+                    key: previous.get(key, 0)
+                    for key in ("total", "unseen", "uidnext", "uidvalidity")})
                 enriched.append(info)
             store.save_folders(conn, account["id"], enriched)
     emit({"ok": True, "account": account["id"],
@@ -589,19 +593,27 @@ def cmd_sync(args):
                 # Folder pane counts come from STATUS, fetched for every folder
                 # at once where the server allows it.
                 counts = session.status_all(entry["name"] for entry in folders)
+                # A folder the server would not count this time is still a
+                # folder: listed with the counts it had, not dropped. Leaving
+                # it out left an account showing only its Inbox (#1).
+                known = {f["name"]: f for f in store.list_folders(conn, account["id"])}
                 enriched = []
                 for entry in folders:
-                    if entry["name"] not in counts:
-                        continue
                     info = dict(entry)
-                    info.update(counts[entry["name"]])
+                    previous = known.get(entry["name"]) or {}
+                    info.update(counts.get(entry["name"]) or {
+                        key: previous.get(key, 0)
+                        for key in ("total", "unseen", "uidnext", "uidvalidity")})
                     enriched.append(info)
                 if enriched:
                     store.save_folders(conn, account["id"], enriched)
                 summary["account"] = account["id"]
                 summary["ok"] = True
                 results.append(summary)
-        except (mailbox.MailError, oauth.OAuthError, config.ConfigError) as exc:
+        except (mailbox.MailError, oauth.OAuthError, config.ConfigError,
+                imaplib.IMAP4.error, OSError) as exc:
+            # A protocol error from one account's server is that account's
+            # failure, reported; it must not end the sync of the others.
             results.append({"ok": False, "account": account["id"], "error": str(exc)})
 
     store.set_state(conn, "last_sync", int(time.time()))
