@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Settings → **Bar widget** and **Calendar** change the bar widgets'
+  settings: how often to check for mail, notifications, the badge, and for
+  Olook Calendar the clock format, agenda length and reminders. Omarchy no
+  longer has a settings page for a plugin, so these were out of reach; they
+  are read live from Omarchy's shell.json and saved with `omarchy bar set`.
+- A summon can open a page of Settings: `{"view":"settings","section":"calendar"}`.
+- Sync keeps a folder the server would not count this time instead of
+  dropping it, and a server error on one account no longer ends the sync of
+  the others (#1).
+
 ## 1.2.4
 
 - Folders are shown as a tree: subfolders indented under their parent,

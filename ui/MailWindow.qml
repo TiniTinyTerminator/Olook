@@ -144,6 +144,10 @@ Item {
     if (payload.account && payload.account !== mail.accountId) mail.setAccount(payload.account)
     else mail.refreshStatus(true)
 
+    // Which page of Settings: general, rules, calendar, widget.
+    if (payload.view === "settings"
+          && ["general", "rules", "calendar", "widget"].indexOf(String(payload.section || "")) !== -1)
+      settingsPane.section = String(payload.section)
     if (payload.folder && payload.folder !== mail.folder) mail.setFolder(payload.folder)
     if (payload.uid) pendingUid = Number(payload.uid)
     // A summon naming a day opens the calendar on it, and on the appointment

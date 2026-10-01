@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -41,6 +42,75 @@ Item {
   property var testResults: ({})        // account id -> { ok, imap, smtp }
 
   signal accountOpened(string accountId)
+
+  // ------------------------------------------------- the bar widgets' settings
+  //
+  // The bar owns these: they live in the widget's entry in Omarchy's
+  // shell.json, and Omarchy no longer draws a settings page for a plugin. So
+  // they are shown and changed here -- read live from shell.json, written
+  // with `omarchy bar set`, the same command a terminal would use. What can
+  // be set, and its defaults, come from each widget's own manifest.
+  readonly property string shellConfigPath:
+    (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config"))
+    + "/omarchy/shell.json"
+  readonly property var barLayout: {
+    var parsed = Model.parseJson(root.shellConfigText, {})
+    var bar = parsed && parsed.bar ? parsed.bar : {}
+    return bar.layout || {}
+  }
+  function barEntry(widgetId) {
+    for (var section in root.barLayout) {
+      var items = root.barLayout[section]
+      if (!Array.isArray(items)) continue
+      for (var i = 0; i < items.length; i++)
+        if (items[i] && items[i].id === widgetId) return items[i]
+    }
+    return null
+  }
+  function widgetSchema(manifest) {
+    return manifest && manifest.barWidget && Array.isArray(manifest.barWidget.schema)
+      ? manifest.barWidget.schema : []
+  }
+  function widgetValue(widgetId, manifest, field) {
+    var entry = root.barEntry(widgetId)
+    if (entry && entry[field.key] !== undefined) return entry[field.key]
+    var defaults = manifest && manifest.barWidget ? manifest.barWidget.defaults || {} : {}
+    return defaults[field.key] !== undefined ? defaults[field.key] : field.defaultValue
+  }
+  function setWidgetValue(widgetId, key, value) {
+    Quickshell.execDetached(["omarchy", "bar", "set", String(widgetId), String(key),
+                             JSON.stringify(value), "--json"])
+  }
+
+  property string shellConfigText: ""
+  property string mailManifestText: ""
+  property string calendarManifestText: ""
+  readonly property var mailManifest: Model.parseJson(root.mailManifestText, null)
+  readonly property var calendarManifest: Model.parseJson(root.calendarManifestText, null)
+
+  FileView {
+    path: root.shellConfigPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.shellConfigText = String(text() || "")
+    onLoadFailed: root.shellConfigText = ""
+  }
+  FileView {
+    path: Qt.resolvedUrl("../manifest.json").toString().replace(/^file:\/\//, "")
+    printErrors: false
+    onLoaded: root.mailManifestText = String(text() || "")
+  }
+  // Olook Calendar installs beside Olook, as its own plugin.
+  FileView {
+    path: Qt.resolvedUrl("../../ttt.olook-calendar/manifest.json").toString()
+      .replace(/^file:\/\//, "")
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calendarManifestText = String(text() || "")
+    onLoadFailed: root.calendarManifestText = ""
+  }
 
   function refresh() {
     if (!service) return
@@ -676,11 +746,22 @@ Item {
                 + "add one from an .ics file, a link or a CalDAV server."
             }
 
-            InfoRow {
-              label: "Reminders"
-              value: "From the bar's clock"
-              hint: "The clock in the bar reminds you before an appointment; "
-                + "right-click it to choose how long before, or to turn it off."
+            Text {
+              textFormat: Text.PlainText
+              topPadding: Style.space(8)
+              text: "Clock & calendar in the bar"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+            }
+
+            WidgetSettings {
+              widgetId: "ttt.olook-calendar"
+              manifest: root.calendarManifest
+              installHint: "The clock-and-calendar for the bar, with reminders before "
+                + "appointments, is its own plugin: omarchy plugin add "
+                + "https://github.com/TiniTinyTerminator/Olook-calendar.git"
             }
           }
 
@@ -699,16 +780,10 @@ Item {
               font.bold: true
             }
 
-            InfoRow {
-              label: "Check for mail"
-              value: "every " + service.syncIntervalSec + " seconds"
-              hint: "These belong to the widget rather than to the client, so "
-                + "the bar owns them: right-click the Olook icon to change one."
-            }
-
-            InfoRow {
-              label: "New-mail notifications"
-              value: service.notifyOnNew ? "On" : "Off"
+            WidgetSettings {
+              widgetId: "ttt.olook"
+              manifest: root.mailManifest
+              installHint: "Could not read Olook's manifest."
             }
           }
         }
@@ -1490,6 +1565,174 @@ Item {
         width: parent.width
         visible: infoRow.hint !== ""
         text: infoRow.hint
+        color: ui.faint
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+    }
+  }
+
+  // One bar widget's settings, as its manifest lists them.
+  component WidgetSettings: Column {
+    id: widgetSettings
+    property string widgetId: ""
+    property var manifest: null
+    property string installHint: ""
+    readonly property bool inBar: !!root.barEntry(widgetSettings.widgetId)
+
+    width: parent ? parent.width : 0
+    spacing: Style.space(12)
+
+    Text {
+      textFormat: Text.PlainText
+      width: parent.width
+      visible: !widgetSettings.manifest || !widgetSettings.inBar
+      wrapMode: Text.WordWrap
+      text: !widgetSettings.manifest ? widgetSettings.installHint
+        : "Not in the bar. Add it with: omarchy bar put " + widgetSettings.widgetId
+      color: ui.faint
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    Repeater {
+      model: widgetSettings.inBar ? root.widgetSchema(widgetSettings.manifest) : []
+      delegate: WidgetSettingRow {
+        required property var modelData
+        field: modelData
+        widgetId: widgetSettings.widgetId
+        manifest: widgetSettings.manifest
+      }
+    }
+  }
+
+  component WidgetSettingRow: Item {
+    id: settingRow
+    property var field: ({})
+    property string widgetId: ""
+    property var manifest: null
+    readonly property var value: root.widgetValue(settingRow.widgetId, settingRow.manifest,
+                                                  settingRow.field)
+    readonly property string type: String(settingRow.field.type || "string")
+    readonly property int number: {
+      var parsed = parseInt(String(settingRow.value), 10)
+      return isFinite(parsed) ? parsed : Number(settingRow.field.defaultValue || 0)
+    }
+
+    function put(next) { root.setWidgetValue(settingRow.widgetId, settingRow.field.key, next) }
+    function step(direction) {
+      var size = Number(settingRow.field.step || 1)
+      var low = settingRow.field.min !== undefined ? Number(settingRow.field.min) : -Infinity
+      var high = settingRow.field.max !== undefined ? Number(settingRow.field.max) : Infinity
+      settingRow.put(Math.max(low, Math.min(high, settingRow.number + direction * size)))
+    }
+
+    width: parent ? parent.width : 0
+    height: Math.max(settingLabel.implicitHeight, settingColumn.height)
+
+    Text {
+      id: settingLabel
+      textFormat: Text.PlainText
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.topMargin: Style.space(6)
+      width: Style.space(170)
+      wrapMode: Text.WordWrap
+      rightPadding: Style.space(10)
+      text: String(settingRow.field.label || settingRow.field.key)
+      color: ui.dim
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.bodySmall
+    }
+
+    Column {
+      id: settingColumn
+      anchors.left: settingLabel.right
+      anchors.right: parent.right
+      anchors.top: parent.top
+      spacing: Style.space(4)
+
+      // A number: down, the value, up.
+      Row {
+        visible: settingRow.type === "integer"
+        spacing: Style.space(6)
+        SettingsButton {
+          label: "−"
+          enabled: settingRow.field.min === undefined
+                   || settingRow.number > Number(settingRow.field.min)
+          onTriggered: settingRow.step(-1)
+        }
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          width: Style.space(48)
+          horizontalAlignment: Text.AlignHCenter
+          text: String(settingRow.number)
+          color: ui.foreground
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+        SettingsButton {
+          label: "+"
+          enabled: settingRow.field.max === undefined
+                   || settingRow.number < Number(settingRow.field.max)
+          onTriggered: settingRow.step(1)
+        }
+      }
+
+      // On or off.
+      SettingsButton {
+        visible: settingRow.type === "boolean"
+        glyph: settingRow.value === true ? "󰄲" : "󰄱"
+        label: settingRow.value === true ? "On" : "Off"
+        onTriggered: settingRow.put(settingRow.value !== true)
+      }
+
+      // One of a few.
+      Flow {
+        visible: settingRow.type === "enum"
+        width: parent.width
+        spacing: Style.space(6)
+        Repeater {
+          model: settingRow.type === "enum" ? (settingRow.field.options || []) : []
+          delegate: SettingsButton {
+            required property var modelData
+            label: String(modelData)
+            primary: String(settingRow.value) === String(modelData)
+            onTriggered: settingRow.put(String(modelData))
+          }
+        }
+      }
+
+      // Free text, saved when Enter is pressed or the field is left.
+      Rectangle {
+        visible: settingRow.type === "string"
+        width: Math.min(parent.width, Style.space(260))
+        height: Style.space(30)
+        radius: ui.radius
+        color: "transparent"
+        border.width: 1
+        border.color: stringInput.activeFocus ? ui.accent : ui.border
+        RuleInput {
+          id: stringInput
+          anchors.leftMargin: Style.space(8)
+          anchors.rightMargin: Style.space(8)
+          font.pixelSize: Style.font.bodySmall
+          text: String(settingRow.value === undefined ? "" : settingRow.value)
+          function commit() {
+            if (stringInput.text !== String(settingRow.value)) settingRow.put(stringInput.text)
+          }
+          onAccepted: commit()
+          onEditingFinished: commit()
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        visible: String(settingRow.field.description || "") !== ""
+        text: String(settingRow.field.description || "")
         color: ui.faint
         font.family: ui.fontFamily
         font.pixelSize: Style.font.caption
