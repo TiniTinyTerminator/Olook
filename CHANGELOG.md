@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+Proton Mail, from the reports on #1:
+
+- Proton labels show on messages, in the list and above a message: a label
+  is a copy of the message in Labels/<name>, so the labels whose contents
+  changed are fetched along with the inbox, and only those.
+- A label taken off in the webmail goes in Olook too. A sync dropped
+  removed messages only above the oldest one it looked at, so the oldest of
+  a short folder stayed forever; and the window fetched a folder only once
+  per session, and not at all while its inbox watcher ran.
+- A sent message shows in Sent: Sent is fetched again after sending.
+- Conversations (View → Conversations) include the replies you sent, from
+  Sent, in the conversation they answer.
+
 ## 1.2.5
 
 - Settings → **Bar widget** and **Calendar** change the bar widgets'

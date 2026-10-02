@@ -341,6 +341,20 @@ Item {
                   anchors.verticalCenter: subjectText.verticalCenter
                   spacing: Style.space(5)
 
+                  // Proton's labels: a tag and the names, kept short.
+                  Text {
+                    readonly property var labels: rowItem.modelData && rowItem.modelData.labels
+                      ? rowItem.modelData.labels : []
+                    textFormat: Text.PlainText
+                    visible: labels.length > 0
+                    text: "󰓹 " + labels.slice(0, 2).join(", ")
+                      + (labels.length > 2 ? " +" + (labels.length - 2) : "")
+                    color: ui.faint
+                    font.family: ui.fontFamily
+                    font.pixelSize: Style.font.caption
+                    elide: Text.ElideRight
+                    width: Math.min(implicitWidth, Style.space(140))
+                  }
                   Text {
                     textFormat: Text.PlainText
                     visible: !!(rowItem.modelData && rowItem.modelData.attachments > 0)

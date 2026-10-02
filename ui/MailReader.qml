@@ -173,6 +173,18 @@ Item {
           elide: Text.ElideRight
         }
 
+        // Proton's labels on this message.
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          visible: !!(root.message && root.message.labels && root.message.labels.length > 0)
+          text: visible ? "󰓹 " + root.message.labels.join("  ·  ") : ""
+          color: ui.dim
+          font.family: ui.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
         Item {
           width: parent.width
           height: Style.space(38)

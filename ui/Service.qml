@@ -345,7 +345,11 @@ Item {
     var account = root.currentAccount
     if (account && (account.demo === true || account.authorized === false)) return
     var key = root.folderKey(root.accountId, root.folder)
-    if (root.syncedFolders[key]) return
+    // Fresh for a minute, then fetched again on the next open: a label
+    // taken off in Proton's webmail, or mail filed by another client, would
+    // otherwise show as it was for the rest of the session.
+    var last = Number(root.syncedFolders[key] || 0)
+    if (last && Date.now() - last < 60 * 1000) return
     // Only one sync runs at a time. Opening an account sets its inbox syncing
     // and the folder you actually asked for arrives moments later, so waiting
     // our turn matters more than giving up.
@@ -356,7 +360,7 @@ Item {
     // is worth trying again when it is next opened, and leaving it marked
     // left a folder showing a count beside an empty list for the rest of the
     // session with nothing that would ever fill it.
-    root.syncedFolders[key] = true
+    root.syncedFolders[key] = Date.now()
     root.sync(false, function (ok) {
       if (!ok) delete root.syncedFolders[key]
     })
@@ -1577,6 +1581,15 @@ Item {
         root.notice = "Message sent"
         noticeTimer.restart()
         root.sent()
+        // The copy just filed in Sent is not in the cache yet: forget that
+        // Sent was fetched, so opening it fetches it, and fetch it now when
+        // it is the folder on screen.
+        var sentIn = String((payload && payload.sentFolder) || "")
+        var owner = String(accountId || root.accountId)
+        if (sentIn !== "") {
+          delete root.syncedFolders[root.folderKey(owner, sentIn)]
+          if (owner === root.accountId && root.folder === sentIn) root.ensureFolderSynced()
+        }
       } else {
         root.reportFailure(payload, stderrText, "Could not send the message")
       }
@@ -1984,8 +1997,11 @@ Item {
     interval: root.syncIntervalSec * 1000
     repeat: true
     // A live watcher already hears about new mail the instant it lands, so
-    // polling on top of it would just be a second, slower way to find out.
-    running: root.configured && root.pollEnabled && !root.watching
+    // polling on top of it would just be a second, slower way to find out --
+    // but it watches the inbox only. Any other folder on screen, a Proton
+    // label or Sent, keeps the timer, or it never changed while open.
+    running: root.configured && root.pollEnabled
+             && (!root.watching || (root.folder !== "INBOX" && !root.viewingAll))
     onTriggered: root.sync(false)
   }
 

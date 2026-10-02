@@ -844,7 +844,7 @@ def folder_kind(name):
     return "other" if head in NON_MAIL_FOLDERS else "mail"
 
 
-def sync_folder(session, conn, folder, limit=200, full=False):
+def sync_folder(session, conn, folder, limit=200, full=False, apply_rules=True):
     """Bring one folder's cached headers in line with the server."""
     account_id = session.account["id"]
     info = session.status(folder)
@@ -860,8 +860,11 @@ def sync_folder(session, conn, folder, limit=200, full=False):
 
     gone = cached - set(server_uids)
     # Only prune inside the window we actually looked at, so a limited sync
-    # never deletes older cached mail it simply didn't ask about.
-    if server_uids:
+    # never deletes older cached mail it simply didn't ask about. When the
+    # server has fewer messages than the limit, the window is the whole
+    # folder: the oldest message taken out of a label (Proton) was kept
+    # forever because it sat below the window's floor.
+    if server_uids and limit and len(server_uids) >= limit:
         window_floor = min(server_uids)
         gone = {uid for uid in gone if uid >= window_floor}
     if gone:
@@ -880,7 +883,7 @@ def sync_folder(session, conn, folder, limit=200, full=False):
     # already sitting there: a rule written today should not reorganise a
     # mailbox behind your back.
     applied = []
-    if arrived:
+    if arrived and apply_rules:
         wanted = rules.load(config.load())
         if wanted:
             applied = rules.apply(conn, session, account_id, folder,

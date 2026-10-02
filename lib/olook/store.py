@@ -557,14 +557,40 @@ class _Threads:
             self.parent[a] = b
 
 
-def as_conversations(messages):
+def attach_labels(conn, account, messages):
+    """Give each message the Proton labels it carries, as "labels".
+
+    Over IMAP a Proton label is not a tag on the message but a copy of it in
+    Labels/<name>; the copies share the Message-ID, which is how they are
+    found. Accounts without labels get an empty list.
+    """
+    rows = conn.execute(
+        "SELECT folder, message_id FROM messages WHERE account = ? "
+        "AND folder LIKE 'Labels/%' AND message_id != ''", (account,)).fetchall()
+    found = {}
+    for row in rows:
+        found.setdefault(row["message_id"], set()).add(row["folder"][len("Labels/"):])
+    for message in messages:
+        names = found.get(str(message.get("messageId") or ""), set())
+        if str(message.get("folder") or "").startswith("Labels/"):
+            names = names | {message["folder"][len("Labels/"):]}
+        message["labels"] = sorted(names, key=str.lower)
+    return messages
+
+
+def as_conversations(messages, related=()):
     """Collapse a list to one row per conversation, newest first.
 
     The row is the newest message of the thread, carrying the count and the
     others' uids so the reading pane can offer them.
+
+    `related` are messages from elsewhere -- your own replies, in Sent --
+    that join a conversation already in the list but never make a row of
+    their own: an inbox conversation shows the replies you sent, and the
+    row stays the newest message of the folder being looked at.
     """
     sets = _Threads()
-    for message in messages:
+    for message in list(messages) + list(related):
         ids = message_ids(message)
         if not ids:
             continue
@@ -581,9 +607,21 @@ def as_conversations(messages):
             order.append(key)
         threads[key].append(message)
 
+    for message in related:
+        ids = message_ids(message)
+        key = sets.find(ids[0]) if ids else None
+        if key in threads and not any(m.get("folder") == message.get("folder")
+                                      and m.get("uid") == message.get("uid")
+                                      for m in threads[key]):
+            threads[key].append(message)
+
     out = []
     for key in order:
         members = sorted(threads[key], key=lambda m: m.get("date") or 0, reverse=True)
+        # The row is the folder's own newest message; a sent reply only
+        # counts in the conversation.
+        own = [m for m in members if m not in related] or members
+        members = [own[0]] + [m for m in members if m is not own[0]]
         newest = dict(members[0])
         newest["threadKey"] = key
         newest["threadCount"] = len(members)
