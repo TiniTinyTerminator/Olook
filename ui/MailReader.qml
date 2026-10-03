@@ -72,7 +72,13 @@ Item {
   // not about any one message, so it is kept: the service stores it and every
   // message after the first opens the way this one did, until you say
   // otherwise.
-  property bool formatted: true
+  //
+  // It starts from what the service already knows, because a window opened
+  // later -- a message popped out into one of its own -- must open the way the
+  // last one did, not the way a brand new pane would. Toggling below replaces
+  // this with the reader's own answer; the handler underneath keeps the two in
+  // step from then on.
+  property bool formatted: root.service ? root.service.bodyView !== "plain" : true
 
   function setFormatted(on) {
     on = on === true
@@ -81,8 +87,8 @@ Item {
     if (root.service) root.service.setBodyView(on ? "formatted" : "plain")
   }
 
-  // The stored choice arriving after this pane was built, or being changed
-  // from the View menu or another window: follow it rather than keep a second
+  // The stored choice being changed elsewhere -- the View menu, another window,
+  // the terminal -- rather than kept here: follow it rather than keep a second
   // answer of our own.
   Connections {
     target: root.service
