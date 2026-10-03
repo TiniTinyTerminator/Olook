@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The **Formatted** / **Plain text** toggle over a message body is
+  remembered. It went back to formatted for every message, so choosing plain
+  text meant choosing it again for the next one, in every window, for as long
+  as the client stayed open. How you like to read mail is one decision, so it
+  is now kept by the engine: `olook body-view [formatted|plain]` sets it
+  outside the client too. Remote pictures stay per message, on purpose.
+
 ## 1.2.6
 
 Proton Mail, from the reports on #1:
