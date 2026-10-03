@@ -1583,6 +1583,17 @@ def cmd_images(args):
          lambda d: f"Images now load when: {d['policy']}")
 
 
+def cmd_body_view(args):
+    """Whether a message body opens formatted, or as the plain text under it."""
+    if not args.view:
+        emit({"ok": True, "view": config.body_view(),
+              "choices": list(config.BODY_VIEWS)},
+             lambda d: f"Bodies open: {d['view']}  (of {', '.join(d['choices'])})")
+        return
+    emit({"ok": True, "view": config.set_body_view(args.view)},
+         lambda d: f"Bodies now open: {d['view']}")
+
+
 def cmd_trust(args):
     """Senders whose pictures load without being asked about."""
     if args.action == "list":
@@ -2714,6 +2725,12 @@ def build_parser():
     p.add_argument("policy", nargs="?", default="",
                    help="verified | trusted | never")
     p.set_defaults(func=cmd_images)
+
+    p = sub.add_parser("body-view",
+                       help="whether message bodies open formatted or plain")
+    p.add_argument("view", nargs="?", default="",
+                   help="formatted | plain")
+    p.set_defaults(func=cmd_body_view)
 
     p = sub.add_parser("trust", help="senders whose images load by themselves")
     p.add_argument("action", choices=["list", "add", "remove"])

@@ -30,7 +30,7 @@ session; the panel opens on **All** again after a restart.
   through them with `←` / `→`
 - Read, reply, reply-all, forward, archive, delete, flag, mark read/unread
 - HTML mail rendered properly, with remote images blocked and a toggle back to
-  plain text
+  plain text that sticks: choose it once and every later message reads that way
 - Compose and send as plain text, Markdown, or HTML, with the message
   autosaved to the Drafts folder so closing the composer never loses it
 - Push mail: an IMAP IDLE connection per account, so new mail and its
@@ -325,6 +325,14 @@ Mail that arrives as HTML is rendered, not flattened: a **Formatted** /
 message has an HTML part. Formatted mail is drawn on a light card rather than
 the dark theme, because mail HTML is written for a white background and picks
 its own text colours.
+
+That choice is remembered. Choosing **Plain text** once leaves every later
+message — and every window, and the next time you open Olook — in plain text,
+because how you like to read mail is one decision, not one per message. Choose
+**Formatted** again to put it back; the same setting is `olook body-view
+[formatted|plain]` from a terminal. Remote pictures are deliberately *not*
+remembered this way: allowing one sender's tracking pixel says nothing about
+the next one's.
 
 **Pictures.** A remote picture in mail is usually a tracking pixel, so none is
 fetched until something says it may be. Settings → General chooses what:
