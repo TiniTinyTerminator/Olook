@@ -253,11 +253,9 @@ Panel {
             root.openWindow({})
             return
           }
-          root.openWindow({
-            account: notifyProc.target.account,
-            folder: notifyProc.target.folder,
-            uid: notifyProc.target.uid
-          })
+          // The message in a window of its own, as from the panel -- not
+          // the whole client.
+          root.openMessage(notifyProc.target)
         }
       }
       onExited: {
