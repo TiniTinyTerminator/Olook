@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Outlook's way of choosing a format: **Settings → General → Compose
+  messages in** sets what new messages, replies and mailto: links are
+  written in (`olook compose-format`). In the composer, the "Write in" row
+  and its dropdown are gone; the formats are buttons at the start of the
+  formatting line, so it is one line instead of two.
+
 ## 1.2.8
 
 From the Proton reports on #1:

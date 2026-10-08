@@ -1115,6 +1115,27 @@ Item {
   // reader made once outlives the message that taught it.
   property string bodyView: "formatted"
 
+  // What a new message is written in: plain | markdown | html. Settings
+  // chooses it; the composer can switch one message without changing it.
+  property string composeFormat: "plain"
+
+  function loadComposeFormat() {
+    run(["compose-format"], function (ok, payload) {
+      if (ok && payload && payload.format) root.composeFormat = String(payload.format)
+    }, "compose-format")
+  }
+
+  function setComposeFormat(value) {
+    if (!value || value === root.composeFormat) return
+    run(["compose-format", String(value)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remember that")
+        return
+      }
+      root.composeFormat = String((payload && payload.format) || value)
+    }, "compose-format")
+  }
+
   function loadBodyView() {
     run(["body-view"], function (ok, payload) {
       if (ok && payload && payload.view) root.bodyView = String(payload.view)
@@ -2073,5 +2094,6 @@ Item {
     refreshOutbox()
     loadImagePolicy()
     loadBodyView()
+    loadComposeFormat()
   }
 }

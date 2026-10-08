@@ -274,7 +274,10 @@ the message to the right of the list or underneath it.
 
 ### Writing
 
-The composer has a **Write in** dropdown with three choices:
+New messages are written in the format chosen under **Settings → General →
+Compose messages in** (`olook compose-format` from a terminal). The line above
+the body switches one message, Outlook's *Format text* style: **Plain text**,
+**Markdown** or **HTML**, followed by the formatting buttons for the latter two.
 
 | Format | What is sent |
 |---|---|
@@ -282,7 +285,7 @@ The composer has a **Write in** dropdown with three choices:
 | Markdown | `multipart/alternative` — your Markdown as `text/plain`, and a rendered `text/html` beside it. Headings, lists, quotes, code, links, bold/italic/strike. |
 | HTML | `multipart/alternative` — your HTML as `text/html`, and a text flattening of it as `text/plain`. Sent as you wrote it. |
 
-Markdown is the useful default for anything with structure: people whose client
+Markdown is a good choice for anything with structure: people whose client
 shows plain text still read exactly what you typed.
 
 The paperclip (or `Ctrl+Shift+A`) attaches files, and so does dropping them on

@@ -336,6 +336,43 @@ Item {
               }
             }
 
+            // Outlook's "Compose messages in this format". A message being
+            // written can still switch on its own Format text line.
+            Text {
+              textFormat: Text.PlainText
+              topPadding: Style.space(8)
+              text: "Compose messages in"
+              color: ui.foreground
+              font.family: ui.fontFamily
+              font.pixelSize: Style.font.subtitle
+            }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              PolicyChoice {
+                setting: "compose"
+                value: "plain"
+                label: "Plain text"
+                hint: "No formatting. Reads the same in every mail program."
+              }
+
+              PolicyChoice {
+                setting: "compose"
+                value: "markdown"
+                label: "Markdown"
+                hint: "Type *bold* or # Heading; sent as text and as HTML, with a preview while you write."
+              }
+
+              PolicyChoice {
+                setting: "compose"
+                value: "html"
+                label: "HTML"
+                hint: "Write the HTML yourself; it is sent as you wrote it."
+              }
+            }
+
             // What `omarchy plugin add` does not do: shown until it is done.
             Column {
               id: setupBlock
@@ -1463,7 +1500,10 @@ Item {
     property string value: ""
     property string label: ""
     property string hint: ""
-    readonly property bool current: !!(service && service.imagePolicy === choice.value)
+    // Which setting this is one answer to: pictures, or the compose format.
+    property string setting: "images"
+    readonly property bool current: !!(service && (choice.setting === "compose"
+      ? service.composeFormat : service.imagePolicy) === choice.value)
 
     width: parent ? parent.width : 0
     height: choiceColumn.implicitHeight + Style.space(14)
@@ -1518,7 +1558,11 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: if (service) service.setImagePolicy(choice.value)
+      onClicked: {
+        if (!service) return
+        if (choice.setting === "compose") service.setComposeFormat(choice.value)
+        else service.setImagePolicy(choice.value)
+      }
     }
   }
 

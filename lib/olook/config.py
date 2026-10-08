@@ -221,6 +221,26 @@ def set_image_policy(value):
 # so the toggle above a body also decides what the next one opens as.
 BODY_VIEWS = ("formatted", "plain")
 
+# What a new message is written in, as Outlook's "Compose messages in this
+# format": chosen once in Settings, switched per message in the composer.
+COMPOSE_FORMATS = ("plain", "markdown", "html")
+
+
+def compose_format(doc=None):
+    doc = doc if doc is not None else load()
+    value = str(doc.get("composeFormat") or "plain").lower()
+    return value if value in COMPOSE_FORMATS else "plain"
+
+
+def set_compose_format(value):
+    value = str(value or "").lower()
+    if value not in COMPOSE_FORMATS:
+        raise ConfigError("Pick one of: " + ", ".join(COMPOSE_FORMATS))
+    doc = load()
+    doc["composeFormat"] = value
+    save(doc)
+    return value
+
 
 def body_view(doc=None):
     doc = doc if doc is not None else load()

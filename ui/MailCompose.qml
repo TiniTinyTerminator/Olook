@@ -102,7 +102,7 @@ Item {
     quotedText = String(source.quoted || "")
     quotedHtml = String(source.quotedHtml || "")
     quoteExpanded = false
-    format = String(source.format || "plain")
+    format = String(source.format || (service ? service.composeFormat : "") || "plain")
     attachments = (source.attachments || []).slice()
     draftUid = Number(source.draftUid || 0)
     strandedAttachments = Number(source.strandedAttachments || 0)
@@ -226,14 +226,6 @@ Item {
     for (var i = 0; i < root.attachments.length; i++)
       if (root.attachments[i] !== path) next.push(root.attachments[i])
     root.attachments = next
-  }
-
-  // What the chosen format actually sends, said once next to the control so
-  // nobody has to guess what "Markdown" does to a message.
-  readonly property string formatHint: {
-    if (root.format === "markdown") return "Sent as text and as HTML"
-    if (root.format === "html") return "Sent as you wrote it"
-    return "No formatting"
   }
 
   function baseName(path) {
@@ -1004,57 +996,43 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: Style.space(8)
 
-        Row {
-          spacing: Style.space(8)
-
-          Text {
-            textFormat: Text.PlainText
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Write in"
-            color: ui.faint
-            font.family: ui.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-
-          Dropdown {
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(140)
-            height: Style.space(26)
-            rowHeight: Style.space(26)
-            showLabel: false
-            fontFamily: ui.fontFamily
-            value: root.format
-            options: [
-              { value: "plain", label: "Plain text" },
-              { value: "markdown", label: "Markdown" },
-              { value: "html", label: "HTML" }
-            ]
-            onChanged: function (next) { root.format = next }
-          }
-
-          Text {
-            textFormat: Text.PlainText
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.formatHint
-            color: ui.faint
-            font.family: ui.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-        }
-
+        // Outlook's "Format text": what this message is written in, and the
+        // tools for it, on one line. The default comes from Settings; this
+        // changes only the message being written.
         Flow {
           width: parent.width
           spacing: Style.space(4)
-          visible: root.format !== "plain"
 
-          FormatButton { kind: "bold"; label: "B"; bold: true; tip: "Bold (Ctrl+B)" }
-          FormatButton { kind: "italic"; label: "I"; italic: true; tip: "Italic (Ctrl+I)" }
-          FormatButton { kind: "heading"; label: "H"; tip: "Heading" }
-          FormatButton { kind: "link"; label: "Link"; tip: "Link (Ctrl+K)" }
-          FormatButton { kind: "bullets"; label: "\u2022 List"; tip: "Bulleted list" }
-          FormatButton { kind: "numbers"; label: "1. List"; tip: "Numbered list" }
-          FormatButton { kind: "quote"; label: "Quote"; tip: "Quote" }
-          FormatButton { kind: "code"; label: "Code"; tip: "Code" }
+          Repeater {
+            model: [
+              { value: "plain", label: "Plain text", tip: "No formatting" },
+              { value: "markdown", label: "Markdown", tip: "Sent as text and as HTML" },
+              { value: "html", label: "HTML", tip: "Sent as you wrote it" }
+            ]
+            delegate: FormatChoice {
+              required property var modelData
+              value: modelData.value
+              label: modelData.label
+              tip: modelData.tip
+            }
+          }
+
+          Rectangle {
+            visible: root.format !== "plain"
+            width: ui.hairline
+            height: Style.space(24)
+            color: ui.border
+          }
+          Item { visible: root.format !== "plain"; width: Style.space(2); height: 1 }
+
+          FormatButton { visible: root.format !== "plain"; kind: "bold"; label: "B"; bold: true; tip: "Bold (Ctrl+B)" }
+          FormatButton { visible: root.format !== "plain"; kind: "italic"; label: "I"; italic: true; tip: "Italic (Ctrl+I)" }
+          FormatButton { visible: root.format !== "plain"; kind: "heading"; label: "H"; tip: "Heading" }
+          FormatButton { visible: root.format !== "plain"; kind: "link"; label: "Link"; tip: "Link (Ctrl+K)" }
+          FormatButton { visible: root.format !== "plain"; kind: "bullets"; label: "\u2022 List"; tip: "Bulleted list" }
+          FormatButton { visible: root.format !== "plain"; kind: "numbers"; label: "1. List"; tip: "Numbered list" }
+          FormatButton { visible: root.format !== "plain"; kind: "quote"; label: "Quote"; tip: "Quote" }
+          FormatButton { visible: root.format !== "plain"; kind: "code"; label: "Code"; tip: "Code" }
         }
 
         Flow {
@@ -1276,6 +1254,45 @@ Item {
         MomentumScroll { view: bodyFlick }
       }
     }
+  }
+
+  // One of the formats, picked or not: a pressed button, as in Outlook.
+  component FormatChoice: Rectangle {
+    id: formatChoice
+    property string value: ""
+    property string label: ""
+    property string tip: ""
+    readonly property bool current: root.format === formatChoice.value
+
+    width: choiceText.implicitWidth + Style.space(16)
+    height: Style.space(24)
+    radius: ui.radius
+    color: formatChoice.current ? ui.selected
+      : (choiceHover.containsMouse ? ui.hover : "transparent")
+    border.width: ui.hairline
+    border.color: formatChoice.current ? ui.accent : ui.border
+
+    Text {
+      id: choiceText
+      textFormat: Text.PlainText
+      anchors.centerIn: parent
+      text: formatChoice.label
+      color: formatChoice.current ? ui.foreground : ui.dim
+      font.family: ui.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    MouseArea {
+      id: choiceHover
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.format = formatChoice.value
+    }
+
+    ToolTip.visible: choiceHover.containsMouse
+    ToolTip.delay: 600
+    ToolTip.text: formatChoice.tip
   }
 
   component FormatButton: Rectangle {

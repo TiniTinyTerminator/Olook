@@ -1630,6 +1630,17 @@ def cmd_images(args):
          lambda d: f"Images now load when: {d['policy']}")
 
 
+def cmd_compose_format(args):
+    """What a new message is written in: plain, markdown or html."""
+    if not args.format:
+        emit({"ok": True, "format": config.compose_format(),
+              "choices": list(config.COMPOSE_FORMATS)},
+             lambda d: f"New messages: {d['format']}  (of {', '.join(d['choices'])})")
+        return
+    emit({"ok": True, "format": config.set_compose_format(args.format)},
+         lambda d: f"New messages now: {d['format']}")
+
+
 def cmd_body_view(args):
     """Whether a message body opens formatted, or as the plain text under it."""
     if not args.view:
@@ -2033,7 +2044,7 @@ def parse_mailto(uri):
             # Links write line breaks as %0D%0A; the composer wants \n.
             body = value.replace("\r\n", "\n")
     return {"to": fields["to"], "cc": fields["cc"], "bcc": fields["bcc"],
-            "subject": subject, "body": body, "format": "plain"}
+            "subject": subject, "body": body, "format": config.compose_format()}
 
 
 def cmd_mailto(args):
@@ -2908,6 +2919,11 @@ def build_parser():
     p.add_argument("policy", nargs="?", default="",
                    help="verified | trusted | never")
     p.set_defaults(func=cmd_images)
+
+    p = sub.add_parser("compose-format",
+                       help="what new messages are written in")
+    p.add_argument("format", nargs="?", default="", help="plain | markdown | html")
+    p.set_defaults(func=cmd_compose_format)
 
     p = sub.add_parser("body-view",
                        help="whether message bodies open formatted or plain")
