@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.10
+
+- Clicking a new-mail notification opens that message in a window of its
+  own, as clicking it in the bar's panel does, instead of the whole client.
+
 ## 1.2.9
 
 - Outlook's way of choosing a format: **Settings → General → Compose
