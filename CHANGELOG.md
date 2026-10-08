@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.9
 
 - Outlook's way of choosing a format: **Settings → General → Compose
   messages in** sets what new messages, replies and mailto: links are
