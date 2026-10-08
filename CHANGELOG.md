@@ -1,7 +1,19 @@
 # Changelog
 
-## Unreleased
+## 1.2.8
 
+From the Proton reports on #1:
+
+- Starting a new message no longer replaces the previous draft. Closing a
+  message saves it on the way out; when the next one was started before
+  that save answered, the answer gave the new message the old draft's uid.
+- Reading a message clears its unread mark everywhere it is: in All Mail,
+  its folder and its labels too, not only where it was opened.
+- Attach works without zenity, which Omarchy does not ship: the desktop's
+  own file dialog (the XDG portal) is asked first. Before, Attach did nothing.
+- All Mail leaves out what is in Trash or Spam, as Proton does by default.
+- A sync no longer forgets a folder's role (Sent, Trash, All Mail) until the
+  next full folder listing.
 - The **Formatted** / **Plain text** toggle over a message body is
   remembered. It went back to formatted for every message, so choosing plain
   text meant choosing it again for the next one, in every window, for as long

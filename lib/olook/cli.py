@@ -640,6 +640,17 @@ def cmd_sync(args):
                     store.save_folders(conn, account["id"], enriched)
                 summary["labelsRefreshed"] = _refresh_labels(
                     session, conn, folders, counts, known, folder)
+                # Proton's All Mail holds Trash and Spam too, which Proton's
+                # own default leaves out; they are read along with it so the
+                # list can do the same.
+                if any(f["name"] == folder and f["special"] == "all" for f in folders):
+                    for f in folders:
+                        if f["special"] in ("trash", "junk"):
+                            try:
+                                mailbox.sync_folder(session, conn, f["name"], limit=500,
+                                                    apply_rules=False)
+                            except (mailbox.MailError, imaplib.IMAP4.error):
+                                pass
                 summary["account"] = account["id"]
                 summary["ok"] = True
                 results.append(summary)
@@ -677,6 +688,14 @@ def cmd_list(args):
         unread_only=args.unread, flagged_only=args.flagged,
         query=args.query or "", sort=args.sort)
     store.attach_labels(conn, account["id"], messages)
+    if any(f["name"] == folder and f["special"] == "all"
+           for f in store.list_folders(conn, account["id"])):
+        # All Mail without what is in Trash or Spam, as Proton shows it by
+        # default. Gmail's All Mail has neither, so nothing changes there.
+        binned = store.message_ids_in(conn, account["id"], [
+            f["name"] for f in store.list_folders(conn, account["id"])
+            if f["special"] in ("trash", "junk")])
+        messages = [m for m in messages if m.get("messageId") not in binned]
     if args.conversations:
         # Your replies live in Sent; a conversation elsewhere includes them.
         sent = _role_folder(conn, account, "sent")
@@ -1401,6 +1420,7 @@ def cmd_body(args):
                     pass
                 else:
                     store.set_flags(conn, account["id"], folder, [args.uid], seen=True)
+                    _follow_copies(session, conn, account, folder, [args.uid], seen=True)
         cached = store.get_body(conn, account["id"], folder, args.uid)
     elif args.mark_read:
         _mark_seen(account, conn, folder, [args.uid], True)
@@ -1539,6 +1559,8 @@ def cmd_flag(args):
         with mailbox.Session(account) as session:
             session.select(args.folder, readonly=False)
             session.store_flags(uids, [flag], add=add)
+            store.set_flags(conn, account["id"], args.folder, uids, **local)
+            _follow_copies(session, conn, account, args.folder, uids, **local)
     store.set_flags(conn, account["id"], args.folder, uids, **local)
     emit({"ok": True, "uids": uids, "set": args.set}, lambda d: "Updated.")
 
@@ -1547,7 +1569,32 @@ def _mark_seen(account, conn, folder, uids, seen):
     with mailbox.Session(account) as session:
         session.select(folder, readonly=False)
         session.store_flags(uids, ["\\Seen"], add=seen)
-    store.set_flags(conn, account["id"], folder, uids, seen=seen)
+        store.set_flags(conn, account["id"], folder, uids, seen=seen)
+        _follow_copies(session, conn, account, folder, uids, seen=seen)
+
+
+def _follow_copies(session, conn, account, folder, uids, **flags):
+    """After a flag change, the other folders holding the same messages.
+
+    The server sets a flag on every copy -- All Mail, the message's folder
+    and labels on Proton, labels on Gmail -- so the cached copies follow,
+    and those folders' unread counts are asked for again. Only these few: a
+    count for every folder costs a round trip each on servers without
+    LIST-STATUS, on every message opened. Best effort: the flag itself is
+    already set.
+    """
+    others = store.copies_elsewhere(conn, account["id"], folder, uids)
+    for other, copies in others.items():
+        store.set_flags(conn, account["id"], other, copies, **flags)
+    if "seen" not in flags:
+        return
+    wanted = {folder, *others}
+    wanted.update(f["name"] for f in store.list_folders(conn, account["id"])
+                  if f["special"] == "all")
+    try:
+        store.set_folder_counts(conn, account["id"], session.status_all(sorted(wanted)))
+    except (mailbox.MailError, imaplib.IMAP4.error):
+        pass
 
 
 def cmd_move(args):
@@ -2121,6 +2168,70 @@ def cmd_notify(args):
     loop.run()
 
 
+def _portal_pick(title):
+    """Files chosen in the desktop's own file dialog, through the XDG portal.
+
+    Returns None when there is no portal to ask; [] when the dialog was
+    cancelled.
+    """
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except Exception:
+        return None
+    token = f"olook{os.getpid()}"
+    sender = bus.get_unique_name()[1:].replace(".", "_")
+    handle = f"/org/freedesktop/portal/desktop/request/{sender}/{token}"
+    loop = GLib.MainLoop()
+    found = {"paths": None}
+
+    def answered(_conn, _sender, _path, _iface, _name, params):
+        code, results = params.unpack()
+        uris = results.get("uris", []) if code == 0 else []
+        found["paths"] = [urllib.parse.unquote(urllib.parse.urlparse(u).path)
+                          for u in uris if str(u).startswith("file://")]
+        loop.quit()
+
+    # Listening on the request's path before asking, so the answer is heard.
+    bus.signal_subscribe("org.freedesktop.portal.Desktop", "org.freedesktop.portal.Request",
+                         "Response", handle, None, Gio.DBusSignalFlags.NONE, answered)
+    try:
+        bus.call_sync("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                      "org.freedesktop.portal.FileChooser", "OpenFile",
+                      GLib.Variant("(ssa{sv})", ("", title, {
+                          "handle_token": GLib.Variant("s", token),
+                          "multiple": GLib.Variant("b", True)})),
+                      GLib.VariantType("(o)"), Gio.DBusCallFlags.NONE, -1, None)
+    except GLib.Error:
+        return None
+    loop.run()
+    return found["paths"] or []
+
+
+def cmd_pick_files(args):
+    """Ask for files to attach; prints one path per line.
+
+    The desktop portal's dialog, which every Omarchy has; zenity where there
+    is no portal. Exit 3, with a reason, when there is neither -- before,
+    Attach did nothing at all on a machine without zenity.
+    """
+    title = "Attach files to this message"
+    paths = _portal_pick(title)
+    if paths is None and shutil.which("zenity"):
+        done = subprocess.run(["zenity", "--file-selection", "--multiple",
+                               "--separator=\n", f"--title={title}"],
+                              capture_output=True, text=True)
+        paths = [p for p in done.stdout.splitlines() if p.strip()]
+    if paths is None:
+        print("No file chooser: the desktop portal did not answer and zenity is "
+              "not installed.", file=sys.stderr)
+        sys.exit(3)
+    for path in paths:
+        print(path)
+
+
 def cmd_seen(args):
     """Mark every inbox as looked at, up to the newest message in it.
 
@@ -2576,6 +2687,9 @@ def build_parser():
     p.add_argument("--wait", type=int, default=600,
                    help="seconds to wait for a click (default 600)")
     p.set_defaults(func=cmd_notify)
+
+    p = sub.add_parser("pick-files", help="ask for files to attach; one path per line")
+    p.set_defaults(func=cmd_pick_files)
 
     p = sub.add_parser("test", help="check IMAP and SMTP credentials")
     p.add_argument("account", nargs="?")

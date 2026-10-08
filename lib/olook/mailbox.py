@@ -898,14 +898,10 @@ def sync_folder(session, conn, folder, limit=200, full=False, apply_rules=True):
                             flagged=b"\\flagged" in flags,
                             answered=b"\\answered" in flags)
 
-    store.save_folders(conn, account_id, [{
-        "name": folder,
-        "special": "inbox" if folder.upper() == "INBOX" else "",
-        "uidvalidity": info["uidvalidity"],
-        "uidnext": info["uidnext"],
-        "total": info["total"],
-        "unseen": info["unseen"],
-    }])
+    # Counts only: the folder's role (Sent, Trash, All Mail) came from LIST,
+    # and saving it as "" here wiped it until the next full folder listing.
+    store.save_folder_counts(conn, account_id, folder, info,
+                             special="inbox" if folder.upper() == "INBOX" else "")
     return {"folder": folder, "added": added, "removed": len(gone),
             "total": info["total"], "unseen": info["unseen"],
             "rulesApplied": applied}

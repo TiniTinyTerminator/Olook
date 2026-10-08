@@ -570,7 +570,9 @@ Item {
       root.bodyLoaded()
       if (!entry.seen) {
         markLocalSeen(entry, true)
-        root.refreshStatus()
+        // The tree too: the engine counted again every folder that holds
+        // this message, All Mail and its labels included.
+        root.refreshStatus(true)
       }
     }, "body")
   }
@@ -1404,7 +1406,7 @@ Item {
         return
       }
       root.loadMessages()
-      root.refreshStatus()
+      root.refreshStatus(true)
     }, "flag")
   }
 
@@ -1887,7 +1889,10 @@ Item {
       property var handler: null
       running: false
       stdout: StdioCollector { id: pickOut; waitForEnd: true }
+      stderr: StdioCollector { id: pickErr; waitForEnd: true }
       onExited: function (exitCode) {
+        if (exitCode === 3)
+          root.actionFailed(String(pickErr.text || "No file chooser available.").trim())
         var paths = []
         var lines = String(pickOut.text || "").split("\n")
         for (var i = 0; i < lines.length; i++) {
@@ -2007,9 +2012,10 @@ Item {
   }
 
   function pickFiles(handler) {
+    // The engine asks the desktop's own file dialog (the XDG portal) and
+    // falls back to zenity, which Omarchy does not ship.
     var process = pickerRunner.createObject(root, {
-      command: ["zenity", "--file-selection", "--multiple", "--separator=\n",
-                "--title=Attach files to this message"],
+      command: [cliPath, "pick-files"],
       handler: handler
     })
     if (!process) {

@@ -85,8 +85,13 @@ Item {
 
   onDraftChanged: loadDraft()
 
+  // Which message the form holds: counted up each time it is loaded, so a
+  // save that answers after the form moved on can tell.
+  property int generation: 0
+
   function loadDraft() {
     var source = draft || {}
+    root.generation += 1
     root.loading = true
     toText = (source.to || []).join(", ")
     ccText = (source.cc || []).join(", ")
@@ -116,8 +121,13 @@ Item {
   function saveDraft() {
     autosaveTimer.stop()
     if (!root.canSaveDraft || !root.worthSaving) return
+    // A save answers a second or two later. Closing one message saves it on
+    // the way out; starting the next in that time used to hand the next one
+    // the old draft's uid, so its first save replaced the previous draft.
+    var generation = root.generation
     service.saveDraft(root.payload(), root.draftUid, root.account.id,
                       function (ok, payload) {
+                        if (generation !== root.generation) return
                         if (ok && payload && payload.uid > 0)
                           root.draftUid = payload.uid
                       })

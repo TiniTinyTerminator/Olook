@@ -954,6 +954,61 @@ def save_folders(conn, account, folders):
     conn.commit()
 
 
+def copies_elsewhere(conn, account, folder, uids):
+    """Other folders' cached copies of these messages, by Message-ID.
+
+    Proton (labels, All Mail) and Gmail keep one message in several folders,
+    and a flag set on one copy is set on all of them by the server.
+    """
+    if not uids:
+        return {}
+    marks = ",".join("?" * len(uids))
+    rows = conn.execute(
+        "SELECT folder, uid FROM messages WHERE account = ? AND folder != ? "
+        "AND message_id != '' AND message_id IN (SELECT message_id FROM messages "
+        f"WHERE account = ? AND folder = ? AND uid IN ({marks}))",
+        (account, folder, account, folder, *[int(u) for u in uids])).fetchall()
+    found = {}
+    for row in rows:
+        found.setdefault(row["folder"], []).append(row["uid"])
+    return found
+
+
+def message_ids_in(conn, account, folders):
+    """The Message-IDs cached in these folders."""
+    if not folders:
+        return set()
+    marks = ",".join("?" * len(folders))
+    rows = conn.execute(
+        f"SELECT message_id FROM messages WHERE account = ? AND folder IN ({marks}) "
+        "AND message_id != ''", (account, *folders)).fetchall()
+    return {row["message_id"] for row in rows}
+
+
+def save_folder_counts(conn, account, folder, info, special=""):
+    """One folder's counts; its role is set only when the row is new."""
+    conn.execute(
+        "INSERT INTO folders (account, name, special, uidvalidity, uidnext, total, "
+        "unseen, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(account, name) DO UPDATE SET uidvalidity = excluded.uidvalidity, "
+        "uidnext = excluded.uidnext, total = excluded.total, unseen = excluded.unseen, "
+        "synced_at = excluded.synced_at",
+        (account, folder, special, int(info.get("uidvalidity", 0)),
+         int(info.get("uidnext", 0)), int(info.get("total", 0)),
+         int(info.get("unseen", 0)), int(time.time())))
+    conn.commit()
+
+
+def set_folder_counts(conn, account, counts):
+    """Update folders' counts only, leaving their delimiter and role alone."""
+    conn.executemany(
+        "UPDATE folders SET total = ?, unseen = ?, uidnext = ?, uidvalidity = ? "
+        "WHERE account = ? AND name = ?",
+        [(c.get("total", 0), c.get("unseen", 0), c.get("uidnext", 0),
+          c.get("uidvalidity", 0), account, name) for name, c in counts.items()])
+    conn.commit()
+
+
 def list_folders(conn, account):
     rows = conn.execute(
         "SELECT * FROM folders WHERE account = ? ORDER BY "
