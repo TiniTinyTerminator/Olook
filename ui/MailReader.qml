@@ -66,7 +66,37 @@ Item {
     ? String(message.fromAddr) : ""
 
   signal trustSenderRequested(string address)
-  property bool formatted: true
+
+  // Whether the body is shown with the formatting the sender gave it, or as
+  // the plain text underneath. This is a decision about how you read mail,
+  // not about any one message, so it is kept: the service stores it and every
+  // message after the first opens the way this one did, until you say
+  // otherwise.
+  //
+  // It starts from what the service already knows, because a window opened
+  // later -- a message popped out into one of its own -- must open the way the
+  // last one did, not the way a brand new pane would. Toggling below replaces
+  // this with the reader's own answer; the handler underneath keeps the two in
+  // step from then on.
+  property bool formatted: root.service ? root.service.bodyView !== "plain" : true
+
+  function setFormatted(on) {
+    on = on === true
+    if (on === root.formatted) return
+    root.formatted = on
+    if (root.service) root.service.setBodyView(on ? "formatted" : "plain")
+  }
+
+  // The stored choice being changed elsewhere -- the View menu, another window,
+  // the terminal -- rather than kept here: follow it rather than keep a second
+  // answer of our own.
+  Connections {
+    target: root.service
+    function onBodyViewChanged() {
+      var on = String(root.service.bodyView) !== "plain"
+      if (on !== root.formatted) root.formatted = on
+    }
+  }
 
   // The web renderer lays out the stylesheet the message came with, which is
   // most of what makes mail look like itself. It is only safe to construct
@@ -79,10 +109,9 @@ Item {
   // agreeing to the next one's.
   property bool remoteImages: false
 
-  onMessageChanged: {
-    root.formatted = true
-    root.remoteImages = false
-  }
+  // Remote pictures are a decision about one sender, and they do not carry
+  // over to the next message.
+  onMessageChanged: root.remoteImages = false
 
   Rectangle {
     anchors.fill: parent
@@ -423,7 +452,7 @@ Item {
 
             ViewToggle {
               label: root.formatted ? "󰈙  Formatted" : "󰦨  Plain text"
-              onTriggered: root.formatted = !root.formatted
+              onTriggered: root.setFormatted(!root.formatted)
             }
 
             Text {

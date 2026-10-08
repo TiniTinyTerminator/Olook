@@ -1108,6 +1108,29 @@ Item {
     }, "images")
   }
 
+  // Which way a message body opens: formatted | plain. Kept by the engine so
+  // the client, the terminal and every window agree, and so the choice the
+  // reader made once outlives the message that taught it.
+  property string bodyView: "formatted"
+
+  function loadBodyView() {
+    run(["body-view"], function (ok, payload) {
+      if (ok && payload && payload.view) root.bodyView = String(payload.view)
+    }, "body-view")
+  }
+
+  function setBodyView(value, done) {
+    if (!value || value === root.bodyView) return
+    run(["body-view", String(value)], function (ok, payload, stderrText) {
+      if (!ok) {
+        reportFailure(payload, stderrText, "Could not remember that")
+        return
+      }
+      root.bodyView = String((payload && payload.view) || value)
+      if (done) done()
+    }, "body-view")
+  }
+
   // Senders whose pictures load without being asked. Kept by the engine, so
   // the terminal and the client agree about who is on the list.
   function trustSender(address, trusted, done) {
@@ -2043,5 +2066,6 @@ Item {
     refreshStatus(true)
     refreshOutbox()
     loadImagePolicy()
+    loadBodyView()
   }
 }

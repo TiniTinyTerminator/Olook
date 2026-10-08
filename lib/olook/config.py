@@ -211,6 +211,33 @@ def set_image_policy(value):
     return value
 
 
+# Which way a message body is shown: the formatting the sender gave it, or the
+# plain text underneath.
+#
+# "formatted" is the default because most mail is written to be looked at
+# rather than read closely, and flattening it by default would throw away the
+# headings and tables people actually sent. It is kept rather than asked about
+# per message: how you like to read mail is one decision, not one per message,
+# so the toggle above a body also decides what the next one opens as.
+BODY_VIEWS = ("formatted", "plain")
+
+
+def body_view(doc=None):
+    doc = doc if doc is not None else load()
+    value = str(doc.get("bodyView") or "formatted").lower()
+    return value if value in BODY_VIEWS else "formatted"
+
+
+def set_body_view(value):
+    value = str(value or "").lower()
+    if value not in BODY_VIEWS:
+        raise ConfigError("Pick one of: " + ", ".join(BODY_VIEWS))
+    doc = load()
+    doc["bodyView"] = value
+    save(doc)
+    return value
+
+
 def trusted_senders(doc=None):
     """Addresses whose pictures may load without being asked about.
 

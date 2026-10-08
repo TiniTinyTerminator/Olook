@@ -717,8 +717,8 @@ Item {
     case "folders-icons": root.folderPanePref = "icons"; return
     case "reader-right": root.readingPanePref = "right"; return
     case "reader-bottom": root.readingPanePref = "bottom"; return
-    case "body-formatted": readerPane.formatted = true; return
-    case "body-plain": readerPane.formatted = false; return
+    case "body-formatted": readerPane.setFormatted(true); return
+    case "body-plain": readerPane.setFormatted(false); return
 
     case "reply": case "reply-all": case "forward": root.replyTo(id); return
     case "archive": if (mail.selected) mail.archive(mail.selected); return
