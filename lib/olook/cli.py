@@ -3060,6 +3060,17 @@ def main(argv=None):
     global JSON_OUT
     parser = build_parser()
     argv = sys.argv[1:] if argv is None else argv
+    # The window's way in: the arguments as a JSON array on stdin's first
+    # line, the command's own input after it. What it passes -- a search, an
+    # appointment's title, a contact's address -- would otherwise sit in
+    # /proc/<pid>/cmdline, readable by every account on the machine.
+    if argv == ["--argv-stdin"]:
+        try:
+            argv = json.loads(sys.stdin.readline())
+        except ValueError:
+            argv = None
+        if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
+            fail(CliError("--argv-stdin wants a JSON array of strings on the first line"))
     args = parser.parse_args(_glue(argv, _value_options(parser)))
     JSON_OUT = bool(getattr(args, "json", False))
     os.umask(0o077)

@@ -101,46 +101,14 @@ Item {
 
   // ------------------------------------------------------------------ runner
 
-  Component {
-    id: cliRunner
-
-    Process {
-      id: proc
-      property var handler: null
-      property string label: ""
-      running: false
-      stdout: StdioCollector { id: outCollector; waitForEnd: true }
-      stderr: StdioCollector { id: errCollector; waitForEnd: true }
-      onExited: function (exitCode) {
-        var payload = Model.parseJson(outCollector.text, null)
-        if (proc.handler) {
-          proc.handler(exitCode === 0 && payload && payload.ok !== false,
-                       payload, String(errCollector.text || ""))
-        }
-        Qt.callLater(function () { proc.destroy() })
-      }
-    }
-  }
-
   function run(args, handler, label) {
-    if (!cliPath || cliPath.indexOf("bin/olook") === -1) {
-      root.error = "Mail engine not found next to the plugin."
-      return null
-    }
-    var command = [cliPath, "--json"].concat(args)
-    var process = cliRunner.createObject(root, {
-      command: command, handler: handler, label: label || ""
-    })
-    if (!process) {
-      root.error = "Could not start the mail engine."
-      return null
-    }
-    process.running = true
-    return process
+    return runWithInput(args, "", handler, label)
   }
 
-  // Same runner, but the payload goes in on stdin — passwords and message
-  // bodies never belong on a command line other processes can read.
+  // Every engine call goes through here, with nothing on its command line
+  // but --argv-stdin: the arguments follow on stdin as one JSON line, then
+  // the payload. A command line is readable by every account on this
+  // machine, and these carry searches, appointments, contacts, passwords.
   Component {
     id: stdinRunner
 
@@ -174,8 +142,9 @@ Item {
       return null
     }
     var process = stdinRunner.createObject(root, {
-      command: [cliPath, "--json"].concat(args),
-      payload: String(input === undefined || input === null ? "" : input),
+      command: [cliPath, "--argv-stdin"],
+      payload: JSON.stringify(["--json"].concat(args.map(String))) + "\n"
+        + String(input === undefined || input === null ? "" : input),
       handler: handler, label: label || ""
     })
     if (!process) {
@@ -669,10 +638,10 @@ Item {
     }
     root.extrasAuthorizing = true
     root.extrasNeedApproval = false
-    var args = [cliPath, "contacts-auth", "--account", id, "--stream"]
+    var args = ["contacts-auth", "--account", id, "--stream"]
     if (readOnly) args.push("--read-only")
     var process = authRunner.createObject(root, {
-      command: args,
+      argv: args,
       handler: function (event) {
         var kind = String(event.event || "")
         if (kind === "error") {
@@ -1685,7 +1654,7 @@ Item {
     var id = String(accountId || root.accountId || "")
     if (!id) return null
     var process = authRunner.createObject(root, {
-      command: [cliPath, "auth", id, "--stream"],
+      argv: ["auth", id, "--stream"],
       handler: handler
     })
     if (process) process.running = true
@@ -1697,6 +1666,15 @@ Item {
 
     Process {
       id: authProc
+      // Account ids are email addresses: arguments go in on stdin, as for
+      // every other engine call (see runWithInput).
+      property var argv: []
+      command: [root.cliPath, "--argv-stdin"]
+      stdinEnabled: true
+      onStarted: {
+        authProc.write(JSON.stringify(authProc.argv.map(String)) + "\n")
+        authProc.stdinEnabled = false
+      }
       property var handler: null
       running: false
       stdout: SplitParser {
@@ -2000,7 +1978,14 @@ Item {
     Process {
       id: watchProc
       property string accountId: ""
-      command: [root.cliPath, "--json", "watch", "--account", watchProc.accountId]
+      // The account id (an email address) on stdin, not the command line:
+      // this process runs for as long as the window is open.
+      command: [root.cliPath, "--argv-stdin"]
+      stdinEnabled: true
+      onStarted: {
+        watchProc.write(JSON.stringify(["--json", "watch", "--account", watchProc.accountId]) + "\n")
+        watchProc.stdinEnabled = false
+      }
       running: false
       stdout: SplitParser {
         onRead: function (line) {

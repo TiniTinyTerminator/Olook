@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.11
+
+**Security**
+- Nothing the window asks of the engine is on a command line any more:
+  searches, appointments being added or edited, contacts being saved, mail
+  rules and account addresses were engine arguments, readable by every
+  account on the machine through /proc while the engine ran. Every call now
+  passes `--argv-stdin` and its arguments as a JSON line on stdin, including
+  the IMAP watchers and sign-ins, which run for minutes.
+
 ## 1.2.10
 
 - Clicking a new-mail notification opens that message in a window of its
