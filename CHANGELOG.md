@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.7
+
+**Security**
+- New-mail notifications no longer carry the sender and subject on a
+  command line, where every account on the machine could read them through
+  /proc while the notification waited for a click. `olook notify` takes the
+  text on stdin and hands it to the notification server over D-Bus (with
+  PyGObject, which Omarchy ships; without it, the notification only says
+  which app it is from).
+- An appointment opened from Olook Calendar 1.0.7 is named by its uid and
+  day, and read from Olook's own cache, instead of arriving with its title,
+  place and notes on the command line.
+
 ## 1.2.6
 
 Proton Mail, from the reports on #1:

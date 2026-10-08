@@ -761,6 +761,26 @@ Item {
     }, "calendar")
   }
 
+  // One appointment by its uid and day, read from the engine's cache. The
+  // bar's calendar names an appointment this way rather than sending its
+  // contents, which on a command line any local account could read.
+  // A recurring appointment shares its uid across days; the day picks one.
+  function findEvent(day, uid, handler) {
+    var start = new Date(String(day) + "T00:00:00")
+    if (isNaN(start.getTime()) || !uid) { handler(null); return }
+    var next = new Date(start.getTime() + 36 * 3600 * 1000)
+    run(["calendar", "--start", String(day), "--end", Qt.formatDate(next, "yyyy-MM-dd")],
+        function (ok, payload) {
+      var list = ok && payload ? payload.events || [] : []
+      for (var i = 0; i < list.length; i++)
+        if (String(list[i].uid) === String(uid) && String(list[i].day) === String(day)) {
+          handler(list[i])
+          return
+        }
+      handler(null)
+    }, "calendar")
+  }
+
   // CalDAV servers added by hand -- Nextcloud, Fastmail, iCloud -- which
   // stand beside the mail accounts as calendar accounts of their own.
   property var calendarServers: []

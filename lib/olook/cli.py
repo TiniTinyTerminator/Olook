@@ -2048,6 +2048,68 @@ def cmd_finish_setup(args):
     emit(payload, _describe_setup)
 
 
+def cmd_notify(args):
+    """A desktop notification whose text never touches a command line.
+
+    notify-send takes the title and body as arguments, and a process's
+    arguments are readable by every account on the machine (/proc) for as
+    long as it runs -- which, waiting for a click, is minutes. So the text
+    comes in on stdin as JSON ({"summary", "body", "app", "icon"}) and goes
+    to the notification server over D-Bus. Prints the action when the
+    notification is clicked, as `notify-send --action` does, and exits when
+    it is answered, closed, or after --wait seconds.
+
+    Without PyGObject there is no D-Bus here, and the notification says only
+    which app it is from: less useful, but nothing private on display.
+    """
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except ValueError:
+        data = {}
+    app = str(data.get("app") or "Olook")
+    icon = str(data.get("icon") or "")
+    summary = str(data.get("summary") or app)
+    body = str(data.get("body") or "")
+    try:
+        import gi
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio, GLib
+    except (ImportError, ValueError):
+        done = subprocess.run(["notify-send", f"--app-name={app}", f"--icon={icon}",
+                               "--action=default=Open", "--", app, "Open to see it"],
+                              capture_output=True, text=True, timeout=args.wait + 5)
+        if done.stdout.strip():
+            print(done.stdout.strip(), flush=True)
+        return
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    loop = GLib.MainLoop()
+    sent = {"id": None}
+
+    def answered(_conn, _sender, _path, _iface, name, params):
+        values = params.unpack()
+        if values[0] != sent["id"]:
+            return
+        if name == "ActionInvoked":
+            print(values[1], flush=True)
+        loop.quit()
+
+    # Listening before sending, so an answer cannot arrive unheard.
+    for signal in ("ActionInvoked", "NotificationClosed"):
+        bus.signal_subscribe(None, "org.freedesktop.Notifications", signal,
+                             "/org/freedesktop/Notifications", None,
+                             Gio.DBusSignalFlags.NONE, answered)
+    reply = bus.call_sync(
+        "org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications", "Notify",
+        GLib.Variant("(susssasa{sv}i)",
+                     (app, 0, icon, summary, body, ["default", "Open"], {}, -1)),
+        GLib.VariantType("(u)"), Gio.DBusCallFlags.NONE, -1, None)
+    sent["id"] = reply.unpack()[0]
+    GLib.timeout_add_seconds(max(1, args.wait), loop.quit)
+    loop.run()
+
+
 def cmd_seen(args):
     """Mark every inbox as looked at, up to the newest message in it.
 
@@ -2496,6 +2558,13 @@ def build_parser():
     p.add_argument("--fingerprint",
                    help="pin only if the server presents this SHA-256 fingerprint")
     p.set_defaults(func=cmd_trust_cert)
+
+    p = sub.add_parser("notify", help="show a notification read from stdin as JSON "
+                                      "(summary, body, app, icon); prints the action "
+                                      "when clicked")
+    p.add_argument("--wait", type=int, default=600,
+                   help="seconds to wait for a click (default 600)")
+    p.set_defaults(func=cmd_notify)
 
     p = sub.add_parser("test", help="check IMAP and SMTP credentials")
     p.add_argument("account", nargs="?")

@@ -121,6 +121,17 @@ Item {
       root.popOutEvent(payload.event)
       return
     }
+    // Olook Calendar 1.0.7 and later name the appointment instead of sending
+    // it -- a command line is readable by every local account -- and it is
+    // read here. An Olook from before this opens the calendar on it instead.
+    if (payload.popout && payload.view === "calendar" && payload.eventUid) {
+      mail.findEvent(payload.day, payload.eventUid, function (found) {
+        if (found) root.popOutEvent(found)
+        else root.open(JSON.stringify({ view: "calendar", day: payload.day,
+                                        eventUid: payload.eventUid }))
+      })
+      return
+    }
 
     if (payload.popout && payload.uid) {
       root.popOutReader({

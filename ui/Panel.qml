@@ -208,13 +208,17 @@ Panel {
         if (oldest) oldest.running = false
       }
       var process = notifier.createObject(root, {
-        // "--" first: the sender picks their own name, and one starting with
-        // a dash would otherwise be read as an option.
-        command: ["notify-send", "--app-name=Mail", "--icon=mail-unread",
-                  "--action=default=Open", "--",
-                  Model.senderLabel(message),
-                  Model.notifyText(String(message.subject || "")
-                    + (count > 1 ? "\nand " + (count - 1) + " more" : ""))],
+        // Through the engine, the text on its stdin: a command line is
+        // readable by every account on this machine for as long as the
+        // notification waits, and who wrote to you and about what is not
+        // theirs to read.
+        command: [mail.cliPath, "notify"],
+        payload: JSON.stringify({
+          app: "Mail", icon: "mail-unread",
+          summary: Model.senderLabel(message),
+          body: Model.notifyText(String(message.subject || "")
+            + (count > 1 ? "\nand " + (count - 1) + " more" : ""))
+        }),
         target: {
           account: String(message.account || ""),
           folder: String(message.folder || ""),
@@ -233,7 +237,13 @@ Panel {
     Process {
       id: notifyProc
       property var target: null
+      property string payload: ""
       running: false
+      stdinEnabled: true
+      onStarted: {
+        notifyProc.write(notifyProc.payload)
+        notifyProc.stdinEnabled = false
+      }
       stdout: SplitParser {
         onRead: function (line) {
           // Anything on stdout is the key of the action that was invoked;
