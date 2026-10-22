@@ -480,7 +480,7 @@ Item {
       for (var i = 0; i < root.eventWindows.length; i++)
         if (root.eventWindows[i] !== win) kept.push(root.eventWindows[i])
       root.eventWindows = kept
-      Qt.callLater(function () { win.destroy() })
+      Qt.callLater(function (gone) { if (gone) gone.destroy() }, win)
     })
     // From the appointment to where it sits among the rest.
     win.calendarRequested.connect(function (shown) {
@@ -521,7 +521,7 @@ Item {
       for (var i = 0; i < root.readerWindows.length; i++)
         if (root.readerWindows[i] !== win) kept.push(root.readerWindows[i])
       root.readerWindows = kept
-      Qt.callLater(function () { win.destroy() })
+      Qt.callLater(function (gone) { if (gone) gone.destroy() }, win)
     })
     win.composeRequested.connect(function (kind, message, account) {
       mail.buildDraft(message, kind, function (draft) {
@@ -550,7 +550,7 @@ Item {
       for (var i = 0; i < root.composeWindows.length; i++)
         if (root.composeWindows[i] !== win) kept.push(root.composeWindows[i])
       root.composeWindows = kept
-      Qt.callLater(function () { win.destroy() })
+      Qt.callLater(function (gone) { if (gone) gone.destroy() }, win)
     })
     return win
   }
@@ -1327,7 +1327,12 @@ Item {
                   onPopOutRequested: if (mail.selected) root.popOutReader(mail.selected, null)
                   onThreadMessageRequested: function (entry) { mail.openMessage(entry) }
                   onAttachmentRequested: function (index) {
-                    if (mail.selected) mail.saveAttachment(mail.selected, index, true)
+                    if (mail.selected) mail.saveAttachment(mail.selected, index, true,
+                      function (line) { readerPane.attachmentNote = line })
+                  }
+                  onAttachmentSaveRequested: function (index) {
+                    if (mail.selected) mail.saveAttachment(mail.selected, index, false,
+                      function (line) { readerPane.attachmentNote = line })
                   }
                 }
 

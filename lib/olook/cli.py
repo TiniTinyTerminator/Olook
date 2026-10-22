@@ -1530,15 +1530,54 @@ def _with_rich(body, allow_remote=False):
     return body
 
 
+# Files that run rather than open: a sender's .desktop file or script is
+# saved, never handed to whatever runs it.
+_RUNNABLE = {".desktop", ".sh", ".bash", ".zsh", ".fish", ".py", ".pl", ".rb",
+             ".appimage", ".run", ".bin", ".jar", ".exe", ".msi", ".bat", ".cmd",
+             ".com", ".scr", ".ps1", ".vbs", ".js", ".flatpakref", ".deb", ".rpm"}
+
+
+def _downloads_dir():
+    """Where a saved attachment goes: the desktop's Downloads folder."""
+    try:
+        done = subprocess.run(["xdg-user-dir", "DOWNLOAD"], capture_output=True,
+                              text=True, timeout=5)
+        found = done.stdout.strip()
+        if done.returncode == 0 and found and found != str(pathlib.Path.home()):
+            return found
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return str(pathlib.Path.home() / "Downloads")
+
+
 def cmd_attachment(args):
+    """Open an attachment in its own app, or save it to Downloads.
+
+    Opening uses a private copy in the cache and the app the desktop has
+    chosen for that type (xdg-open: a PDF viewer, an image viewer) -- not the
+    browser, which is for links.
+    """
     account = config.account(args.account)
     with mailbox.Session(account) as session:
         session.select(args.folder, readonly=True)
         raw = session.fetch_message(args.uid)
-        path = message.save_part(raw, args.index, args.dest)
+        dest = args.dest or (None if args.open else _downloads_dir())
+        path = message.save_part(raw, args.index, dest)
+    opened = False
     if args.open:
-        _open_url(path)
-    emit({"ok": True, "path": path}, lambda d: d["path"])
+        if os.path.splitext(path)[1].lower() in _RUNNABLE:
+            # Kept, but not run: the user can look at it in Downloads.
+            moved = message.save_part(raw, args.index, _downloads_dir())
+            os.unlink(path)
+            emit({"ok": True, "path": moved, "opened": False, "runnable": True},
+                 lambda d: f"Not opened, as it would run: saved to {d['path']}")
+            return
+        if shutil.which("xdg-open"):
+            subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            opened = True
+    emit({"ok": True, "path": path, "opened": opened},
+         lambda d: ("Opened " if d["opened"] else "Saved to ") + d["path"])
 
 
 def cmd_flag(args):
@@ -1750,7 +1789,7 @@ def cmd_unmove(args):
     with mailbox.Session(account) as session:
         session.select(args.folder, readonly=False)
         for message_id in args.message_id:
-            found = session.search_uids(f'HEADER Message-ID "{message_id}"')
+            found = session.find_message_id(message_id)
             if not found:
                 missing.append(message_id)
                 continue
@@ -1799,8 +1838,8 @@ def cmd_search(args):
         session.select(args.folder or "INBOX", readonly=True)
         # Quoted as IMAP wants it, and on one line: a line break would end the
         # command early and start another one.
-        escaped = " ".join(args.query.split()).replace("\\", "\\\\").replace('"', '\\"')
-        uids = session.search_uids(f'TEXT "{escaped}"', limit=args.limit)
+        uids = session.search_uids("TEXT " + mailbox.search_string(args.query),
+                                   limit=args.limit)
         rows = [mailbox.header_row(account["id"], args.folder or "INBOX", item)
                 for item in session.fetch_headers(uids)]
     store.upsert_messages(conn, rows)

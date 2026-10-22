@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.12
+
+**Attachments**
+- Clicking an attachment opens it in the app your desktop uses for that kind
+  of file (a PDF viewer, an image viewer), from the main window and from a
+  message in its own window. It went to the browser, or nowhere.
+- The download icon on an attachment saves it to your Downloads folder, and
+  says where under the attachments. Saving used to put it in a hidden cache.
+- A file that would run rather than open (a .desktop file, a script, a
+  program) is saved to Downloads and never opened.
+
+**Security**
+- New-mail notifications say only that mail arrived, unless you choose
+  otherwise (Settings → Bar widget → Show sender and subject in
+  notifications): Omarchy's notification service currently passes every
+  notification's text to a short-lived process other accounts could read.
+- Undo found the messages to put back with an IMAP search on Message-ID,
+  which matches substrings: a message with an id like "@" could make Undo
+  move others. Only an exact match is moved now, and the search text is
+  quoted properly on one line.
+- An attachment is never written through a file or symlink already at its
+  name.
+
+**Fixed** (thanks @jbsot17, #5)
+- A binding loop in the menus logged thousands of warnings.
+- "Cannot call method 'destroy' of null" after an engine process ended.
+- Finish setup offered to restore a mailto: handler that no longer worked.
+- The message view uses Qt 6.9's WebEngineProfilePrototype, which Qt warned
+  the old profile type would be removed for. Still off the record, no cache,
+  no cookies kept.
+- A stale comment in argcshim.c pointed at a Hyprland file Omarchy 4 no
+  longer uses.
+
 ## 1.2.11
 
 **Security**

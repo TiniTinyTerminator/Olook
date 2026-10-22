@@ -104,6 +104,14 @@ def _b64(raw):
     return base64.b64encode(raw).decode("ascii").rstrip("=")
 
 
+def search_string(text):
+    """Text for a SEARCH key, as an IMAP quoted string: one line (a line
+    break would end the command and start another), backslashes and quotes
+    escaped."""
+    flat = " ".join(str(text or "").split())
+    return '"' + flat.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def quote(name):
     escaped = encode_folder(name).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
@@ -527,6 +535,35 @@ class Session:
             if uid:
                 out[uid] = _flags_of(group["raw"])
         return out
+
+    def find_message_id(self, message_id):
+        """UIDs in the selected folder whose Message-ID is exactly this one.
+
+        SEARCH HEADER matches substrings, so the server's answer is a list
+        of candidates: an id of "@" -- which anyone can put in a message --
+        matches nearly everything. Each candidate's own header is read and
+        compared whole. Anything that is not an <...> id finds nothing.
+        """
+        wanted = " ".join(str(message_id or "").split())
+        if len(wanted) < 3 or not (wanted.startswith("<") and wanted.endswith(">")):
+            return []
+        found = self.search_uids("HEADER Message-ID " + search_string(wanted))
+        if not found:
+            return []
+        data = self._ok(
+            self.imap.uid("FETCH", uid_ranges(found),
+                          "(UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])"),
+            "Could not read message headers")
+        exact = []
+        for group in _group_fetch(data):
+            uid = _uid_of(group["raw"])
+            if not uid or not group["literals"]:
+                continue
+            parsed = email.message_from_bytes(group["literals"][0],
+                                              policy=email.policy.default)
+            if " ".join(str(parsed.get("Message-ID") or "").split()) == wanted:
+                exact.append(uid)
+        return sorted(exact)
 
     def fetch_thread_headers(self, uids):
         """{uid: (references, in_reply_to)} for messages in the selected folder."""

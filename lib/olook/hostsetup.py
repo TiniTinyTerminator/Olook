@@ -287,6 +287,28 @@ def _refresh_desktop_database():
                        capture_output=True, timeout=30)
 
 
+def _handler_works(desktop_name):
+    """Whether a desktop entry still starts something: its TryExec, or the
+    first word of its Exec, can be found."""
+    dirs = [Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local" / "share")]
+    dirs += [Path(d) for d in (os.environ.get("XDG_DATA_DIRS")
+                               or "/usr/local/share:/usr/share").split(":") if d]
+    for base in dirs:
+        entry = base / "applications" / desktop_name
+        try:
+            text = entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        fields = dict(line.split("=", 1) for line in text.splitlines()
+                      if "=" in line and not line.startswith("#"))
+        program = (fields.get("TryExec") or fields.get("Exec") or "").split()
+        if not program:
+            return False
+        name = program[0].strip('"')
+        return bool(shutil.which(name)) if "/" not in name else os.access(name, os.X_OK)
+    return False
+
+
 def _register_mailto():
     """The mailto: handler, and the default -- only if the entry is Olook's."""
     trouble = _place(DESKTOP_FILE, _mailto_entry(), 0o644, *_legacy_mailto_entries())
@@ -297,7 +319,11 @@ def _register_mailto():
         subprocess.run(["xdg-mime", "default", DESKTOP_NAME, "x-scheme-handler/mailto"],
                        capture_output=True, timeout=10)
     _refresh_desktop_database()
-    return (previous if previous != DESKTOP_NAME else ""), ""
+    # Offered back only if it would still work: a handler left behind by an
+    # uninstalled app points at a program that is gone.
+    if previous == DESKTOP_NAME or not _handler_works(previous):
+        return "", ""
+    return previous, ""
 
 
 def _register_launcher():

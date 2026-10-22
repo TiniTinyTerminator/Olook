@@ -263,7 +263,7 @@ def save_draft(account, draft, replace_uid=0):
         session.select(folder, readonly=False)
         # The APPEND response only carries the new uid on servers with
         # UIDPLUS, so find it the way any server can answer.
-        uids = session.search_uids(f'HEADER Message-ID "{msg["Message-ID"]}"')
+        uids = session.find_message_id(msg["Message-ID"])
         uid = uids[-1] if uids else 0
         if replace_uid and int(replace_uid) != uid:
             _remove_draft(session, int(replace_uid))

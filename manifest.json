@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ttt.olook",
   "name": "Olook",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "author": "TiniTinyTerminator",
   "license": "MIT",
   "description": "Olook: an Outlook-style mail client for Omarchy — Gmail, Outlook.com, Microsoft 365 and any IMAP server, with calendar and contacts, a mail panel in the bar, and pictures blocked until you allow them.",
@@ -30,6 +30,7 @@
     "defaults": {
       "syncIntervalSec": 180,
       "notify": true,
+      "notifyDetails": false,
       "panelMessageCount": 8,
       "unreadOnlyBadge": false,
       "badge": "Dot when new mail arrives"
@@ -49,6 +50,13 @@
         "type": "boolean",
         "label": "Desktop notification on new mail",
         "defaultValue": true
+      },
+      {
+        "key": "notifyDetails",
+        "type": "boolean",
+        "label": "Show sender and subject in notifications",
+        "defaultValue": false,
+        "description": "Off: the notification only says new mail arrived. Omarchy's notification service currently passes every notification's text to a short-lived process, where other accounts on this computer could read it."
       },
       {
         "key": "panelMessageCount",

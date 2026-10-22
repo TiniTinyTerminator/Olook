@@ -127,9 +127,11 @@ Item {
     }
   }
 
-  WebEngineProfile {
+  // Off the record (no storage name), no cache, no cookies kept. Declared
+  // through the prototype, as Qt 6.9 asks: a bare WebEngineProfile in QML is
+  // on its way out.
+  WebEngineProfilePrototype {
     id: sealed
-    offTheRecord: true
     httpCacheType: WebEngineProfile.NoCache
     persistentCookiesPolicy: WebEngineProfile.NoPersistentCookies
   }
@@ -137,7 +139,7 @@ Item {
   WebEngineView {
     id: view
     anchors.fill: parent
-    profile: sealed
+    profile: sealed.instance()
     backgroundColor: root.paper
 
     settings.javascriptEnabled: false

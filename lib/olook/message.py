@@ -195,14 +195,19 @@ def save_part(msg, index, dest_dir=None, filename=None):
         payload = part.get_payload(decode=True) or b""
         name = filename or mailbox.decode_mime(part.get_filename() or f"part-{index}")
         name = os.path.basename(name).replace("/", "_") or f"part-{index}"
-        target = dest_dir / name
-        counter = 1
-        while target.exists():
-            stem, suffix = os.path.splitext(name)
-            target = dest_dir / f"{stem}-{counter}{suffix}"
-            counter += 1
-        target.write_bytes(payload)
-        return str(target)
+        stem, suffix = os.path.splitext(name)
+        for counter in range(1000):
+            target = dest_dir / (name if counter == 0 else f"{stem}-{counter}{suffix}")
+            # Created, never opened: an existing file -- or a symlink planted
+            # at the name -- is skipped rather than written through.
+            try:
+                fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                continue
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+            return str(target)
+        raise ValueError(f"Too many files called {name} in {dest_dir}")
     raise ValueError(f"No part at index {index}")
 
 

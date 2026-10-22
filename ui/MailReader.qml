@@ -28,7 +28,12 @@ Item {
   signal deleteRequested()
   signal flagRequested()
   signal unreadRequested()
+  // Click: open in its own app. The download icon: save to Downloads.
   signal attachmentRequested(int index)
+  signal attachmentSaveRequested(int index)
+  // What became of the last attachment asked for, said under the chips:
+  // a pop-out reader has no status bar to say it in.
+  property string attachmentNote: ""
   signal showImagesRequested()
   signal popOutRequested()
   signal threadMessageRequested(var entry)
@@ -111,7 +116,10 @@ Item {
 
   // Remote pictures are a decision about one sender, and they do not carry
   // over to the next message.
-  onMessageChanged: root.remoteImages = false
+  onMessageChanged: {
+    root.remoteImages = false
+    root.attachmentNote = ""
+  }
 
   Rectangle {
     anchors.fill: parent
@@ -585,6 +593,18 @@ Item {
             textFormat: Text.PlainText
             x: bodyColumn.gutter
             width: parent.width - bodyColumn.gutter * 2
+            visible: root.attachmentNote !== "" && root.attachments.length > 0
+            text: root.attachmentNote
+            color: ui.dim
+            font.family: ui.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WrapAnywhere
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            x: bodyColumn.gutter
+            width: parent.width - bodyColumn.gutter * 2
             visible: root.loadingBody
             text: "Loading message…"
             color: ui.faint
@@ -868,11 +888,39 @@ Item {
         font.family: ui.fontFamily
         font.pixelSize: Style.font.caption
       }
+
+      // Save to Downloads. Its own hover area, above the chip's, so a
+      // click here saves rather than opens.
+      Text {
+        id: saveGlyph
+        textFormat: Text.PlainText
+        anchors.verticalCenter: parent.verticalCenter
+        text: "󰇚"
+        color: saveHover.containsMouse ? ui.accent : ui.dim
+        font.family: ui.fontFamily
+        font.pixelSize: Style.font.iconSmall
+
+        MouseArea {
+          id: saveHover
+          anchors.fill: parent
+          anchors.margins: -Style.space(4)
+          z: 1
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.attachmentSaveRequested(chip.part ? chip.part.index : 0)
+        }
+        PanelToolTip {
+          visible: saveHover.containsMouse
+          text: "Save to Downloads"
+          fontFamily: ui.fontFamily
+        }
+      }
     }
 
     MouseArea {
       id: chipHover
       anchors.fill: parent
+      z: -1
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: root.attachmentRequested(chip.part ? chip.part.index : 0)

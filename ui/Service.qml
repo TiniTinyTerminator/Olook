@@ -131,7 +131,7 @@ Item {
           inProc.handler(exitCode === 0 && parsed && parsed.ok !== false,
                          parsed, String(inErr.text || ""))
         }
-        Qt.callLater(function () { inProc.destroy() })
+        Qt.callLater(function (gone) { if (gone) gone.destroy() }, inProc)
       }
     }
   }
@@ -1632,19 +1632,29 @@ Item {
     }, "send")
   }
 
-  function saveAttachment(entry, index, open) {
+  // `open`: in the app the desktop picked for its type, from a private
+  // copy. Otherwise saved to Downloads. `done` gets one line saying which.
+  function saveAttachment(entry, index, open, done) {
     if (!entry) return
     var args = accountArgs(["attachment", "--folder", entry.folder,
                             "--uid", String(entry.uid), "--index", String(index)],
                            entry.account)
     if (open) args.push("--open")
+    if (done) done(open ? "Opening…" : "Saving…")
     run(args, function (ok, payload, stderrText) {
       if (!ok) {
-        reportFailure(payload, stderrText, "Could not save the attachment")
+        reportFailure(payload, stderrText, open ? "Could not open the attachment"
+                                                : "Could not save the attachment")
+        if (done) done(open ? "Could not open it." : "Could not save it.")
         return
       }
-      root.notice = "Saved to " + String(payload.path || "")
-      noticeTimer.restart()
+      var path = String(payload.path || "")
+      var line = payload.runnable
+        ? "Not opened, because it would run as a program. Saved to " + path
+        : payload.opened ? "" : "Saved to " + path
+      root.notice = line !== "" ? line : root.notice
+      if (line !== "") noticeTimer.restart()
+      if (done) done(line)
     }, "attachment")
   }
 
@@ -1683,7 +1693,7 @@ Item {
           if (event && authProc.handler) authProc.handler(event)
         }
       }
-      onExited: Qt.callLater(function () { authProc.destroy() })
+      onExited: Qt.callLater(function (gone) { if (gone) gone.destroy() }, authProc)
     }
   }
 
@@ -1899,7 +1909,7 @@ Item {
           if (line !== "") paths.push(line)
         }
         if (pickProc.handler) pickProc.handler(exitCode === 0 ? paths : [])
-        Qt.callLater(function () { pickProc.destroy() })
+        Qt.callLater(function (gone) { if (gone) gone.destroy() }, pickProc)
       }
     }
   }
@@ -1962,7 +1972,7 @@ Item {
     delete root.watchProcs[accountId]
     root.watchCount = Object.keys(root.watchProcs).length
     process.running = false
-    Qt.callLater(function () { process.destroy() })
+    Qt.callLater(function (gone) { if (gone) gone.destroy() }, process)
   }
 
   function stopWatching() {
@@ -2004,7 +2014,7 @@ Item {
           delete root.watchProcs[watchProc.accountId]
           root.watchCount = Object.keys(root.watchProcs).length
         }
-        Qt.callLater(function () { watchProc.destroy() })
+        Qt.callLater(function (gone) { if (gone) gone.destroy() }, watchProc)
       }
     }
   }

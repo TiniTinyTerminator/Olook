@@ -28,6 +28,9 @@ Panel {
     return isFinite(value) ? Math.max(3, Math.min(20, value)) : 8
   }
   readonly property bool hideWhenRead: setting("unreadOnlyBadge", false) === true
+  // Who wrote and about what, in the notification: off unless chosen (see
+  // the setting's description in manifest.json).
+  readonly property bool notifyDetails: setting("notifyDetails", false) === true
   // notify-send processes waiting for their popup to be answered; see onNewMail.
   property var liveNotifications: []
 
@@ -213,11 +216,15 @@ Panel {
         // notification waits, and who wrote to you and about what is not
         // theirs to read.
         command: [mail.cliPath, "notify"],
-        payload: JSON.stringify({
+        payload: JSON.stringify(root.notifyDetails ? {
           app: "Mail", icon: "mail-unread",
           summary: Model.senderLabel(message),
           body: Model.notifyText(String(message.subject || "")
             + (count > 1 ? "\nand " + (count - 1) + " more" : ""))
+        } : {
+          app: "Mail", icon: "mail-unread",
+          summary: count > 1 ? count + " new messages" : "New message",
+          body: "Click to read it"
         }),
         target: {
           account: String(message.account || ""),
@@ -262,7 +269,7 @@ Panel {
         root.liveNotifications = root.liveNotifications.filter(function (item) {
           return item !== notifyProc
         })
-        Qt.callLater(function () { notifyProc.destroy() })
+        Qt.callLater(function (gone) { if (gone) gone.destroy() }, notifyProc)
       }
 
       // An unanswered notification lets go after a while: the popup stays

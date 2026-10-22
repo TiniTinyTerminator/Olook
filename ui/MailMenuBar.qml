@@ -182,6 +182,9 @@ Item {
       // the right, which means the panel cannot take its width from them —
       // that is a loop. Measure the labels instead, with a Text kept off
       // screen for the purpose.
+      // Measured with FontMetrics, which answers without changing anything:
+      // probe Texts whose text was set inside this binding made it depend on
+      // what it had just written, a binding loop logged thousands of times.
       function measure() {
         var widest = Style.space(150)
         for (var i = 0; i < panel.items.length; i++) {
@@ -189,15 +192,13 @@ Item {
           if (!item) continue
           var kind = String(item.kind || "item")
           if (kind === "separator") continue
-          probe.font.pixelSize = kind === "header" ? Style.font.caption
-                                                   : Style.font.bodySmall
-          probe.text = String(item.label || "")
-          shortcutProbe.text = String(item.shortcut || "")
-          var needed = Style.space(34) + probe.implicitWidth
-            + Style.space(28) + shortcutProbe.implicitWidth
+          var label = (kind === "header" ? captionMetrics : bodyMetrics)
+            .advanceWidth(String(item.label || ""))
+          var needed = Style.space(34) + label + Style.space(28)
+            + captionMetrics.advanceWidth(String(item.shortcut || ""))
           if (needed > widest) widest = needed
         }
-        return widest
+        return Math.ceil(widest)
       }
 
       width: panel.measure()
@@ -207,14 +208,8 @@ Item {
       border.width: 1
       border.color: ui.border
 
-      Text { id: probe; textFormat: Text.PlainText; visible: false; font.family: ui.fontFamily }
-      Text {
-        id: shortcutProbe
-        textFormat: Text.PlainText
-        visible: false
-        font.family: ui.fontFamily
-        font.pixelSize: Style.font.caption
-      }
+      FontMetrics { id: bodyMetrics; font.family: ui.fontFamily; font.pixelSize: Style.font.bodySmall }
+      FontMetrics { id: captionMetrics; font.family: ui.fontFamily; font.pixelSize: Style.font.caption }
 
       Column {
         id: menuColumn

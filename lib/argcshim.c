@@ -20,7 +20,8 @@
  * Quickshell, and only when argc really is 0. In every other process it is
  * dead weight and nothing more.
  *
- * Built by install.sh; loaded by an LD_PRELOAD line in ~/.config/hypr/envs.conf.
+ * Built by Finish setup (olook finish-setup); loaded by an LD_PRELOAD line,
+ * hl.env("LD_PRELOAD", ...), in ~/.config/hypr/hyprland.lua.
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>

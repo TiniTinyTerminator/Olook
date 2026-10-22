@@ -70,7 +70,13 @@ FloatingWindow {
       window.service.toggleRead(window.message)
     onAttachmentRequested: function (index) {
       if (window.service && window.message)
-        window.service.saveAttachment(window.message, index)
+        window.service.saveAttachment(window.message, index, true,
+          function (line) { reader.attachmentNote = line })
+    }
+    onAttachmentSaveRequested: function (index) {
+      if (window.service && window.message)
+        window.service.saveAttachment(window.message, index, false,
+          function (line) { reader.attachmentNote = line })
     }
     onShowImagesRequested: {
       if (!window.service || !window.message) return
