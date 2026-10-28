@@ -565,6 +565,24 @@ class Session:
                 exact.append(uid)
         return sorted(exact)
 
+    def search_text(self, text, limit=0):
+        """UIDs of messages containing `text` anywhere, in the selected folder.
+
+        ASCII goes as a quoted string. Anything else -- é, ü, ñ -- can't be
+        (imaplib refused it outright, and the search failed): it goes as a
+        UTF-8 literal under CHARSET UTF-8, which RFC 3501 requires servers
+        to accept.
+        """
+        flat = " ".join(str(text or "").split())
+        if flat.isascii():
+            return self.search_uids("TEXT " + search_string(flat), limit=limit)
+        self.imap.literal = flat.encode("utf-8")
+        status, data = self.imap.uid("SEARCH", "CHARSET", "UTF-8", "TEXT")
+        if status != "OK":
+            return []
+        uids = sorted(int(x) for x in (data[0] or b"").split())
+        return uids[-limit:] if limit else uids
+
     def fetch_thread_headers(self, uids):
         """{uid: (references, in_reply_to)} for messages in the selected folder."""
         out = {}

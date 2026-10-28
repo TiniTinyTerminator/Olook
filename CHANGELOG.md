@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.2.14
 
 - Spectrum / Roadrunner (rr.com) accounts work: setup finds mail.twc.com,
   whose IMAP only offers older TLS ciphers without forward secrecy, and
   allows those for that account; the certificate is still checked. Any
   account can opt in with `olook set ACCOUNT --legacy-ciphers`, and a
   connection reset during the handshake now says so. (thanks @grininmonkey, #6)
+- Searching the server for text with accents or other non-ASCII letters
+  (café, über, 日本) failed with an encoding error; it is sent as UTF-8 now.
+- Saving an attachment that is no longer in the message says so instead of
+  failing with an internal error.
 
 ## 1.2.13
 

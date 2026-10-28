@@ -1566,7 +1566,10 @@ def cmd_attachment(args):
         session.select(args.folder, readonly=True)
         raw = session.fetch_message(args.uid)
         dest = args.dest or (None if args.open else _downloads_dir())
-        path = message.save_part(raw, args.index, dest)
+        try:
+            path = message.save_part(raw, args.index, dest)
+        except (ValueError, OSError) as exc:
+            raise CliError(f"Could not save that attachment: {exc}") from exc
     opened = False
     if args.open:
         if os.path.splitext(path)[1].lower() in _RUNNABLE:
@@ -1842,8 +1845,7 @@ def cmd_search(args):
         session.select(args.folder or "INBOX", readonly=True)
         # Quoted as IMAP wants it, and on one line: a line break would end the
         # command early and start another one.
-        uids = session.search_uids("TEXT " + mailbox.search_string(args.query),
-                                   limit=args.limit)
+        uids = session.search_text(args.query, limit=args.limit)
         rows = [mailbox.header_row(account["id"], args.folder or "INBOX", item)
                 for item in session.fetch_headers(uids)]
     store.upsert_messages(conn, rows)
