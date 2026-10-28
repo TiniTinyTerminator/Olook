@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.15
+
+**The message view**
+- Resizing the reading pane or a message window fits the message again: a
+  wide newsletter grows back to full size when there is room, and is scaled
+  down instead of cut off when there is not. It was fitted once, when the
+  message opened.
+- The card is as tall as the message, also after the pane gets wider or a
+  shorter message follows a longer one; it used to keep the tallest height
+  it had had, leaving empty space below.
+- A message opened while its window was still appearing could stay shrunk
+  to 40% with a large empty card; it now waits for a real width.
+- A very long message or thread scrolls inside the view instead of being cut
+  off at 24,000 pixels.
+- Switching messages no longer collapses the view before the next one lays
+  out.
+
 ## 1.2.14
 
 - Spectrum / Roadrunner (rr.com) accounts work: setup finds mail.twc.com,

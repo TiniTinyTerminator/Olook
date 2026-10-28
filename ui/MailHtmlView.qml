@@ -29,6 +29,7 @@ Item {
     + 'img-src file: data:; style-src \'unsafe-inline\'">'
     + '<style>html,body{margin:0;padding:0;background:#fbfbf9;color:#16181d;'
     + 'font:14px/1.5 system-ui,sans-serif;height:auto!important}'
+    + 'body{display:flow-root!important}'
     + 'img{max-width:100%;height:auto}</style></head><body>'
     + root.fragment + '</body></html>')
   // Local content needs a local origin before it may load the inline images
@@ -42,10 +43,19 @@ Item {
   // onNavigationRequested.
   property bool loadPending: false
 
-  // A page that sizes itself to the viewport would grow every time we grew to
-  // match it, so the measurement only ever climbs, and stops somewhere sane.
-  readonly property real maxHeight: 24000
+  // The height is the document's own -- its root element's box, read by a
+  // script in an isolated world (the page's own scripts stay off) -- not
+  // WebEngine's contentsSize, which is never less than the view and so could
+  // only ever grow: widening the pane left blank space, and a short message
+  // after a long one kept the long one's height. The old height stays up
+  // until the new reading, so switching messages does not jump.
+  //
+  // Taller than maxHeight, the page scrolls inside the view instead of being
+  // cut off. 16000 stays under the 16384-pixel texture limit many GPUs have,
+  // past which a view this tall can draw blank.
+  readonly property real maxHeight: 16000
   property real measured: 0
+  readonly property bool scrollsItself: root.measured >= root.maxHeight
   readonly property real contentHeight: Math.max(root.measured, 120)
 
   signal linkActivated(string link)
@@ -65,7 +75,6 @@ Item {
   onAllowRemoteChanged: if (root.document !== "") root.reload()
 
   function reload() {
-    root.measured = 0
     root.fitPending = true
     view.zoomFactor = 1
     settle.ticks = 0
@@ -84,8 +93,13 @@ Item {
   property bool fitPending: true
   readonly property real minimumScale: 0.4
 
+  // A pane still opening -- a pop-out window being mapped -- can be a few
+  // pixels wide for a moment. Fitting then shrank the message to the
+  // minimum and left it there; wait for a width that means something.
+  readonly property real minimumFitWidth: 200
+
   function fitWidth() {
-    if (!root.fitPending || root.width <= 0)
+    if (!root.fitPending || root.width < root.minimumFitWidth)
       return
     var natural = view.contentsSize.width
     if (natural <= 0)
@@ -94,11 +108,24 @@ Item {
     if (natural <= root.width + 1)
       return
     view.zoomFactor = Math.max(root.minimumScale, root.width / natural)
-    // The page is a different height at a different scale, and the
-    // measurement only ever climbs, so it starts again from here.
-    root.measured = 0
+    // The page is a different height at a different scale: measure afresh.
     settle.ticks = 0
     settle.restart()
+  }
+
+  // The pane was resized: fit and measure again once it stops moving. Fit
+  // used to be worked out once per message, so widening kept a newsletter
+  // shrunk and narrowing cut it off, and the height never came down.
+  onWidthChanged: if (root.document !== "") refit.restart()
+  Timer {
+    id: refit
+    interval: 150
+    onTriggered: {
+      root.fitPending = true
+      view.zoomFactor = 1
+      settle.ticks = 0
+      settle.restart()
+    }
   }
 
   // contentsSize reports only when it changes. Load a second document that
@@ -110,9 +137,16 @@ Item {
   // page taller.
   function measure() {
     root.fitWidth()
-    var height = view.contentsSize.height * view.zoomFactor
-    if (height > root.measured)
-      root.measured = Math.min(height, root.maxHeight)
+    // Until the new document has loaded, what is there is the old one.
+    if (view.loading)
+      return
+    var zoom = view.zoomFactor
+    view.runJavaScript("document.documentElement.getBoundingClientRect().height",
+                       WebEngineScript.ApplicationWorld, function (height) {
+      var pixels = Number(height) * zoom
+      if (pixels > 0)
+        root.measured = Math.min(Math.ceil(pixels), root.maxHeight)
+    })
   }
 
   Timer {
@@ -197,6 +231,8 @@ Item {
   // through: it takes no buttons.
   MouseArea {
     anchors.fill: parent
+    // A page taller than the view scrolls itself; then the wheel is its.
+    enabled: !root.scrollsItself
     acceptedButtons: Qt.NoButton
     onWheel: function (event) {
       root.wheeled(event.angleDelta.y, event.pixelDelta.y)

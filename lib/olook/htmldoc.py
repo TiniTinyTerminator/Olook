@@ -60,6 +60,10 @@ html { -webkit-text-size-adjust: 100%; }
    here anyway. Height comes from content, and only from content. */
 html, body { height: auto !important; min-height: 0 !important;
              max-height: none !important; }
+/* Its own formatting context, so the first and last element's margins stay
+   inside it: the root's height is then the message's whole height, which is
+   what the view measures. */
+body { display: flow-root !important; }
 body { margin: 0; padding: 0; background: #fbfbf9; color: #16181d;
        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Cantarell, sans-serif;
        overflow-wrap: break-word; }
