@@ -64,9 +64,15 @@ def context(account):
     and the pin is "".
     """
     pin = str(account.get("tlsPin") or "").lower()
-    if not pin:
-        return ssl.create_default_context(), ""
     ctx = ssl.create_default_context()
+    # Some servers (Spectrum/Roadrunner's mail.twc.com) offer only TLS 1.2
+    # ciphers with plain RSA key exchange, which Python's default list leaves
+    # out, so the handshake is reset. Opt-in per account: OpenSSL's DEFAULT
+    # list takes them back, and the certificate is still checked as usual.
+    if account.get("legacyCiphers") is True:
+        ctx.set_ciphers("DEFAULT")
+    if not pin:
+        return ctx, ""
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     return ctx, pin
@@ -89,9 +95,13 @@ def check(sock, pin):
 def explain(host, account, error):
     """A certificate failure, said in a way that says what to do about it."""
     text = str(error)
+    ident = str(account.get("id") or "ACCOUNT")
+    if isinstance(error, ConnectionResetError) and account.get("legacyCiphers") is not True:
+        return (f"{host} reset the connection during the encrypted handshake ({text}). "
+                "Some servers only offer older ciphers that Olook leaves out by default; "
+                f"to allow them for this account: olook set {ident} --legacy-ciphers")
     if "CERTIFICATE_VERIFY_FAILED" not in text and "certificate verify failed" not in text:
         return text
-    ident = str(account.get("id") or "ACCOUNT")
     if config.is_loopback(host):
         return (f"The server on this machine ({host}) uses its own certificate, which "
                 "is normal for Proton Mail Bridge. Trust it from Settings -> this "

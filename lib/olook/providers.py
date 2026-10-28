@@ -172,6 +172,18 @@ BUILTIN = {
 BUILTIN["me.com"] = BUILTIN["icloud.com"]
 BUILTIN["mac.com"] = BUILTIN["icloud.com"]
 
+# Spectrum (Roadrunner, Time Warner Cable): every regional rr.com domain is
+# served by mail.twc.com, whose IMAP only offers TLS 1.2 ciphers without
+# forward secrecy (#6 on the Olook repo).
+SPECTRUM = {
+    "provider": "spectrum", "auth": "password",
+    "imap": {"host": "mail.twc.com", "port": 993, "ssl": True, "starttls": False},
+    "smtp": {"host": "mail.twc.com", "port": 587, "ssl": False, "starttls": True},
+    "legacyCiphers": True,
+    "note": "Spectrum's mail server only offers older TLS ciphers; Olook allows "
+            "them for this account.",
+}
+
 # MX suffix -> settings. Matched against the lowercased MX target.
 MX_MAP = [
     ("mail.protection.outlook.com", MICROSOFT_BUSINESS),
@@ -196,6 +208,8 @@ def discover(email, offline=False):
         return _fallback(domain, "invalid")
 
     builtin = BUILTIN.get(domain)
+    if builtin is None and (domain == "rr.com" or domain.endswith(".rr.com")):
+        builtin = SPECTRUM
     if builtin:
         return _finish(builtin, domain, "builtin")
 
@@ -224,6 +238,8 @@ def _finish(settings, domain, source):
         "source": source,
         "domain": domain,
     }
+    if settings.get("legacyCiphers") is True:
+        out["legacyCiphers"] = True
     if settings.get("note"):
         out["note"] = settings["note"]
     return out

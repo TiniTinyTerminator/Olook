@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Spectrum / Roadrunner (rr.com) accounts work: setup finds mail.twc.com,
+  whose IMAP only offers older TLS ciphers without forward secrecy, and
+  allows those for that account; the certificate is still checked. Any
+  account can opt in with `olook set ACCOUNT --legacy-ciphers`, and a
+  connection reset during the handshake now says so. (thanks @grininmonkey, #6)
+
 ## 1.2.13
 
 - Fixed: the shell could crash when a message was opened, most often from a

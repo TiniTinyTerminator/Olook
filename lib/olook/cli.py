@@ -194,6 +194,8 @@ def cmd_add(args):
         "folders": dict(found.get("folders") or {}),
         "oauth": dict(found.get("oauth") or {}),
     }
+    if found.get("legacyCiphers") is True:
+        entry["legacyCiphers"] = True
     if args.imap_host:
         entry["imap"]["host"] = args.imap_host
     if args.imap_port:
@@ -285,6 +287,8 @@ def cmd_set(args):
     elif args.forget_tls_cert:
         account.pop("tlsPin", None)
         changed.append("tlsPin")
+    if args.legacy_ciphers is not None:
+        put("legacyCiphers", args.legacy_ciphers)
 
     saved = config.upsert(account)
     emit({"ok": True, "account": saved, "changed": changed},
@@ -2721,6 +2725,12 @@ def build_parser():
                         "that signs its own, like Proton Mail Bridge)")
     p.add_argument("--forget-tls-cert", action="store_true",
                    help="go back to checking the certificate the ordinary way")
+    p.add_argument("--legacy-ciphers", dest="legacy_ciphers", action="store_true",
+                   default=None,
+                   help="also allow older TLS ciphers without forward secrecy, for a "
+                        "server that offers nothing else (the certificate is still checked)")
+    p.add_argument("--no-legacy-ciphers", dest="legacy_ciphers", action="store_false",
+                   help="back to Olook's default ciphers")
     p.set_defaults(func=cmd_set)
 
     p = sub.add_parser("trust-cert",

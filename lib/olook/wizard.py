@@ -60,7 +60,8 @@ def run_setup(args):
     found = providers.discover(email)
     label = {"gmail": "Google", "microsoft": "Microsoft 365 / Outlook",
              "icloud": "iCloud", "yahoo": "Yahoo", "fastmail": "Fastmail",
-             "proton": "Proton", "zoho": "Zoho"}.get(found["provider"], "Generic IMAP")
+             "proton": "Proton", "zoho": "Zoho",
+             "spectrum": "Spectrum / Roadrunner"}.get(found["provider"], "Generic IMAP")
     print(f"\n  Provider : {label}  (detected via {found['source']})")
     print(f"  IMAP     : {found['imap']['host']}:{found['imap']['port']}")
     print(f"  SMTP     : {found['smtp']['host']}:{found['smtp']['port']}")
@@ -91,6 +92,7 @@ def run_setup(args):
         "smtp": found["smtp"],
         "folders": found.get("folders") or {},
         "oauth": found.get("oauth") or {},
+        **({"legacyCiphers": True} if found.get("legacyCiphers") is True else {}),
     })
 
     print()
