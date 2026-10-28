@@ -127,11 +127,17 @@ Item {
     }
   }
 
-  // Off the record (no storage name), no cache, no cookies kept. Declared
-  // through the prototype, as Qt 6.9 asks: a bare WebEngineProfile in QML is
-  // on its way out.
-  WebEngineProfilePrototype {
+  // Off the record, no cache, no cookies kept.
+  //
+  // Qt 6.9 logs that this way of declaring a profile will be deprecated in
+  // favour of WebEngineProfilePrototype. 1.2.12 switched to that, and the
+  // shell crashed in QQuickWebEngineView::setProfile whenever a message
+  // window was built: the prototype's instance() is read by the view's
+  // binding before the prototype is ready. A warning in the log is the
+  // better trade until that is safe.
+  WebEngineProfile {
     id: sealed
+    offTheRecord: true
     httpCacheType: WebEngineProfile.NoCache
     persistentCookiesPolicy: WebEngineProfile.NoPersistentCookies
   }
@@ -139,7 +145,7 @@ Item {
   WebEngineView {
     id: view
     anchors.fill: parent
-    profile: sealed.instance()
+    profile: sealed
     backgroundColor: root.paper
 
     settings.javascriptEnabled: false

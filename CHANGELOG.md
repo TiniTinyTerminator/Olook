@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.13
+
+- Fixed: the shell could crash when a message was opened, most often from a
+  notification. 1.2.12 declared the message view's private profile through
+  Qt's newer WebEngineProfilePrototype, whose instance() was sometimes still
+  empty when the view was built, and WebEngine crashed on the empty profile.
+  Back to the WebEngineProfile that worked: off the record, no cache, no
+  cookies kept. Qt logs a deprecation warning for it, which is harmless.
+
 ## 1.2.12
 
 **Attachments**
